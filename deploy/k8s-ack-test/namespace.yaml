@@ -5,3 +5,6 @@ metadata:
   labels:
     app.kubernetes.io/name: deepseek-harness
     kt.ktyun.cc/env: test
+    # Gateway API on Istio：为 Pod 注入 sidecar（permissive mTLS，
+    # 不影响存量集群内调用）
+    istio-injection: enabled
