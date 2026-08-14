@@ -9,7 +9,7 @@ resources:
 configMapGenerator:
   - name: deepseek-harness-nginx
     files:
-      - dsh-web.conf=../nginx/dsh-web.conf
+      - dsh-web.conf
     options:
       disableNameSuffixHash: true
 images:

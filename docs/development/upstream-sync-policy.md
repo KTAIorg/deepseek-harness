@@ -24,7 +24,7 @@
 
 ## KT 定制边界（白名单，超出需 PR 论证）
 
-1. **容器化**：`Dockerfile`、`.dockerignore`、`deploy/nginx/dsh-web.conf`
+1. **容器化**：`Dockerfile`、`.dockerignore`、`deploy/k8s-ack-*/dsh-web.conf`
 2. **K8s 部署清单**：`deploy/k8s-ack-test/**`、`deploy/k8s-ack-prod/**`
 3. **CI/交付**：`.github/workflows/release-ack.yml`（及后续同步/发布 workflow）、
    `.github/scripts/**`

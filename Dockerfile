@@ -1,7 +1,7 @@
 # KT fork 定制（白名单域：容器化）。上游不提供 Dockerfile。
 #
 # 运行模型：dsh web 遵循上游安全策略只绑定 127.0.0.1:3080，
-# K8s 侧由 nginx sidecar（deploy/nginx/dsh-web.conf）暴露 Pod 端口。
+# K8s 侧由 nginx sidecar（deploy/k8s-ack-*/dsh-web.conf）暴露 Pod 端口。
 #
 # 构建产物验证方式（本地）：
 #   docker build -t dsh-local . && \
