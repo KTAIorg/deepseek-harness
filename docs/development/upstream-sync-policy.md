@@ -34,6 +34,7 @@
    保持 fork 零核心定制）；本仓白名单域仅包含 sidecar 接线：Deployment 的
    `auth-gateway` 容器、Service targetPort、`dsh-auth-secrets` 引用（值走
    KTSecret，禁止入 Git）。授权策略 = kt-identity ADMIN 角色 ∪ 白名单，默认拒绝。
+   公网路由资源（`gateway.yaml`/`httproute.yaml`）亦属部署清单域（`deploy/k8s-ack-*`）。
 
 当前**没有** ktpay / kt-identity 代码级定制 / 品牌定制。认证门面本身不改上游
 代码；kt-identity 侧的唯一依赖是 networkpolicy 放行（kt-identity#234）。
@@ -51,6 +52,8 @@
 - `/api` 浏览器信任栅栏按请求 Host 判定：loopback 放行，非 loopback 的访问
   域名必须在 dsh 启动参数 `--trusted-host <authority>` 登记，否则 /api 拒绝。
   port-forward（127.0.0.1）天然放行；新增公网域名时必须同步更新 Deployment args。
+  现状：TEST/PROD 已分别登记 `dsh-test.ktyun.cc` / `dsh.ktyun.cc`；
+  新增域名必须同步追加该参数。
 
 ## 同步频率
 
