@@ -42,6 +42,9 @@ spec:
                 secretKeyRef:
                   name: dsh-auth-secrets
                   key: ALLOWED_ACCOUNTS
+            # 公网入口走 CF HTTPS，会话 cookie 需 Secure
+            - name: COOKIE_SECURE
+              value: "true"
           readinessProbe:
             httpGet:
               path: /healthz
@@ -69,6 +72,10 @@ spec:
             - "127.0.0.1"
             - --port
             - "3080"
+            # 上游 /api 信任栅栏：非 loopback 的访问 authority 必须登记，
+            # 否则 /api 请求被拒。新增公网域名时同步追加。
+            - --trusted-host
+            - dsh-test.ktyun.cc
           env:
             - name: DSH_HOME
               value: /dsh-home

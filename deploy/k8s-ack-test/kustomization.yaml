@@ -6,6 +6,8 @@ resources:
   - pvc.yaml
   - deployment.yaml
   - service.yaml
+  - gateway.yaml
+  - httproute.yaml
 configMapGenerator:
   - name: deepseek-harness-nginx
     files:
