@@ -82,16 +82,21 @@ jobs:
           WT="$(mktemp -d)"
           trap 'git worktree remove --force "$WT" >/dev/null 2>&1 || true' EXIT
           git worktree add "$WT" origin/gitops-test
-          python3 - "$WT/deploy/k8s-ack-test/kustomization.yaml" "$IMAGE_TAG" <<'PY'
+          python3 - "$WT/deploy/k8s-ack-test/kustomization.yaml" "$GHCR_IMAGE" "$IMAGE_TAG" <<'PY'
           import sys
           from pathlib import Path
           path = Path(sys.argv[1])
-          image_tag = sys.argv[2]
+          target_image = sys.argv[2]
+          image_tag = sys.argv[3]
+          # 只回写 dsh 主镜像的 newTag；清单中还有其他镜像（auth-gateway sidecar）。
           lines = []
+          in_target = False
           for line in path.read_text().splitlines():
               stripped = line.lstrip()
               indent = line[: len(line) - len(stripped)]
-              if stripped.startswith("newTag:"):
+              if stripped.startswith("- name: "):
+                  in_target = stripped == f"- name: {target_image}"
+              if in_target and stripped.startswith("newTag:"):
                   lines.append(f"{indent}newTag: {image_tag}")
               else:
                   lines.append(line)
@@ -116,16 +121,21 @@ jobs:
           WT="$(mktemp -d)"
           trap 'git worktree remove --force "$WT" >/dev/null 2>&1 || true' EXIT
           git worktree add "$WT" origin/gitops-prod
-          python3 - "$WT/deploy/k8s-ack-prod/kustomization.yaml" "$IMAGE_TAG" <<'PY'
+          python3 - "$WT/deploy/k8s-ack-prod/kustomization.yaml" "$GHCR_IMAGE" "$IMAGE_TAG" <<'PY'
           import sys
           from pathlib import Path
           path = Path(sys.argv[1])
-          image_tag = sys.argv[2]
+          target_image = sys.argv[2]
+          image_tag = sys.argv[3]
+          # 只回写 dsh 主镜像的 newTag；清单中还有其他镜像（auth-gateway sidecar）。
           lines = []
+          in_target = False
           for line in path.read_text().splitlines():
               stripped = line.lstrip()
               indent = line[: len(line) - len(stripped)]
-              if stripped.startswith("newTag:"):
+              if stripped.startswith("- name: "):
+                  in_target = stripped == f"- name: {target_image}"
+              if in_target and stripped.startswith("newTag:"):
                   lines.append(f"{indent}newTag: {image_tag}")
               else:
                   lines.append(line)

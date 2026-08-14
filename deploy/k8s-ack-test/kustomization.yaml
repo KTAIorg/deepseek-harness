@@ -16,3 +16,6 @@ images:
   - name: ghcr.io/ktaiorg/deepseek-harness
     newName: ghcr.io/ktaiorg/deepseek-harness
     newTag: sha-000000000000
+  - name: ghcr.io/ktaiorg/dsh-auth-gateway
+    newName: ghcr.io/ktaiorg/dsh-auth-gateway
+    newTag: sha-000000000000
