@@ -1,0 +1,19 @@
+# 公网入口（Gateway API on Istio，kt-service-public-exposure 配方）。
+# istio 会建出 ClusterIP 网关 svc deepseek-harness-gateway-istio，
+# CF Tunnel 回源指向它，不暴露公网 SLB。
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: deepseek-harness-gateway
+  annotations:
+    networking.istio.io/service-type: ClusterIP
+spec:
+  gatewayClassName: istio
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: dsh-test.ktyun.cc
+      allowedRoutes:
+        namespaces:
+          from: Same
