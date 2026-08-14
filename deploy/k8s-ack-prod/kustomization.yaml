@@ -20,4 +20,4 @@ images:
     newTag: sha-1f394ba1fc16
   - name: ghcr.io/ktaiorg/dsh-auth-gateway
     newName: ghcr.io/ktaiorg/dsh-auth-gateway
-    newTag: sha-fa40b2dc9e69
+    newTag: sha-754dd81906c5
