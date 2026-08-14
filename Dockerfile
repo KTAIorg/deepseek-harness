@@ -10,6 +10,11 @@
 
 FROM node:24-slim AS build
 
+# node-pty 等原生模块需要 node-gyp 编译
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 # packageManager 字段（pnpm@11.7.0）由 corepack 解析
 RUN corepack enable
 
