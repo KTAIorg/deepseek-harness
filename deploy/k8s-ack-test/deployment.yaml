@@ -20,6 +20,47 @@ spec:
       imagePullSecrets:
         - name: ghcr-pull-secret
       containers:
+        # 认证门面：kt-identity 登录 + ADMIN/白名单授权，默认拒绝。
+        # Service 唯一入口；nginx/dsh 无 Service 端口，无绕过路径。
+        - name: auth-gateway
+          image: ghcr.io/ktaiorg/dsh-auth-gateway:sha-000000000000
+          ports:
+            - name: http
+              containerPort: 8081
+          env:
+            - name: IDENTITY_BASE_URL
+              value: http://kt-identity-api.kt-identity-prod.svc.cluster.local:8080
+            - name: UPSTREAM
+              value: http://127.0.0.1:8080
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: dsh-auth-secrets
+                  key: SESSION_SECRET
+            - name: ALLOWED_ACCOUNTS
+              valueFrom:
+                secretKeyRef:
+                  name: dsh-auth-secrets
+                  key: ALLOWED_ACCOUNTS
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
         # dsh web 只绑定 127.0.0.1（上游安全策略），由 web-proxy 暴露 Pod 端口
         - name: dsh
           image: ghcr.io/ktaiorg/deepseek-harness:sha-000000000000

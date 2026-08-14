@@ -29,11 +29,14 @@
 3. **CI/交付**：`.github/workflows/release-ack.yml`（及后续同步/发布 workflow）、
    `.github/scripts/**`
 4. **治理文档**：`docs/development/**`
+5. **认证门面（2026-08-15 新增）**：上游 Web 无认证且 Agent 可执行代码，暴露前
+   必须挂认证网关。实现为独立仓库 `KTAIorg/dsh-auth-gateway`（不侵入上游代码，
+   保持 fork 零核心定制）；本仓白名单域仅包含 sidecar 接线：Deployment 的
+   `auth-gateway` 容器、Service targetPort、`dsh-auth-secrets` 引用（值走
+   KTSecret，禁止入 Git）。授权策略 = kt-identity ADMIN 角色 ∪ 白名单，默认拒绝。
 
-当前**没有** ktpay / kt-identity / 品牌定制。上游 Web 端无内建认证且 Agent
-具备代码执行能力，公网暴露前必须先落地认证门面（评估方向：上游若内建认证则
-直接对接 kt-identity OIDC；否则在入口层做 Cloudflare Access / Auth Gateway），
-该改动届时按白名单新增域走 PR 论证。
+当前**没有** ktpay / kt-identity 代码级定制 / 品牌定制。认证门面本身不改上游
+代码；kt-identity 侧的唯一依赖是 networkpolicy 放行（kt-identity#234）。
 
 ## 上游特殊性（同步时必须记住）
 
@@ -45,6 +48,9 @@
   立场：容器内绑 `127.0.0.1:3080`，由 nginx sidecar 暴露 Pod 端口。禁止
   以定制名义绕过该限制（如改用 `::` 或 patch 掉检查）。
 - 数据目录 `DSH_HOME`（默认 `~/.dsh`）承载会话/存储，容器内固定挂载 PVC。
+- `/api` 浏览器信任栅栏按请求 Host 判定：loopback 放行，非 loopback 的访问
+  域名必须在 dsh 启动参数 `--trusted-host <authority>` 登记，否则 /api 拒绝。
+  port-forward（127.0.0.1）天然放行；新增公网域名时必须同步更新 Deployment args。
 
 ## 同步频率
 

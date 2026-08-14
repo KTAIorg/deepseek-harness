@@ -1,6 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: kt-deepseek-harness
+namespace: kt-deepseek-harness-test
 resources:
   - namespace.yaml
   - pvc.yaml
@@ -16,3 +16,6 @@ images:
   - name: ghcr.io/ktaiorg/deepseek-harness
     newName: ghcr.io/ktaiorg/deepseek-harness
     newTag: sha-1f394ba1fc16
+  - name: ghcr.io/ktaiorg/dsh-auth-gateway
+    newName: ghcr.io/ktaiorg/dsh-auth-gateway
+    newTag: sha-fa40b2dc9e69
