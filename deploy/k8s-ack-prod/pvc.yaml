@@ -1,0 +1,14 @@
+# DSH_HOME 持久化：会话日志、存储、agent presets。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dsh-home
+  labels:
+    app.kubernetes.io/name: deepseek-harness
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: alicloud-disk-essd
+  resources:
+    requests:
+      storage: 20Gi

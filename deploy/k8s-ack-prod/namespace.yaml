@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kt-deepseek-harness
+  labels:
+    app.kubernetes.io/name: deepseek-harness
+    kt.ktyun.cc/env: prod

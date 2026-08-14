@@ -1,0 +1,151 @@
+name: Release ACK
+
+# KT fork 定制（白名单域：CI/交付）。
+# 交付契约（kt-ack-argocd-gitops-deploy / source-repo-ci-contract）：
+#   build once -> GHCR sha-<12> -> 回写 gitops-test（Argo watch）
+#   -> 可选同 digest 晋升 gitops-prod。合并 main 不等于上生产；
+#   晋升只发生在本 workflow 的手动 dispatch。
+# 过渡形态说明：org 级 promotion App + release-gate 落地前，采用
+# self-contained delivery bridge（与 sub2api 同期实践一致），不重建镜像。
+
+on:
+  workflow_dispatch:
+    inputs:
+      promote_prod:
+        description: "TEST 冒烟通过后，同 digest 同时写入 gitops-prod"
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-ack
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  GHCR_REGISTRY: ghcr.io
+  GHCR_IMAGE: ghcr.io/ktaiorg/deepseek-harness
+
+jobs:
+  build-and-gitops:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata
+        run: |
+          COMMIT_SHA="$(git rev-parse HEAD)"
+          SHORT_SHA="${COMMIT_SHA::12}"
+          echo "COMMIT_SHA=${COMMIT_SHA}" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=${SHORT_SHA}" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=sha-${SHORT_SHA}" >> "$GITHUB_ENV"
+          echo "IMAGE_REF=${GHCR_IMAGE}:sha-${SHORT_SHA}" >> "$GITHUB_ENV"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        timeout-minutes: 60
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_REF }}
+          cache-from: type=gha,scope=deepseek-harness-ack
+          cache-to: type=gha,mode=max,scope=deepseek-harness-ack
+          provenance: false
+          sbom: false
+
+      - name: Write digest to gitops-test
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+
+          git fetch origin gitops-test
+          WT="$(mktemp -d)"
+          trap 'git worktree remove --force "$WT" >/dev/null 2>&1 || true' EXIT
+          git worktree add "$WT" origin/gitops-test
+          python3 - "$WT/deploy/k8s-ack-test/kustomization.yaml" "$IMAGE_TAG" <<'PY'
+          import sys
+          from pathlib import Path
+          path = Path(sys.argv[1])
+          image_tag = sys.argv[2]
+          lines = []
+          for line in path.read_text().splitlines():
+              stripped = line.lstrip()
+              indent = line[: len(line) - len(stripped)]
+              if stripped.startswith("newTag:"):
+                  lines.append(f"{indent}newTag: {image_tag}")
+              else:
+                  lines.append(line)
+          path.write_text("\n".join(lines) + "\n")
+          PY
+          git -C "$WT" add deploy/k8s-ack-test/kustomization.yaml
+          if git -C "$WT" diff --cached --quiet -- deploy/k8s-ack-test/kustomization.yaml; then
+            echo "gitops-test already at ${IMAGE_TAG}"
+          else
+            git -C "$WT" commit -m "chore: deploy ${IMAGE_TAG} to test [skip ci]"
+            git -C "$WT" push origin "HEAD:gitops-test"
+          fi
+
+      - name: Promote same digest to gitops-prod
+        if: ${{ inputs.promote_prod }}
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+
+          git fetch origin gitops-prod
+          WT="$(mktemp -d)"
+          trap 'git worktree remove --force "$WT" >/dev/null 2>&1 || true' EXIT
+          git worktree add "$WT" origin/gitops-prod
+          python3 - "$WT/deploy/k8s-ack-prod/kustomization.yaml" "$IMAGE_TAG" <<'PY'
+          import sys
+          from pathlib import Path
+          path = Path(sys.argv[1])
+          image_tag = sys.argv[2]
+          lines = []
+          for line in path.read_text().splitlines():
+              stripped = line.lstrip()
+              indent = line[: len(line) - len(stripped)]
+              if stripped.startswith("newTag:"):
+                  lines.append(f"{indent}newTag: {image_tag}")
+              else:
+                  lines.append(line)
+          path.write_text("\n".join(lines) + "\n")
+          PY
+          git -C "$WT" add deploy/k8s-ack-prod/kustomization.yaml
+          if git -C "$WT" diff --cached --quiet -- deploy/k8s-ack-prod/kustomization.yaml; then
+            echo "gitops-prod already at ${IMAGE_TAG}"
+          else
+            git -C "$WT" commit -m "chore: promote ${IMAGE_TAG} to prod [skip ci]"
+            git -C "$WT" push origin "HEAD:gitops-prod"
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "## Release ACK"
+            echo ""
+            echo "- source_revision: ${COMMIT_SHA}"
+            echo "- image_digest_identity: ${IMAGE_REF}"
+            echo "- gitops-test: written"
+            echo "- gitops-prod: $([ "${{ inputs.promote_prod }}" = "true" ] && echo written || echo skipped)"
+          } >> "$GITHUB_STEP_SUMMARY"

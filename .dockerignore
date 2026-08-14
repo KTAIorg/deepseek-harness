@@ -1,0 +1,15 @@
+# KT fork 定制（白名单域：容器化）。缩小构建上下文，排除 VCS 元数据、
+# 本地依赖与构建产物；workspace 依赖在镜像内重新 pnpm install。
+.git
+.github
+node_modules
+**/node_modules
+**/dist
+**/lib
+*.tsbuildinfo
+**/.tsbuildinfo
+python
+website/.vitepress/cache
+website/.vitepress/dist
+.dsh
+.kimi-work
