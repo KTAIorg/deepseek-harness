@@ -79,6 +79,14 @@ spec:
           env:
             - name: DSH_HOME
               value: /dsh-home
+            # 官方 DeepSeek 路由改打 ktapi.cc；模型 ID 原样传递（ktai 组已有 deepseek-v4-flash）
+            - name: DEEPSEEK_BASE_URL
+              value: https://ktapi.cc/v1
+            - name: DEEPSEEK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dsh-llm-secrets
+                  key: DEEPSEEK_API_KEY
           volumeMounts:
             - name: dsh-home
               mountPath: /dsh-home
