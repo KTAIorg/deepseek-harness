@@ -193,17 +193,30 @@ jobs:
           rc=$?
           if [[ $rc -ne 0 ]]; then
             class="copy-failed"
-            if grep -Eqi '401|unauthorized|denied|authentication required' /tmp/copy.err; then
+            if grep -Eqi '401|403|unauthorized|forbidden|denied|authentication required' /tmp/copy.err; then
               class="zot-push-denied"
             elif grep -Eqi 'manifest unknown|not found' /tmp/copy.err; then
               class="manifest-unknown"
             fi
+            detail="$(python3 - << 'PY'
+            import re
+            from pathlib import Path
+            text = Path("/tmp/copy.err").read_text(errors="replace")
+            text = re.sub(r"[A-Za-z0-9_\-]{24,}", "[redacted]", text)
+            text = " ".join(text.split())
+            text = re.sub(r"[^A-Za-z0-9 ._:/+-]", "", text)[:80]
+            print(text)
+            PY
+            )"
+            detail="${detail//$'\n'/}"
             echo "class=${class}" >> "$GITHUB_OUTPUT"
+            echo "detail=${detail}" >> "$GITHUB_OUTPUT"
             exit 1
           fi
+          echo "detail=" >> "$GITHUB_OUTPUT"
           echo "class=ok" >> "$GITHUB_OUTPUT"
 
-      - name: "Copy ${{ steps.copy.outputs.class }}"
+      - name: "Copy ${{ steps.copy.outputs.class }} ${{ steps.copy.outputs.detail }}"
         if: steps.copy.outputs.class != 'ok'
         run: exit 1
 
