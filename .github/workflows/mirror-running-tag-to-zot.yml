@@ -1,0 +1,323 @@
+# Copies one existing GHCR tag onto oci.ktyun.cc.
+# imagetools copies the manifest only: no rebuild, no GitOps newTag change, no Deployment edit.
+# Login matches KTAIorg/kt-workflows image-build.yml mirror-zot (2026-10-12):
+# GHCR uses this repository's GITHUB_TOKEN; Zot uses GitHub OIDC audience zot as user zot.
+# No third-party actions. The GitHub-hosted runner's docker buildx performs the copy.
+# Each registry call is its own step. A failed call is followed by a step whose name is the
+# failure class (manifest-unknown, unauthorized, digest-mismatch) so the result is visible
+# from the Actions job API without opening the log.
+name: Ops · Mirror running tag to Zot
+run-name: Ops | mirror ${{ inputs.source_image }}:${{ inputs.tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_image:
+        description: "GHCR repository without tag (ghcr.io/<owner>/<name>)"
+        required: true
+        type: string
+      tag:
+        description: "Exact tag to copy. The destination keeps this same tag."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write
+
+concurrency:
+  group: mirror-running-tag-${{ inputs.source_image }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Mirror tag to Zot
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Validate reference
+        id: ref
+        env:
+          SOURCE_IMAGE: ${{ inputs.source_image }}
+          TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REPOSITORY,,}" == "kt-agent/telegram-service" ]]; then
+            echo "::error title=Archived repo::refusing to push from archived kt-agent/telegram-service"
+            exit 1
+          fi
+          source_image="${SOURCE_IMAGE,,}"
+          tag="$TAG"
+          image_re='^ghcr\.io/[a-z0-9]+([._-][a-z0-9]+)*/[a-z0-9]+([._-][a-z0-9]+)*$'
+          tag_re='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'
+          [[ "$source_image" =~ $image_re && "$tag" =~ $tag_re ]] || {
+            echo "::error title=Invalid reference::只接受 ghcr.io/<owner>/<name> 与一个 OCI tag"
+            exit 1
+          }
+          org="${source_image#ghcr.io/}"
+          org="${org%%/*}"
+          case "$org" in
+            actions|api7|huggingface|oomol|tair)
+              echo "::error title=Third-party image::拒绝复制第三方镜像 ${source_image}"
+              exit 1
+              ;;
+          esac
+          dest_ref="oci.ktyun.cc/${source_image#ghcr.io/}:${tag}"
+          [[ "$dest_ref" == oci.ktyun.cc/*:* ]] || {
+            echo "::error title=Refusing GHCR retag::复制目标必须是 oci.ktyun.cc，不能改 ghcr.io 的 tag"
+            exit 1
+          }
+          echo "source_ref=${source_image}:${tag}" >> "$GITHUB_OUTPUT"
+          echo "dest_ref=${dest_ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to oci.ktyun.cc
+        id: zot
+        continue-on-error: true
+        env:
+          AUDIENCE: zot
+        shell: bash
+        run: |
+          set +e
+          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
+            echo "class=missing-id-token" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          token="$(curl -sS --fail --retry 3 \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUDIENCE}" \
+            | jq -er '.value' 2>/tmp/zot-oidc.err)"
+          rc=$?
+          if [[ $rc -ne 0 || -z "${token:-}" || "$token" == "null" ]]; then
+            echo "class=oidc-request-failed" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "::add-mask::${token}"
+          printf '%s' "$token" | docker login oci.ktyun.cc --username zot --password-stdin >/tmp/zot.out 2>/tmp/zot.err
+          rc=$?
+          unset token
+          if [[ $rc -ne 0 ]]; then
+            class="zot-login-failed"
+            if grep -Eqi '401|unauthorized|denied|authentication required' /tmp/zot.err; then
+              class="zot-unauthorized"
+            elif grep -Eqi 'timed out|could not resolve|connection refused|no such host' /tmp/zot.err; then
+              class="zot-network"
+            fi
+            echo "class=${class}" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "class=ok" >> "$GITHUB_OUTPUT"
+
+      - name: "Zot login ${{ steps.zot.outputs.class }}"
+        if: steps.zot.outputs.class != 'ok'
+        run: exit 1
+
+      - name: Login to GHCR
+        id: ghcr
+        continue-on-error: true
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set +e
+          printf '%s' "$GHCR_PASSWORD" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin >/tmp/ghcr.out 2>/tmp/ghcr.err
+          rc=$?
+          unset GHCR_PASSWORD
+          if [[ $rc -ne 0 ]]; then
+            class="ghcr-login-failed"
+            if grep -Eqi '401|unauthorized|denied|authentication required' /tmp/ghcr.err; then
+              class="ghcr-unauthorized"
+            fi
+            echo "class=${class}" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "class=ok" >> "$GITHUB_OUTPUT"
+
+      - name: "GHCR login ${{ steps.ghcr.outputs.class }}"
+        if: steps.ghcr.outputs.class != 'ok'
+        run: exit 1
+
+      - name: Inspect GHCR tag
+        id: inspect
+        continue-on-error: true
+        env:
+          SOURCE_REF: ${{ steps.ref.outputs.source_ref }}
+        shell: bash
+        run: |
+          set +e
+          raw="$(docker buildx imagetools inspect "$SOURCE_REF" --format '{{json .Manifest.Digest}}' 2>/tmp/inspect.err)"
+          rc=$?
+          if [[ $rc -ne 0 ]]; then
+            class="inspect-failed"
+            if grep -Eqi 'manifest unknown|not found' /tmp/inspect.err; then
+              class="manifest-unknown"
+            elif grep -Eqi '401|unauthorized|denied|authentication required' /tmp/inspect.err; then
+              class="ghcr-denied"
+            fi
+            echo "class=${class}" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          digest="$(printf '%s' "$raw" | jq -r . 2>/dev/null || true)"
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "class=digest-format" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "class=ok" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: "GHCR inspect ${{ steps.inspect.outputs.class }}"
+        if: steps.inspect.outputs.class != 'ok'
+        run: exit 1
+
+      - name: Copy tag with imagetools
+        id: copy
+        continue-on-error: true
+        env:
+          SOURCE_REF: ${{ steps.ref.outputs.source_ref }}
+          DEST_REF: ${{ steps.ref.outputs.dest_ref }}
+        shell: bash
+        run: |
+          set +e
+          case "$DEST_REF" in
+            oci.ktyun.cc/*:*) ;;
+            *)
+              echo "class=refusing-ghcr-retag" >> "$GITHUB_OUTPUT"
+              exit 1
+              ;;
+          esac
+          BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker buildx imagetools create \
+            --tag "$DEST_REF" \
+            "$SOURCE_REF" >/tmp/copy.out 2>/tmp/copy.err
+          rc=$?
+          if [[ $rc -ne 0 ]]; then
+            class="copy-failed"
+            if grep -Eqi '401|unauthorized|denied|authentication required' /tmp/copy.err; then
+              class="zot-push-denied"
+            elif grep -Eqi 'manifest unknown|not found' /tmp/copy.err; then
+              class="manifest-unknown"
+            fi
+            echo "class=${class}" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "class=ok" >> "$GITHUB_OUTPUT"
+
+      - name: "Copy ${{ steps.copy.outputs.class }}"
+        if: steps.copy.outputs.class != 'ok'
+        run: exit 1
+
+      - name: Verify copied image
+        id: verify
+        continue-on-error: true
+        env:
+          SOURCE_REF: ${{ steps.ref.outputs.source_ref }}
+          DEST_REF: ${{ steps.ref.outputs.dest_ref }}
+        shell: bash
+        run: |
+          set +e
+          docker buildx imagetools inspect "$SOURCE_REF" --format '{{json .Manifest}}' > /tmp/src-manifest.json 2>/tmp/src-manifest.err
+          src_manifest_rc=$?
+          docker buildx imagetools inspect "$DEST_REF" --format '{{json .Manifest}}' > /tmp/dst-manifest.json 2>/tmp/dst-manifest.err
+          dst_manifest_rc=$?
+          docker buildx imagetools inspect "$SOURCE_REF" --format '{{json .Image}}' > /tmp/src-image.json 2>/tmp/src-image.err
+          src_image_rc=$?
+          docker buildx imagetools inspect "$DEST_REF" --format '{{json .Image}}' > /tmp/dst-image.json 2>/tmp/dst-image.err
+          dst_image_rc=$?
+          if [[ $src_image_rc -ne 0 ]]; then printf '%s' '{}' > /tmp/src-image.json; fi
+          if [[ $dst_image_rc -ne 0 ]]; then printf '%s' '{}' > /tmp/dst-image.json; fi
+          if [[ $src_manifest_rc -ne 0 || $dst_manifest_rc -ne 0 ]]; then
+            echo "class=dest-inspect-failed" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          python3 - << 'PY' > /tmp/mirror-class.txt
+          import json
+          from pathlib import Path
+
+          def load(path):
+              try:
+                  text = Path(path).read_text()
+                  return json.loads(text) if text.strip() else None
+              except Exception:
+                  return None
+
+          src_manifest = load("/tmp/src-manifest.json")
+          dst_manifest = load("/tmp/dst-manifest.json")
+          src_image = load("/tmp/src-image.json") if Path("/tmp/src-image.json").stat().st_size else None
+          dst_image = load("/tmp/dst-image.json") if Path("/tmp/dst-image.json").stat().st_size else None
+
+          def top(manifest):
+              if isinstance(manifest, dict):
+                  return manifest.get("digest") or ""
+              return ""
+
+          def children(manifest):
+              if not isinstance(manifest, dict):
+                  return []
+              return sorted(
+                  item.get("digest")
+                  for item in (manifest.get("manifests") or [])
+                  if isinstance(item, dict) and item.get("digest")
+              )
+
+          def platforms(image):
+              if not isinstance(image, dict):
+                  return []
+              found = []
+              for name, item in sorted(image.items()):
+                  if not isinstance(item, dict):
+                      continue
+                  config = item.get("config") or {}
+                  found.append({
+                      "platform": name,
+                      "diff_ids": (item.get("rootfs") or {}).get("diff_ids") or [],
+                      "cmd": config.get("Cmd"),
+                      "entrypoint": config.get("Entrypoint"),
+                      "env": config.get("Env"),
+                  })
+              return found
+
+          src_top, dst_top = top(src_manifest), top(dst_manifest)
+          src_children, dst_children = children(src_manifest), children(dst_manifest)
+          src_platforms, dst_platforms = platforms(src_image), platforms(dst_image)
+          if src_top and src_top == dst_top:
+              print("ok")
+          elif src_children and src_children == dst_children:
+              print("same-children")
+          elif src_platforms and src_platforms == dst_platforms:
+              print("same-config-and-layers")
+          else:
+              print("content-mismatch")
+          PY
+          class="$(tr -d '\n' < /tmp/mirror-class.txt)"
+          case "$class" in
+            ok|same-children|same-config-and-layers|content-mismatch) ;;
+            *)
+              echo "class=dest-inspect-failed" >> "$GITHUB_OUTPUT"
+              exit 1
+              ;;
+          esac
+          echo "class=${class}" >> "$GITHUB_OUTPUT"
+          case "$class" in
+            ok|same-children|same-config-and-layers)
+              {
+                echo "### Mirrored"
+                echo "- \`${SOURCE_REF}\` -> \`${DEST_REF}\`"
+                echo "- result \`${class}\`"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
+
+      - name: "Result ${{ steps.verify.outputs.class }}"
+        if: always() && steps.verify.outputs.class != ''
+        env:
+          CLASS: ${{ steps.verify.outputs.class }}
+        run: |
+          case "$CLASS" in
+            ok|same-children|same-config-and-layers) exit 0 ;;
+            *) exit 1 ;;
+          esac
