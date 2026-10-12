@@ -1,0 +1,130 @@
+# 生产拉取 oci.ktyun.cc 的短时身份。每 20 分钟把 ServiceAccount 令牌写进 Secret oci-pull，不保存长期密码。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deepseek-harness-oci-pull
+  namespace: kt-deepseek-harness
+  labels:
+    app.kubernetes.io/name: deepseek-harness
+    app.kubernetes.io/instance: oci-canary
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deepseek-harness-oci-pull-mint
+  namespace: kt-deepseek-harness
+  labels:
+    app.kubernetes.io/name: deepseek-harness
+    app.kubernetes.io/instance: oci-canary
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deepseek-harness-oci-pull-mint
+  namespace: kt-deepseek-harness
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    resourceNames: ["deepseek-harness-oci-pull"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deepseek-harness-oci-pull-mint
+  namespace: kt-deepseek-harness
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: deepseek-harness-oci-pull-mint
+subjects:
+  - kind: ServiceAccount
+    name: deepseek-harness-oci-pull-mint
+    namespace: kt-deepseek-harness
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepseek-harness-oci-pull-mint
+  namespace: kt-deepseek-harness
+data:
+  mint.sh: |
+    #!/bin/sh
+    set -eu
+    API=https://kubernetes.default.svc
+    CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    KTOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+    NS=kt-deepseek-harness
+    SA=deepseek-harness-oci-pull
+    SECRET=oci-pull
+    PUBLIC=oci.ktyun.cc
+    BODY='{"apiVersion":"authentication.k8s.io/v1","kind":"TokenRequest","spec":{"audiences":["zot"],"expirationSeconds":3600}}'
+    RESP=$(curl -sS --cacert "$CACERT" -H "Authorization: Bearer $KTOKEN" -H "Content-Type: application/json" -d "$BODY" \
+      "$API/api/v1/namespaces/$NS/serviceaccounts/$SA/token")
+    TOKEN=$(printf '%s' "$RESP" | sed -n 's/.*"token": *"\([^"]*\)".*/\1/p')
+    if [ -z "$TOKEN" ]; then
+      echo mint_failed
+      exit 1
+    fi
+    AUTHJSON=$(printf '{"auths":{"%s":{"username":"zot","password":"%s"}}}' "$PUBLIC" "$TOKEN")
+    B64=$(printf '%s' "$AUTHJSON" | base64 | tr -d '\n')
+    MANIFEST=$(printf '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"%s"},"type":"kubernetes.io/dockerconfigjson","data":{".dockerconfigjson":"%s"}}' "$SECRET" "$NS" "$B64")
+    CODE=$(curl -sS -o /tmp/mint.out -w '%{http_code}' --cacert "$CACERT" -H "Authorization: Bearer $KTOKEN" -H "Content-Type: application/json" \
+      -X PUT -d "$MANIFEST" "$API/api/v1/namespaces/$NS/secrets/$SECRET")
+    if [ "$CODE" = "404" ]; then
+      CODE=$(curl -sS -o /tmp/mint.out -w '%{http_code}' --cacert "$CACERT" -H "Authorization: Bearer $KTOKEN" -H "Content-Type: application/json" \
+        -X POST -d "$MANIFEST" "$API/api/v1/namespaces/$NS/secrets")
+    fi
+    echo "mint $CODE"
+    [ "$CODE" = "200" ] || [ "$CODE" = "201" ]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: deepseek-harness-oci-pull-mint
+  namespace: kt-deepseek-harness
+spec:
+  schedule: "*/20 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 600
+      template:
+        spec:
+          serviceAccountName: deepseek-harness-oci-pull-mint
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: topology.kubernetes.io/zone
+                        operator: In
+                        values: ["us-east-1b"]
+          containers:
+            - name: mint
+              image: curlimages/curl:8.5.0
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "/script/mint.sh"]
+              volumeMounts:
+                - name: script
+                  mountPath: /script
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 32Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+          volumes:
+            - name: script
+              configMap:
+                name: deepseek-harness-oci-pull-mint
+                defaultMode: 0555

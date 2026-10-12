@@ -23,6 +23,7 @@ concurrency:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 env:
   GHCR_REGISTRY: ghcr.io
@@ -72,6 +73,28 @@ jobs:
           provenance: false
           sbom: false
 
+      - name: Dual-publish to oci.ktyun.cc
+        continue-on-error: true
+        env:
+          AUDIENCE: zot
+        run: |
+          set -euo pipefail
+          token="$(curl -sS --fail --retry 3 \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUDIENCE}" \
+            | jq -er '.value')"
+          echo "::add-mask::${token}"
+          printf '%s' "$token" | docker login oci.ktyun.cc --username zot --password-stdin
+          unset token
+          dest="oci.ktyun.cc/${IMAGE_REF#ghcr.io/}"
+          docker buildx build \
+            --file Dockerfile \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            --output type=registry,oci-mediatypes=true \
+            --tag "${dest}" \
+            .
       - name: Write digest to gitops-test
         run: |
           set -euo pipefail
