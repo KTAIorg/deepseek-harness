@@ -198,7 +198,10 @@ jobs:
             elif grep -Eqi 'manifest unknown|not found' /tmp/copy.err; then
               class="manifest-unknown"
             fi
-            detail="$(tr '\n' ' ' < /tmp/copy.err | sed -E 's/[A-Za-z0-9_-]{24,}/[redacted]/g' | tr -cd 'A-Za-z0-9 ._:/+-' | cut -c1-80)"
+            detail="$(grep -Ei 'error|failed|denied|forbidden|unknown|unexpected' /tmp/copy.err | tail -n 1 | tr '\n' ' ' | tr -cd 'A-Za-z0-9 ._:/+-' | cut -c1-140)"
+            if [[ -z "$detail" ]]; then
+              detail="$(tail -c 140 /tmp/copy.err | tr '\n' ' ' | tr -cd 'A-Za-z0-9 ._:/+-' | cut -c1-140)"
+            fi
             detail="${detail//$'\n'/}"
             echo "class=${class}" >> "$GITHUB_OUTPUT"
             echo "detail=${detail}" >> "$GITHUB_OUTPUT"
