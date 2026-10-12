@@ -8,6 +8,8 @@ resources:
   - service.yaml
   - gateway.yaml
   - httproute.yaml
+  - deepseek-harness-oci-canary.yaml
+  - oci-pull-mint.yaml
 configMapGenerator:
   - name: deepseek-harness-nginx
     files:
