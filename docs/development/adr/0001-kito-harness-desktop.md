@@ -6,7 +6,7 @@
 
 ## 背景
 
-Kito 今天是 OpenCode 的独立桌面，和 KT 客户端平级，共用 KT Identity 与 NewAPI。DeepSeek Harness `dsh-v0.2.1-alpha.1` 自己带完整 Electron 桌面：壳、Web 客户端和 dsh 运行时按同一个版本发布，并独占 `$DSH_HOME/profiles/desktop`。ACK 上的 `dsh-auth-gateway` 只守公网 Web 入口。
+Kito 今天是 OpenCode 的独立桌面，和 KT 客户端平级，共用 KT Identity 与 NewAPI。DeepSeek Harness `dsh-v0.2.1-rc.2` 自己带完整 Electron 桌面：壳、Web 客户端和 dsh 运行时按同一个版本发布，并独占 `$DSH_HOME/profiles/desktop`。ACK 上的 `dsh-auth-gateway` 只守公网 Web 入口。
 
 ## 决策
 

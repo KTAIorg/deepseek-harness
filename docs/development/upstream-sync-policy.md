@@ -1,6 +1,6 @@
 # 上游同步与 Fork 开发策略（deepseek-harness）
 
-日期：2026-10-17
+日期：2026-10-18
 
 状态：生效
 
@@ -11,7 +11,7 @@
 - `upstream` = <https://github.com/deepseek-ai/deepseek-harness>（只读，禁止 push）
 - `origin` = KTAIorg/deepseek-harness（KT fork，真 fork，保留完整上游历史）
 
-上游是 MIT 协议的 TypeScript pnpm monorepo，默认分支 `master`。同步检查用 `upstream/master` 与发行 tag，不用 fork 的 `main`。当前基线是发行 tag `dsh-v0.2.1-alpha.1`（`5badb15009ae1756c3afe0ae0cef1faafc290ccc`）。公共 API 仍是 pre-stable，只合已发行 tag，不追 `master` HEAD。
+上游是 MIT 协议的 TypeScript pnpm monorepo，默认分支 `master`。同步检查用 `upstream/master` 与发行 tag，不用 fork 的 `main`。当前基线是发行 tag `dsh-v0.2.1-rc.2`（`687f282e8625c6b8d11ff58211a90524be2e4317`）。公共 API 仍是 pre-stable，只合已发行 tag，不追 `master` HEAD。
 
 ## 分支模型
 
@@ -71,3 +71,4 @@
 |---|---|---|---|---|
 | 2026-08-14 | 无→47f94385（Day 0 fork） | 无 | 本地 build + web 200 | Hermes Agent |
 | 2026-10-17 | 47f94385→`dsh-v0.2.1-alpha.1`（`5badb15009`） | 无。KT 侧 13 个提交只新增部署/CI/治理文件，与上游路径不重叠 | merge 无冲突；fork 定制文件相对 tag 仍在 | KT |
+| 2026-10-18 | `dsh-v0.2.1-alpha.1`→`dsh-v0.2.1-rc.2`（`687f282e86`） | 桌面 README、安装文案、产物名和上传清单。上游新增目录替换文案、未公证产物后缀和 nightly-only 清单；Kito 产品名、`kito-harness` 路径和 `updates.ktyun.cc` 保留 | 冲突已解；桌面开发客户端待本地启动验收 | KT |
