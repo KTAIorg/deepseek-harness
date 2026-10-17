@@ -2,78 +2,78 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/desktop/README.md
-/deepseek-harness-desktop:
-  en: 0f0f6ea914eff51e
-  zh: 4934245b04e9f1c0
-/deepseek-harness-desktop/terminal-command:
+/kito-harness-desktop:
+  en: 4a298c0c2634bceb
+  zh: 1d945bd4782c68ae
+/kito-harness-desktop/terminal-command:
   en: bef92953c237363f
   zh: d21d6effd21b8c00
-/deepseek-harness-desktop/closing-the-window-and-quitting:
-  en: c323e02e3f0305fe
-  zh: 3c730db632136443
-/deepseek-harness-desktop/key-technical-decisions:
+/kito-harness-desktop/closing-the-window-and-quitting:
+  en: ba427ed7a76ecd92
+  zh: b6a832ef898aca02
+/kito-harness-desktop/key-technical-decisions:
   en: 069fdfd72d2ea26a
   zh: 76ae549d43c99bb4
-/deepseek-harness-desktop/key-technical-decisions/bundled-workspace-dependencies:
-  en: 0f9b6c1d6761d108
-  zh: 77127063f244c361
-/deepseek-harness-desktop/bundled-command-runtime:
+/kito-harness-desktop/key-technical-decisions/bundled-workspace-dependencies:
+  en: 8ce345525cb53ef4
+  zh: 59ab4c6c4c8e16a0
+/kito-harness-desktop/bundled-command-runtime:
   en: 09f0b75af9f0ed14
   zh: 60bbc2e67d5e87a8
-/deepseek-harness-desktop/installation-ownership:
+/kito-harness-desktop/installation-ownership:
   en: 22153a298a6662e1
   zh: 3600803c8c9d0274
-/deepseek-harness-desktop/installation-ownership/runtime-and-plugin-activation:
-  en: a1a47b09f4a72ba4
-  zh: 7b1cf27f0b72cf31
-/deepseek-harness-desktop/installation-ownership/host-environment:
+/kito-harness-desktop/installation-ownership/runtime-and-plugin-activation:
+  en: e5e621fd770d353e
+  zh: 9f3b2a13dfe50947
+/kito-harness-desktop/installation-ownership/host-environment:
   en: 84a9cc7ca9455aa8
   zh: 4091b8aa8231b74a
-/deepseek-harness-desktop/develop:
+/kito-harness-desktop/develop:
   en: fe6d23e6a3d3bc66
   zh: d60c8d3a55747916
-/deepseek-harness-desktop/develop/startup-onboarding:
-  en: a51346b8d880ddba
-  zh: 7913214c1c66063c
-/deepseek-harness-desktop/develop/welcome-window-appearance:
+/kito-harness-desktop/develop/startup-onboarding:
+  en: 87806ad443690bc5
+  zh: 786771c8b6152cdb
+/kito-harness-desktop/develop/welcome-window-appearance:
   en: ae319a496639b38d
   zh: ef044103240ac9da
-/deepseek-harness-desktop/package:
+/kito-harness-desktop/package:
   en: 4cd8a8da6977928d
   zh: 9f624855a2edac37
-/deepseek-harness-desktop/package/release-versions:
+/kito-harness-desktop/package/release-versions:
   en: 0324169124c4414c
   zh: f591bee485467e93
-/deepseek-harness-desktop/package/runtime-file-selection:
-  en: f0e345fd89868803
-  zh: fd2c775ad23fa2f0
-/deepseek-harness-desktop/package/upload-updates:
-  en: 72073b2e72590067
-  zh: 63b1f9790395c37d
-/deepseek-harness-desktop/package/unsigned-windows-test-installer:
+/kito-harness-desktop/package/runtime-file-selection:
+  en: b146a6b1a15b83c9
+  zh: 76f422bd92a3d8d2
+/kito-harness-desktop/package/upload-updates:
+  en: e8a12d49aa5d3264
+  zh: d22a8596370e8072
+/kito-harness-desktop/package/unsigned-windows-test-installer:
   en: cfd5780dd26a8e46
   zh: f7a16b1ede793b7b
-/deepseek-harness-desktop/package/windows-installer-interface:
-  en: 94ddb11f514d8dea
-  zh: 15021ae8e3bc8a9c
-/deepseek-harness-desktop/package/windows-ev-signing:
+/kito-harness-desktop/package/windows-installer-interface:
+  en: 2ef05cb31b913127
+  zh: 101e0e3df2dc1161
+/kito-harness-desktop/package/windows-ev-signing:
   en: 8efe3498dbe8686d
   zh: a88c16f20a9430f3
-/deepseek-harness-desktop/updates:
+/kito-harness-desktop/updates:
   en: d0df867b69cbffa4
   zh: eeb47b79b86fe5ee
-/deepseek-harness-desktop/updates/mandatory-update-policy:
+/kito-harness-desktop/updates/mandatory-update-policy:
   en: c00a0e7d32056ba9
   zh: a76dae44cb513d6f
-/deepseek-harness-desktop/updates/local-updater-qualification:
+/kito-harness-desktop/updates/local-updater-qualification:
   en: bc50fd8a4d96c227
   zh: fb0a6ce80c31cda6
-/deepseek-harness-desktop/low-level-development-overrides:
+/kito-harness-desktop/low-level-development-overrides:
   en: 0b225f914142ef0b
   zh: 9ffd07768d37824e
-/deepseek-harness-desktop/known-limitations:
-  en: 5b77213c86bbcfb6
-  zh: b34bf21773bb852b
-/deepseek-harness-desktop/dev-note:
+/kito-harness-desktop/known-limitations:
+  en: 17ffdc21c81d15c4
+  zh: 12ff9e39bcb136df
+/kito-harness-desktop/dev-note:
   en: 8e26b460ba31f21b
   zh: fbcd0307b3867125

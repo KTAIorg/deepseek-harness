@@ -1,5 +1,5 @@
-DeepSeek Harness
-DeepSeek Harness
+Kito Harness
+Kito Harness
 Sign in timed out
 Sign in again
 Add API Key

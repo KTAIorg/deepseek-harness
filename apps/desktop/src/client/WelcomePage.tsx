@@ -7,6 +7,7 @@ import type { AccountView } from '@deepseek-ai/dsh-deepseek-account/types'
 import type { WelcomeApi } from '../welcome-api.ts'
 
 type Page = 'entry' | 'key' | 'account'
+type WelcomeAttempt = NonNullable<AccountView['attempt']> & { readonly userCode?: string }
 
 /**
  * Render the standalone welcome flow using shell-owned operations and localized copy.
@@ -20,8 +21,8 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   const [page, setPage] = useState<Page>('entry')
   const pageRef = useRef<Page>('entry')
   const visiblePage = useRef<Page>('entry')
-  const [attempt, setAttempt] = useState<AccountView['attempt']>(null)
-  const attemptRef = useRef<AccountView['attempt']>(null)
+  const [attempt, setAttempt] = useState<WelcomeAttempt | null>(null)
+  const attemptRef = useRef<WelcomeAttempt | null>(null)
   const [starting, setStarting] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState<{ status: 'idle' | 'busy' | 'copied' | 'failed' }>({ status: 'idle' })
@@ -40,7 +41,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
     pageRef.current = next
     setPage(next)
   }
-  function showAccount(state: AccountView) {
+  function showAccount(state: AccountView & { attempt: WelcomeAttempt | null }) {
     if (pageRef.current === 'key' || (state.attempt === null && pageRef.current === 'entry')) return
     attemptRef.current = state.attempt
     setAttempt(state.attempt)
@@ -194,6 +195,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
         hidden={page !== 'account'} aria-live="polite">
         <h1 id="auth-status">{title}</h1>
         <p id="auth-description" hidden={!waiting && phase !== 'expired'}>{waiting ? m.welcomeAuthWaitingDescription : m.welcomeAuthExpiredDescription}</p>
+        <p id="auth-code" className="auth-code" hidden={!waiting || !attempt?.userCode}>{attempt?.userCode}</p>
         <button id="auth-copy" className="copy-link" type="button" hidden={!waiting} disabled={!waiting || (copyState === 'busy' || copyState === 'copied')} onClick={() => { void copyLink() }}>
           {copyState === 'copied' ? m.welcomeAuthCopied : copyState === 'failed' ? m.welcomeAuthCopyFailed : m.welcomeAuthCopyLink}
         </button>

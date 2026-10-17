@@ -29,7 +29,7 @@
 3. **CI/交付**：`.github/workflows/release-ack.yml`、`.github/workflows/mirror-running-tag-to-zot.yml`、`.github/scripts/**`
 4. **治理文档**：`docs/development/**`
 5. **认证门面**：上游 Web 无认证且 Agent 可执行代码，ACK 暴露前必须挂认证网关。实现在独立仓库 `KTAIorg/dsh-auth-gateway`。本仓只保留 sidecar 接线：Deployment 的 `auth-gateway` 容器、Service targetPort、`dsh-auth-secrets` 引用（值走 KTSecret，禁止入 Git）。授权策略 = kt-identity `ADMIN` 角色 ∪ 白名单，默认拒绝。公网路由资源（`gateway.yaml` / `httproute.yaml`）属于部署清单域。
-6. **Kito 桌面壳（后续 PR）**：`apps/desktop` 中的产品名、图标、欢迎页、更新地址，以及独立 `DSH_HOME`。Agent loop、会话格式、工具实现留在上游。
+6. **Kito 桌面壳**：`apps/desktop` 中的产品名 Kito Harness、图标、欢迎页 Telegram 登录、更新源 `https://updates.ktyun.cc`，以及默认数据目录 `~/.kito-harness`。Agent loop、会话格式、工具实现留在上游。打包应用标识用 `cc.ktapi.harness`（`DSH_DESKTOP_APP_ID`）。
 7. **Kito 身份与模型路由**：`kt/kito-provider/**`。这是独立插件包，不加入 pnpm workspace，不改 agent loop。用 `dsh plugin add ./kt/kito-provider` 装进 profile，对接 KT Identity 与 `https://ktapi.cc/v1`。
 
 ## 上游特殊性（同步时必须记住）

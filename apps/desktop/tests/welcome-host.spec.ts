@@ -38,8 +38,8 @@ describe('desktop welcome Web operations', () => {
     expect(host.send).toHaveBeenCalledExactlyOnceWith(url, { credentials: 'include' })
     expect(await backend.analyticsEnabled()).toBe(true)
     expect(await backend.save('sk-example')).toEqual({ ok: true })
-    expect(host.keys.get('CUSTOM_DEEPSEEK_KEY')).toBe('sk-example')
-    expect(await backend.read()).toEqual({ loggedIn: false, hasApiKey: true, writable: true, localePreference: null })
+    expect(host.keys.get('KITO_NEWAPI_API_KEY')).toBe('sk-example')
+    expect(await backend.read()).toEqual({ loggedIn: true, hasApiKey: true, writable: true, localePreference: null })
     for (const [input, init] of host.send.mock.calls.slice(1)) {
       expect(input).toMatch(/^http:\/\/127\.0\.0\.1:19387\/api\//u)
       expect(init).toMatchObject({ credentials: 'include', redirect: 'error' })
@@ -69,11 +69,11 @@ describe('desktop welcome Web operations', () => {
     const host = transport()
     host.namespaces.splice(0, 1)
     const backend = await connectDesktopWelcome(url, host.send)
-    expect(await backend.read()).toMatchObject({ hasApiKey: false, writable: false })
+    expect(await backend.read()).toMatchObject({ hasApiKey: false, writable: true })
     host.keys.set('EXAMPLE_API_KEY', 'custom-key')
-    expect(await backend.read()).toMatchObject({ hasApiKey: true, writable: false })
-    expect(await backend.save('official-key')).toEqual({ ok: false })
-    expect(host.keys.has('undefined')).toBe(false)
+    expect(await backend.read()).toMatchObject({ hasApiKey: true, writable: true })
+    expect(await backend.save('official-key')).toEqual({ ok: true })
+    expect(host.keys.get('KITO_NEWAPI_API_KEY')).toBe('official-key')
   })
 
   it.each(['', 'bad key', 'key\n'])('rejects malformed keys without contacting a provider: %s', async (value) => {

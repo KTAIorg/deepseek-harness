@@ -1,7 +1,7 @@
-DeepSeek Harness
-DeepSeek Harness
+Kito Harness
+Kito Harness
 Add an API key to get started
-Configure official DeepSeek models to start using Harness
+Use a ktapi.cc key, or sign in to create one for this account
 Enter API key [password]
 Save and continue [disabled]
 Set up later
