@@ -1,0 +1,29 @@
+# Kito route on the dormant pi-ai adapter. A later profile patch replaces this
+# row's whole config, so keep the `kito` provider when editing Models settings.
+- id: kito-provider
+  name: '@kito/dsh-kito-provider'
+- id: llm-pi-ai
+  config:
+    providers:
+      kito:
+        displayName: Kito
+        apiKeyEnv: KITO_NEWAPI_API_KEY
+        api: openai-completions
+        baseURL: https://ktapi.cc/v1
+        compat:
+          thinkingFormat: deepseek
+        models:
+          - id: deepseek-v4-flash
+            name: DeepSeek V4 Flash
+            contextWindow: 131072
+            maxTokens: 32768
+            reasoningEfforts:
+              off:
+              high: high
+          - id: deepseek-v4-pro
+            name: DeepSeek V4 Pro
+            contextWindow: 131072
+            maxTokens: 32768
+            reasoningEfforts:
+              off:
+              high: high
