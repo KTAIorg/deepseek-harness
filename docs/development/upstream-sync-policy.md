@@ -71,4 +71,4 @@
 |---|---|---|---|---|
 | 2026-08-14 | 无→47f94385（Day 0 fork） | 无 | 本地 build + web 200 | Hermes Agent |
 | 2026-10-17 | 47f94385→`dsh-v0.2.1-alpha.1`（`5badb15009`） | 无。KT 侧 13 个提交只新增部署/CI/治理文件，与上游路径不重叠 | merge 无冲突；fork 定制文件相对 tag 仍在 | KT |
-| 2026-10-18 | `dsh-v0.2.1-alpha.1`→`dsh-v0.2.1-rc.2`（`687f282e86`） | 桌面 README、安装文案、产物名和上传清单。上游新增目录替换文案、未公证产物后缀和 nightly-only 清单；Kito 产品名、`kito-harness` 路径和 `updates.ktyun.cc` 保留 | 冲突已解；桌面开发客户端待本地启动验收 | KT |
+| 2026-10-18 | `dsh-v0.2.1-alpha.1`→`dsh-v0.2.1-rc.2`（`687f282e86`） | 桌面 README、安装文案、产物名和上传清单。上游新增目录替换文案、未公证产物后缀和 nightly-only 清单；Kito 产品名、`kito-harness` 路径和 `updates.ktyun.cc` 保留 | 本地开发客户端窗口版本 `0.2.1-rc.2`，模型菜单为 Kito 网关目录 | KT |
