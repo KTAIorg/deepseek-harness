@@ -1,0 +1,25 @@
+{
+  "name": "@kito/dsh-kito-provider",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kito provider bundle for DeepSeek Harness: KT Identity sign-in and the ktapi.cc model route.",
+  "type": "module",
+  "main": "./src/index.js",
+  "files": [
+    "src",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-authorization": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-credentials": "0.2.1-alpha.1"
+  }
+}
