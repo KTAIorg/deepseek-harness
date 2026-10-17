@@ -1,0 +1,116 @@
+.mark {
+  display: block;
+  border-radius: 6px;
+}
+
+.local {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  height: 24px;
+  white-space: nowrap;
+}
+
+.product {
+  font-size: 12px;
+  line-height: 13px;
+  letter-spacing: 0;
+}
+
+.meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 10px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 10px;
+  letter-spacing: 0;
+}
+
+.version {
+  display: inline-flex;
+  align-items: center;
+  height: 10px;
+  padding: 0 3px;
+  border-radius: 2px;
+  color: var(--dsw-alias-label-primary-inverted);
+  background: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code);
+  font-size: 6px;
+  font-weight: 500;
+  line-height: 10px;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0 8px 8px;
+}
+
+.account button {
+  border: none;
+  border-radius: 8px;
+  background: var(--dsw-alias-interactive-bg);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.account button:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 560px;
+  padding: 8px 4px 24px;
+}
+
+.panelTitle {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.panelStatus {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.panelActions {
+  display: flex;
+  gap: 8px;
+}
+
+.panelButton {
+  border: none;
+  border-radius: 8px;
+  background: var(--dsw-alias-interactive-bg);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 6px 10px;
+}
+
+.panelButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
