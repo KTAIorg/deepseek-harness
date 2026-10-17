@@ -117,6 +117,12 @@ describe('client bundle images', () => {
       expect(output).toBe(`export default "data:image/svg+xml;base64,${Buffer.from('<svg/>').toString('base64')}";`)
       expect(plugin.resolveId?.('./index.ts', importer)).toBeNull()
       expect(await plugin.load.call({ addWatchFile: file => watched.push(file) }, importer)).toBeNull()
+
+      const outside = join(root, 'icon.png')
+      await writeFile(outside, 'png')
+      const emitted = join(root, 'pkg', 'lib', 'types', 'client', 'Brand.js')
+      const fromTypes = plugin.resolveId?.('../../../icon.png', emitted)
+      expect(fromTypes).toBe(outside)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

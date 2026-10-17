@@ -28,6 +28,8 @@ export interface DesktopWelcomeBackend {
    * @returns A safe write outcome without provider diagnostics.
    */
   save(apiKey: string): Promise<{ ok: boolean }>
+  /** @param ref - credential name. @param value - secret. @returns whether the host stored it. */
+  saveNamed(ref: string, value: string): Promise<{ ok: boolean }>
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -139,6 +141,15 @@ export async function connectDesktopWelcome(
         return { ok: true }
       } catch {
         // Provider diagnostics may contain credentials; the native form owns failure copy.
+        return { ok: false }
+      }
+    },
+    async saveNamed(ref, value) {
+      if (!/^[\x21-\x7e]+$/.test(value)) return { ok: false }
+      try {
+        await invoke({ namespace: 'credentials', method: 'set', args: { ref, value } })
+        return { ok: true }
+      } catch {
         return { ok: false }
       }
     },

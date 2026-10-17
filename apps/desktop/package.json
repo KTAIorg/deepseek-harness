@@ -9,6 +9,7 @@
   "scripts": {
     "test:installer": "node scripts/test-windows-installer.mjs",
     "build": "tsc -b && pnpm run bundle",
+    "build:client": "DSH_BUILD_CLIENT_PROFILE=kito pnpm --dir ../.. run build:artifacts",
     "bundle": "tsdown --config-loader native",
     "dev": "tsx scripts/dev.ts",
     "start": "tsx scripts/dev.ts --skip-build",

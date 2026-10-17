@@ -61,6 +61,10 @@ import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
+import { handleKitoAppRoute } from './kito-account-route.ts'
+import { openKitoWallet, readKitoConsoleBalance, signOutKitoConsole } from './kito-wallet-window.ts'
+import { shouldDismissNewWelcome } from './kito-welcome-policy.ts'
+import { KITO_IDENTITY_TOKEN_REF } from './kito-identity.ts'
 import { createKitoSignIn, type KitoSignIn } from './kito-sign-in.ts'
 
 let focusPrimaryWindow = (): void => {}
@@ -190,20 +194,6 @@ function developmentHostInspectPort(enabled: boolean): number | undefined {
  */
 function chromeFallbackFill(): string {
   return nativeTheme.shouldUseDarkColors ? '#1b1b1c' : '#f9fafb'
-}
-
-/**
- * Add the effective Desktop palette to a Platform authorization URL so the
- * login page opens in the application's theme. `system` resolves through
- * `nativeTheme.shouldUseDarkColors`, which follows the theme source the
- * application preload publishes.
- * @param authorizeUrl - validated Platform authorization URL.
- * @returns the authorization URL carrying `theme=light` or `theme=dark`.
- */
-function platformLoginUrl(authorizeUrl: string): string {
-  const url = new URL(authorizeUrl)
-  url.searchParams.set('theme', nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
-  return url.href
 }
 
 function createWindow(preload: string, show = false, primary = false): BrowserWindow {
@@ -415,11 +405,7 @@ async function main(): Promise<void> {
       if (analyticsEnabled) await welcomeBackend?.report(event)
     } catch (_error) { /* Analytics cannot interrupt native actions. */ }
   }
-  let stopAccount: (() => void) | undefined
-  let openedAttempt: string | undefined
-  let returnedAttempt: string | undefined
   let pendingWelcomeNotice: WelcomeNotice | undefined
-  let previousAccountStatus: string | undefined
   const assertProductSender = (event: IpcMainInvokeEvent): void => {
     assertDesktopSender(event, ['app'])
     if (mainWindow === undefined || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents
@@ -460,51 +446,11 @@ async function main(): Promise<void> {
         welcomeBackend = await connectDesktopWelcome(ready.url, (input, init) => net.fetch(input, init), async () => (await session.defaultSession.cookies.get({ url: ready.url })).map(cookie => `${cookie.name}=${cookie.value}`).join('; '))
         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
-        stopAccount?.()
-        const accountBackend = welcomeBackend.account
-        stopAccount = accountBackend.watch((state) => {
-          if (quitting) return
-          const kitoPhase = kitoSignIn?.state().attempt?.phase
-          const kitoActive = kitoPhase === 'initializing' || kitoPhase === 'waiting-browser' || kitoPhase === 'exchanging' || kitoPhase === 'committing'
-          if (kitoActive) return
-          if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
-          const attempt = state.attempt
-          if (attempt?.phase === 'waiting-browser' && attempt.authorizeUrl !== undefined && openedAttempt !== attempt.id) {
-            openedAttempt = attempt.id
-            void shell.openExternal(platformLoginUrl(attempt.authorizeUrl)).catch(() => undefined)
-          }
-          if ((attempt?.phase === 'failed' || attempt?.phase === 'expired') && returnedAttempt !== attempt.id) {
-            returnedAttempt = attempt.id
-            focusPrimaryWindow()
-          }
-          if (state.status === 'credential-stored' && attempt?.phase === 'succeeded' && welcomeWindow !== undefined) void enterWorkspace({ activate: false }).catch(() => undefined)
-          if (previousAccountStatus === 'credential-stored' && state.status === 'signed-out') {
-            void readWelcomeState().then(async (value) => {
-              if (needsWelcome(value) && !quitting) {
-                enteredWorkspace = false
-                await showWelcome()
-                if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
-              }
-              return undefined
-            }).catch(() => undefined)
-          }
-          previousAccountStatus = state.status
-        }, () => {
-          // The stream reconnects; a transport failure does not change account state.
-        }, () => {
-          void readWelcomeState().then(async (value) => {
-            if (!needsWelcome(value) || quitting) return
-            pendingWelcomeNotice = 'session-expired'
-            enteredWorkspace = false
-            await showWelcome()
-            const state = await accountBackend.state()
-            if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
-          }).catch(() => undefined)
-        }, (enabled) => { analyticsEnabled = enabled })
+        // Kito owns sign-in. The DeepSeek account stream must not open its browser
+        // login, push its state into the welcome window, or dismiss that window.
       },
       stop: async () => {
         analyticsEnabled = false
-        stopAccount?.()
         try { await host.stop(requireCleanStop) }
         catch (error) {
           if (!requireCleanStop || !(error instanceof DesktopHostUncleanExitError)) throw error
@@ -669,11 +615,18 @@ async function main(): Promise<void> {
     window.once('closed', () => { resolve() })
   })
 
-  protocol.handle(SCHEME, (request) => {
+  protocol.handle(SCHEME, async (request) => {
     const url = new URL(request.url)
     // Shell-owned documents live in the application bundle and never pass through the Host.
     if (url.hostname === 'shell') return serveWebDocument(request, join(app.getAppPath(), 'renderer'))
     if (url.hostname === 'app') {
+      const kito = await handleKitoAppRoute(request, {
+        showWelcome: () => { void showWelcome(true) },
+        openWallet: token => openKitoWallet(token),
+        signOutConsole: () => signOutKitoConsole(),
+        readBalance: () => readKitoConsoleBalance(),
+      })
+      if (kito !== undefined) return kito
       if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname.startsWith('/assets/')
         || ['/favicon.svg', '/manifest.webmanifest'].includes(url.pathname)) {
         return serveWebDocument(request, join(resources.dsh, 'node_modules', '@deepseek-ai', 'dsh-web-frontend', 'dist'))
@@ -1145,7 +1098,13 @@ async function main(): Promise<void> {
     }
   }
   let openingWelcome: Promise<void> | undefined
-  const showWelcome = (): Promise<void> => {
+  /** Ask the open workspace to read the account again. The token stays in this process. */
+  const publishKitoAccount = (): void => {
+    const window = mainWindow
+    if (window === undefined || window.isDestroyed()) return
+    void window.webContents.executeJavaScript('window.dispatchEvent(new Event("kito-account"))', true).catch(() => undefined)
+  }
+  const showWelcome = (explicitSignIn = false): Promise<void> => {
     if (quitting) return Promise.resolve()
     if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) {
       if (!welcomeWindow.isVisible()) void track('auth_page_view', {})
@@ -1168,7 +1127,10 @@ async function main(): Promise<void> {
               if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
             },
             saveKey: async key => welcomeBackend?.save(key) ?? { ok: false },
-            onSuccess: () => { void enterWorkspace({ activate: false }).catch(() => undefined) },
+            saveIdentity: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false },
+            onSuccess: () => {
+              void enterWorkspace({ activate: false }).then(() => { publishKitoAccount() }).catch(() => undefined)
+            },
             openLogin: (url) => { void shell.openExternal(url).catch(() => undefined) },
           })
           return kitoSignIn.start()
@@ -1208,8 +1170,10 @@ async function main(): Promise<void> {
         if (process.platform === 'darwin') mainWindow?.destroy()
         else app.quit()
       })
-      if (isQuitting() || recovery.active || enteredWorkspace) window.close()
-      else mainWindow?.hide()
+      if (shouldDismissNewWelcome({
+        explicitSignIn, quitting, recoveryActive: recovery.active, enteredWorkspace,
+      })) window.close()
+      else if (!explicitSignIn) mainWindow?.hide()
     })().finally(() => { openingWelcome = undefined })
     return openingWelcome
   }
@@ -1264,7 +1228,6 @@ async function main(): Promise<void> {
     quitConfirmation.dispose()
     backgroundNotice?.dispose()
     tray?.dispose()
-    stopAccount?.()
     if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.hide()
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.hide()
     updateSchedule.dispose()

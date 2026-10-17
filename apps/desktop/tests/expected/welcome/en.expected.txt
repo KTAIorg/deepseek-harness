@@ -3,4 +3,3 @@ Kito Harness
 Welcome to Kito Harness
 Build potential. Explore intelligence.
 Sign in with Telegram
-Add API Key

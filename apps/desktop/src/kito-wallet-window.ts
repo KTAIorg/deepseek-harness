@@ -1,0 +1,143 @@
+/** Open the ktapi.cc wallet with the console session ktapi.cc already uses. */
+
+import { BrowserWindow, session, type Session } from 'electron'
+import { failureDetail, kitoFetch, readJson } from './kito-http.ts'
+import { KITO_WALLET_URL, spendableFromEnsure } from './kito-identity.ts'
+import { consoleCookiesFrom, consoleLogoutRequest, consoleRefreshRequest, establishKitoConsoleSession, KITO_CONSOLE_REFRESH_COOKIE, type ConsoleCookie } from './kito-wallet.ts'
+
+const WALLET_PARTITION = 'persist:kito-wallet'
+
+let current: BrowserWindow | undefined
+let consoleRetryAt = 0
+let cachedBalance: { readonly at: number; readonly balance: number } | undefined
+const BALANCE_TTL_MS = 60_000
+
+/**
+ * Show the recharge page. A stored console cookie is reused; a new ktapi.cc login is created only when that cookie is absent.
+ * @param identityToken - KT Identity access token. It is exchanged for a console cookie and not put in the URL.
+ */
+export async function openKitoWallet(identityToken: string): Promise<void> {
+  if (current !== undefined && !current.isDestroyed()) {
+    if (current.isMinimized()) current.restore()
+    current.show()
+    current.focus()
+    return
+  }
+  const browser = session.fromPartition(WALLET_PARTITION)
+  const origin = new URL(KITO_WALLET_URL).origin
+  if (!await hasRefreshCookie(browser, origin) && Date.now() >= consoleRetryAt) {
+    try {
+      const established = await establishKitoConsoleSession(identityToken)
+      await storeConsoleCookies(browser, origin, established.cookies)
+      const balance = spendableFromEnsure(established.payload)
+      if (balance !== undefined) cachedBalance = { at: Date.now(), balance }
+    } catch (error) {
+      consoleRetryAt = Date.now() + 15 * 60 * 1000
+      console.error('kito wallet login failed', failureDetail(error))
+    }
+  }
+  if (!await hasRefreshCookie(browser, origin)) {
+    console.error('kito wallet login failed', 'opening the recharge page without a console session')
+  }
+  const window = new BrowserWindow({
+    width: 1100,
+    height: 780,
+    title: '充值',
+    webPreferences: {
+      partition: WALLET_PARTITION,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  current = window
+  window.on('closed', () => {
+    if (current === window) current = undefined
+  })
+  window.webContents.setWindowOpenHandler(({ url }) => (
+    isWebUrl(url) ? { action: 'allow' } : { action: 'deny' }
+  ))
+  window.webContents.on('will-navigate', (event, url) => {
+    if (!isWebUrl(url)) event.preventDefault()
+  })
+  window.show()
+  await window.loadURL(KITO_WALLET_URL)
+}
+
+/**
+ * Read the spendable USD amount from the stored console session.
+ * Refresh rotates the cookie, so the replacement is written back before the next read.
+ * @returns the balance, or undefined when no console session is stored.
+ */
+export async function readKitoConsoleBalance(): Promise<number | undefined> {
+  if (cachedBalance !== undefined && Date.now() - cachedBalance.at < BALANCE_TTL_MS) return cachedBalance.balance
+  const browser = session.fromPartition(WALLET_PARTITION)
+  const origin = new URL(KITO_WALLET_URL).origin
+  const stored = await browser.cookies.get({ url: `${origin}/api/user/auth`, name: KITO_CONSOLE_REFRESH_COOKIE })
+  const refreshValue = stored.find(cookie => cookie.value.length > 0)?.value
+  if (refreshValue === undefined) return undefined
+  const request = consoleRefreshRequest(KITO_WALLET_URL, refreshValue)
+  const response = await kitoFetch(request.url, request.init)
+  const payload = await readJson(response)
+  if (!response.ok) return cachedBalance?.balance
+  await storeConsoleCookies(browser, origin, consoleCookiesFrom(response))
+  const balance = spendableFromEnsure(payload)
+  if (balance === undefined) return cachedBalance?.balance
+  cachedBalance = { at: Date.now(), balance }
+  return balance
+}
+
+/**
+ * Revoke the website login kept for the recharge window, using ktapi.cc's existing logout.
+ */
+export async function signOutKitoConsole(): Promise<void> {
+  const browser = session.fromPartition(WALLET_PARTITION)
+  const origin = new URL(KITO_WALLET_URL).origin
+  const stored = await browser.cookies.get({ url: `${origin}/api/user/auth`, name: KITO_CONSOLE_REFRESH_COOKIE })
+  const refreshValue = stored.find(cookie => cookie.value.length > 0)?.value
+  if (refreshValue !== undefined) {
+    const request = consoleLogoutRequest(KITO_WALLET_URL, refreshValue)
+    try {
+      const response = await kitoFetch(request.url, request.init)
+      await readJson(response)
+      if (!response.ok) console.error('kito wallet logout failed', response.status)
+    } catch (error) {
+      console.error('kito wallet logout failed', failureDetail(error))
+    }
+  }
+  for (const cookie of await browser.cookies.get({ url: origin })) {
+    await browser.cookies.remove(new URL(cookie.path || '/', origin).href, cookie.name)
+  }
+  consoleRetryAt = 0
+  cachedBalance = undefined
+  if (current !== undefined && !current.isDestroyed()) current.close()
+}
+
+async function hasRefreshCookie(browser: Session, origin: string): Promise<boolean> {
+  const stored = await browser.cookies.get({ url: `${origin}/api/user/auth`, name: KITO_CONSOLE_REFRESH_COOKIE })
+  return stored.some(cookie => cookie.value.length > 0)
+}
+
+async function storeConsoleCookies(browser: Session, origin: string, cookies: readonly ConsoleCookie[]): Promise<void> {
+  for (const cookie of cookies) {
+    await browser.cookies.set({
+      url: new URL(cookie.path, origin).href,
+      name: cookie.name,
+      value: cookie.value,
+      path: cookie.path,
+      secure: cookie.secure,
+      httpOnly: cookie.httpOnly,
+      sameSite: cookie.sameSite,
+      ...(cookie.expirationDate === undefined ? {} : { expirationDate: cookie.expirationDate }),
+    })
+  }
+}
+
+function isWebUrl(url: string): boolean {
+  try {
+    const protocol = new URL(url).protocol
+    return protocol === 'https:' || protocol === 'http:'
+  } catch {
+    return false
+  }
+}

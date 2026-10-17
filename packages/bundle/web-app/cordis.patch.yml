@@ -336,6 +336,10 @@
     - id: ui-brand-official
       name: '@deepseek-ai/dsh-client-ui-brand-official'
 
+    # Kito occupants for the same slots. Registers only outside the official profile.
+    - id: ui-brand-kito
+      name: '@deepseek-ai/dsh-client-ui-brand-kito'
+
     - id: ui-attachment
       name: '@deepseek-ai/dsh-client-ui-attachment'
 

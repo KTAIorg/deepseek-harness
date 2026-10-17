@@ -36,6 +36,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   const input = useRef<HTMLInputElement>(null)
   const keyButton = useRef<HTMLButtonElement>(null)
   const focusEntry = useRef(false)
+  const ignoreEmptyAccountPush = useRef(false)
 
   function navigate(next: Page) {
     pageRef.current = next
@@ -43,6 +44,8 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   }
   function showAccount(state: AccountView & { attempt: WelcomeAttempt | null }) {
     if (pageRef.current === 'key' || (state.attempt === null && pageRef.current === 'entry')) return
+    // DeepSeek account snapshots arrive with no attempt. They must not bounce a Telegram login back to the entry page.
+    if (ignoreEmptyAccountPush.current && state.attempt === null && pageRef.current === 'account') return
     attemptRef.current = state.attempt
     setAttempt(state.attempt)
     setStarting(false)
@@ -129,13 +132,16 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   async function start() {
     navigate('account')
     setStarting(true)
+    ignoreEmptyAccountPush.current = true
     setAttempt(null)
     attemptRef.current = null
     const current = ++revision.current
     try {
       const state = await api.startSignIn()
+      ignoreEmptyAccountPush.current = false
       if (mounted.current && revision.current === current) showAccount(state)
     } catch {
+      ignoreEmptyAccountPush.current = false
       if (mounted.current && revision.current === current) setStarting(false)
     }
   }
@@ -205,14 +211,14 @@ export function Welcome({ api }: { api: WelcomeApi }) {
           <StateDot state="ongoing" size={16} className="welcome-loading" />
         </button>
         <button id="auth-retry" className="primary" type="button" hidden={!failed} onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'sign_in' }); void start() }}>{m.welcomeAuthRetry}</button>
-        <button id="auth-api-key" className="secondary" type="button" hidden={!failed} onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'api-key' }); navigate('key') }}>{m.welcomeApiKey}</button>
+        <button id="auth-api-key" className="secondary" type="button" hidden onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'api-key' }); navigate('key') }}>{m.welcomeApiKey}</button>
         <button id="auth-cancel" className="secondary" type="button" hidden={failed}
           disabled={cancelling || phase === 'committing' || phase === 'succeeded' || (phase === 'initializing' && !attempt?.id)}
           onClick={() => { void cancel() }}>{m.welcomeAuthCancel}</button>
       </div>
       <div id="entry-actions" className="actions" hidden={page !== 'entry'}>
         <button id="sign-in" className="primary" type="button" onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'sign_in' }); void start() }}>{m.welcomeSignIn}</button>
-        <button ref={keyButton} id="api-key" className="secondary" type="button" onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'api-key' }); navigate('key') }}>{m.welcomeApiKey}</button>
+        <button ref={keyButton} id="api-key" className="secondary" type="button" hidden onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'api-key' }); navigate('key') }}>{m.welcomeApiKey}</button>
       </div>
       <div id="key-actions" className="actions" hidden={page !== 'key'}>
         <button id="save-key" className="primary" type="submit" form="key-form" disabled={busy || draft.trim() === ''}>{m.welcomeKeySave}</button>

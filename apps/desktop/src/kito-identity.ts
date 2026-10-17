@@ -1,12 +1,14 @@
 /** KT Identity device login used by the Kito Harness welcome window. */
 
-import { errorMessage, readJson, withTimeout } from './kito-http.ts'
+import { errorMessage, failureDetail, jsonHeaders, kitoFetch, readJson, withTimeout } from './kito-http.ts'
 
 export const KITO_IDENTITY_BASE_URL = 'https://login.ktyun.cc'
 export const KITO_DEVICE_CLIENT_TYPE = 'kito_desktop'
 export const KITO_DEVICE_CLIENT_ID = 'kito-desktop'
 export const KITO_NEWAPI_BASE_URL = 'https://ktapi.cc'
 export const KITO_NEWAPI_KEY_REF = 'KITO_NEWAPI_API_KEY'
+export const KITO_IDENTITY_TOKEN_REF = 'KITO_IDENTITY_TOKEN'
+const NEWAPI_QUOTA_PER_USD = 500_000
 export const KITO_MANAGED_TOKEN_NAME = 'kito'
 export const KITO_WALLET_URL = 'https://www.ktapi.cc/wallet'
 
@@ -27,6 +29,7 @@ export interface KitoDeviceChallenge {
   readonly userCode: string
   readonly opaqueCode: string
   readonly loginUrl: string
+  readonly loginDeeplink: string
   readonly expiresAt: string
   readonly interval: number
 }
@@ -34,6 +37,13 @@ export interface KitoDeviceChallenge {
 export interface KitoIdentitySession {
   readonly accountId: string
   readonly token: string
+}
+
+/** Public account row. Balance is the shared NewAPI spendable amount in USD. */
+export interface KitoAccountView {
+  readonly signedIn: boolean
+  readonly displayName?: string
+  readonly balance?: number
 }
 
 interface FetchInit {
@@ -62,10 +72,10 @@ export function formatRelayKey(key: string): string {
  * @returns the code the person confirms and the page to open.
  */
 export async function startKitoDeviceLogin(input: FetchInit = {}): Promise<KitoDeviceChallenge> {
-  const fetchImpl = input.fetchImpl ?? fetch
+  const fetchImpl = input.fetchImpl ?? kitoFetch
   const response = await fetchImpl(`${input.baseUrl ?? identityBaseUrl()}/identity/v1/device/sessions`, {
     method: 'POST',
-    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    headers: jsonHeaders(),
     body: JSON.stringify({
       client_type: KITO_DEVICE_CLIENT_TYPE,
       client_id: KITO_DEVICE_CLIENT_ID,
@@ -85,9 +95,10 @@ export async function startKitoDeviceLogin(input: FetchInit = {}): Promise<KitoD
   if (!sessionId || !userCode || !opaqueCode || !loginUrl || !expiresAt) {
     throw new Error('KT Identity device login start returned an unexpected payload')
   }
+  const loginDeeplink = stringField(source?.login_deeplink) ?? stringField(source?.loginDeeplink) ?? loginUrl
   const interval = source?.interval
   return {
-    sessionId, userCode, opaqueCode, loginUrl, expiresAt,
+    sessionId, userCode, opaqueCode, loginUrl, loginDeeplink, expiresAt,
     interval: typeof interval === 'number' && interval > 0 ? interval : 5,
   }
 }
@@ -103,7 +114,7 @@ export async function finishKitoDeviceLogin(input: FetchInit & {
   timeoutMs?: number
   intervalMs?: number
 }): Promise<KitoIdentitySession> {
-  const fetchImpl = input.fetchImpl ?? fetch
+  const fetchImpl = input.fetchImpl ?? kitoFetch
   const baseUrl = input.baseUrl ?? identityBaseUrl()
   const timeoutMs = input.timeoutMs ?? 180_000
   const intervalMs = input.intervalMs ?? 2_000
@@ -111,12 +122,21 @@ export async function finishKitoDeviceLogin(input: FetchInit & {
   let transientFailures = 0
   while (Date.now() - started < timeoutMs) {
     if (input.signal?.aborted) throw new Error('KT Identity device login cancelled')
-    const response = await fetchImpl(`${baseUrl}/identity/v1/device/sessions/${encodeURIComponent(input.sessionId)}`, {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-      signal: withTimeout(input.signal),
-    })
-    const payload = await readJson(response)
+    let response: Response
+    let payload: unknown
+    try {
+      response = await fetchImpl(`${baseUrl}/identity/v1/device/sessions/${encodeURIComponent(input.sessionId)}`, {
+        method: 'GET',
+        headers: jsonHeaders(),
+        signal: withTimeout(input.signal),
+      })
+      payload = await readJson(response)
+    } catch (error) {
+      transientFailures += 1
+      if (transientFailures === 1) console.error('kito device poll failed', failureDetail(error))
+      await delay(intervalMs, input.signal)
+      continue
+    }
     if (!response.ok) {
       const transient = response.status === 429 || response.status >= 500
       transientFailures += 1
@@ -128,7 +148,7 @@ export async function finishKitoDeviceLogin(input: FetchInit & {
     }
     transientFailures = 0
     const status = asRecord(payload)?.status
-    if (status === 'approved') return exchange(input, fetchImpl, baseUrl)
+    if (status === 'approved' || status === 'confirmed') return exchange(input, fetchImpl, baseUrl)
     if (status === 'denied' || status === 'expired' || status === 'consumed') {
       throw new Error(`KT Identity device login ${status}`)
     }
@@ -144,7 +164,7 @@ async function exchange(
 ): Promise<KitoIdentitySession> {
   const response = await fetchImpl(`${baseUrl}/identity/v1/device/sessions/${encodeURIComponent(input.sessionId)}/token`, {
     method: 'POST',
-    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    headers: jsonHeaders(),
     body: JSON.stringify({
       opaque_code: input.opaqueCode.trim(),
       client_id: KITO_DEVICE_CLIENT_ID,
@@ -170,15 +190,11 @@ async function exchange(
  * @returns the relay key stored as `KITO_NEWAPI_API_KEY`.
  */
 export async function ensureKitoApiKey(identityToken: string, input: FetchInit = {}): Promise<string> {
-  const fetchImpl = input.fetchImpl ?? fetch
+  const fetchImpl = input.fetchImpl ?? kitoFetch
   const baseUrl = input.baseUrl ?? newapiBaseUrl()
   const dedicated = await fetchImpl(`${baseUrl}/api/iam/token/ensure`, {
     method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json',
-      authorization: `Bearer ${identityToken}`,
-    },
+    headers: jsonHeaders({ authorization: `Bearer ${identityToken}` }),
     body: JSON.stringify({ name: KITO_MANAGED_TOKEN_NAME }),
     signal: withTimeout(input.signal),
   })
@@ -200,11 +216,7 @@ async function ensureViaSession(
 ): Promise<string> {
   const ensured = await fetchImpl(`${baseUrl}/api/iam/ensure`, {
     method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json',
-      authorization: `Bearer ${identityToken}`,
-    },
+    headers: jsonHeaders({ authorization: `Bearer ${identityToken}` }),
     body: '{}',
     signal: withTimeout(signal),
   })
@@ -215,7 +227,7 @@ async function ensureViaSession(
   const id = data?.id ?? asRecord(data?.user)?.id
   const userId = typeof id === 'number' || typeof id === 'string' ? String(id) : ''
   if (!cookie || userId === '') throw new Error('NewAPI ensure did not return a session')
-  const headers = { accept: 'application/json', cookie, 'New-Api-User': userId }
+  const headers = { ...jsonHeaders(), cookie, 'New-Api-User': userId }
   const listed = await fetchImpl(`${baseUrl}/api/token/?p=1&size=100`, { method: 'GET', headers, signal: withTimeout(signal) })
   const listPayload = await readJson(listed)
   if (!listed.ok) throw new Error(errorMessage(listPayload, `NewAPI token list failed (${listed.status})`))
@@ -229,6 +241,84 @@ async function ensureViaSession(
   const key = stringField(asRecord(keyPayload)?.key)
   if (!keyResult.ok || !key) throw new Error(errorMessage(keyPayload, `NewAPI token key failed (${keyResult.status})`))
   return formatRelayKey(key)
+}
+
+/**
+ * Read the Telegram display name and the shared NewAPI balance.
+ * A missing balance stays absent so the UI does not show a fake zero.
+ * @param identityToken - KT Identity access token.
+ * @param input - optional origins and cancellation.
+ * @returns the signed-in summary, or signed out when the token is rejected.
+ */
+export async function fetchKitoAccount(identityToken: string, input: FetchInit = {}): Promise<KitoAccountView> {
+  const fetchImpl = input.fetchImpl ?? kitoFetch
+  const profile = await fetchImpl(`${identityBaseUrl()}/identity/v1/account/me`, {
+    method: 'GET',
+    headers: jsonHeaders({ authorization: `Bearer ${identityToken}` }),
+    signal: withTimeout(input.signal),
+  })
+  const profilePayload = await readJson(profile)
+  if (profile.status === 401) return { signedIn: false }
+  if (!profile.ok) throw new Error(errorMessage(profilePayload, `KT Identity account failed (${profile.status})`))
+  const balance = await fetchSpendable(identityToken, fetchImpl, input.signal).catch(() => undefined)
+  return kitoAccountView(profilePayload, balance)
+}
+
+/**
+ * Combine an Identity profile with an already-known NewAPI balance.
+ * @param profilePayload - `/identity/v1/account/me` body.
+ * @param balance - USD amount, omitted when NewAPI did not report a quota.
+ * @returns the signed-in summary.
+ */
+export function kitoAccountView(profilePayload: unknown, balance: number | undefined): KitoAccountView {
+  const displayName = displayNameFrom(profilePayload)
+  return {
+    signedIn: true,
+    ...(displayName === undefined ? {} : { displayName }),
+    ...(balance === undefined ? {} : { balance }),
+  }
+}
+
+/** @param quota - NewAPI quota units. @returns USD rounded to cents. */
+export function newapiQuotaToUsd(quota: number): number {
+  return Math.round((quota / NEWAPI_QUOTA_PER_USD) * 100) / 100
+}
+
+function displayNameFrom(payload: unknown): string | undefined {
+  const record = asRecord(payload)
+  const account = asRecord(record?.account) ?? asRecord(record?.data) ?? record
+  const profile = asRecord(record?.profile) ?? asRecord(account?.profile)
+  const nested = asRecord(account?.account) ?? account
+  return [
+    nested?.displayName, nested?.display_name, profile?.displayName, profile?.preferredUsername,
+    nested?.telegram_username, nested?.name,
+  ]
+    .map(item => stringField(item)?.trim())
+    .find((item): item is string => Boolean(item))
+}
+
+async function fetchSpendable(
+  identityToken: string,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal | undefined,
+): Promise<number | undefined> {
+  const response = await fetchImpl(`${newapiBaseUrl()}/api/iam/ensure`, {
+    method: 'POST',
+    headers: jsonHeaders({ authorization: `Bearer ${identityToken}` }),
+    body: '{}',
+    signal: withTimeout(signal),
+  })
+  const payload = await readJson(response)
+  if (!response.ok) return undefined
+  return spendableFromEnsure(payload)
+}
+
+/** @param payload - `/api/iam/ensure` body. @returns the shared USD balance, or undefined when quota is absent. */
+export function spendableFromEnsure(payload: unknown): number | undefined {
+  const data = asRecord(asRecord(payload)?.data) ?? asRecord(payload)
+  const user = asRecord(data?.user) ?? data
+  const quota = user?.quota
+  return typeof quota === 'number' && Number.isFinite(quota) ? newapiQuotaToUsd(quota) : undefined
 }
 
 function cookieHeader(response: Response): string | undefined {

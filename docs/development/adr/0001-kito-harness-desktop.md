@@ -42,4 +42,4 @@ Harness 的扩展点是插件和 `cordis.patch.yml`，不是改 agent loop。把
 
 ## 待定问题
 
-对外名称已定为 **Kito Harness**（应用标识 `cc.ktapi.harness`，数据目录 `~/.kito-harness`，生产更新源 `https://updates.ktyun.cc/kito-harness/`）。它和现有 Kito 桌面分开，避免抢 `userData` 和 `~/.dsh`。打包时仍通过 `DSH_DESKTOP_APP_ID` 传入 `cc.ktapi.harness`。更新清单要发到这个源之后，已安装的客户端才能检查更新。
+对外名称已定为 **Kito Harness**（应用标识 `cc.ktapi.harness`，数据目录 `~/.kito-harness`，生产更新源 `https://updates.ktyun.cc/kito-harness/`）。它和现有 Kito 桌面分开，避免抢 `userData` 和 `~/.dsh`。打包时仍通过 `DSH_DESKTOP_APP_ID` 传入 `cc.ktapi.harness`。更新清单要发到这个源之后，已安装的客户端才能检查更新。侧栏可见品牌和上游合并时要重放的表面见 [ADR 0002](0002-kito-visible-brand-and-upstream-reapply.md)。

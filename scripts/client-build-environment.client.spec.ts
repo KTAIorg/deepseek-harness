@@ -9,6 +9,7 @@ import {
   clientBuildEnvironmentDefines,
   clientBuildProcessEnvironment,
   clientBuildValueDefines,
+  kitoClientBuildEnvironment,
   officialClientBuildEnvironment,
   readClientBuildRecord,
   repositoryClientBuildEnvironment,
@@ -162,6 +163,23 @@ describe('client build environment', () => {
       DSH_CLIENT_COMMIT_HASH: commit,
       DSH_CLIENT_TITLE: 'DeepSeek Harness',
       DSH_CLIENT_VERSION: '1.2.3-rc.4',
+    })
+    expect(kitoClientBuildEnvironment(fixtureRoot)).toEqual({
+      DSH_CLIENT_BUILD_PROFILE: 'kito',
+      DSH_CLIENT_COMMIT_HASH: commit,
+      DSH_CLIENT_TITLE: 'Kito Harness',
+      DSH_CLIENT_VERSION: '1.2.3-rc.4',
+    })
+    expect(resolveClientBuildEnvironment({
+      DSH_BUILD_CLIENT_PROFILE: 'kito',
+      DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
+      DSH_CLIENT_TITLE: 'Local title',
+      DSH_CLIENT_VERSION: '1.2.3',
+    })).toEqual({
+      DSH_CLIENT_BUILD_PROFILE: 'kito',
+      DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
+      DSH_CLIENT_TITLE: 'Kito Harness',
+      DSH_CLIENT_VERSION: '1.2.3',
     })
 
     write(join(fixtureRoot, '.gitignore'), 'ignored.txt\n')

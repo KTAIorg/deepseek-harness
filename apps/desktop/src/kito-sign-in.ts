@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { AccountView, SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
+import { failureDetail } from './kito-http.ts'
 import {
   ensureKitoApiKey,
   finishKitoDeviceLogin,
@@ -34,6 +35,7 @@ export interface KitoSignIn {
 export function createKitoSignIn(options: {
   publish: (state: KitoWelcomeState) => void
   saveKey: (key: string) => Promise<{ ok: boolean }>
+  saveIdentity?: (token: string) => Promise<{ ok: boolean }>
   onSuccess: () => void
   openLogin?: (url: string) => void
   fetchImpl?: typeof fetch
@@ -83,7 +85,7 @@ export function createKitoSignIn(options: {
         current.authorizeUrl = challenge.loginUrl
         current.userCode = challenge.userCode
         publish()
-        options.openLogin?.(challenge.loginUrl)
+        options.openLogin?.(challenge.loginDeeplink)
         const identity = await finishKitoDeviceLogin({
           sessionId: challenge.sessionId,
           opaqueCode: challenge.opaqueCode,
@@ -94,12 +96,13 @@ export function createKitoSignIn(options: {
         if (current.id !== id) return snapshot()
         current.phase = 'exchanging'
         publish()
-        const key = await ensureKitoApiKey(identity.token, {
+        const key = await retryTransient(() => ensureKitoApiKey(identity.token, {
           signal: abort.signal,
           ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
-        })
+        }), abort.signal)
         const saved = await options.saveKey(key)
         if (!saved.ok) throw new Error('KT Identity sign-in could not store the API key')
+        await options.saveIdentity?.(identity.token)
         if (current.id !== id) return snapshot()
         current.phase = 'succeeded'
         current.status = 'credential-stored'
@@ -112,6 +115,7 @@ export function createKitoSignIn(options: {
           current.phase = 'cancelled'
           return publish()
         }
+        console.error('kito sign-in failed', failureDetail(error))
         current.phase = 'failed'
         current.errorCode = error instanceof Error && /timed out|expired/u.test(error.message) ? 'expired' : 'network'
         return publish()
@@ -124,4 +128,38 @@ export function createKitoSignIn(options: {
       return publish()
     },
   }
+}
+
+/** Retry a dropped NewAPI call. A confirmed Telegram login must survive a short connect failure. */
+async function retryTransient<T>(run: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  let attempt = 0
+  for (;;) {
+    try {
+      return await run()
+    } catch (error) {
+      attempt += 1
+      const detail = failureDetail(error)
+      if (!detail.includes('fetch failed') || signal.aborted || attempt >= 4) throw error
+      console.error('kito newapi retry', detail)
+      await waitForRetry(signal)
+    }
+  }
+}
+
+function waitForRetry(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, 250)
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(new Error('KT Identity device login cancelled'))
+    }
+    if (signal.aborted) {
+      onAbort()
+      return
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
 }

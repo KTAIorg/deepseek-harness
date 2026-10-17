@@ -52,6 +52,10 @@
 
 生成物冲突（`pnpm-lock.yaml`）取上游版本后本地 `pnpm install` 重新生成，不手工合并 lock 文件。
 
+## 每次合并后核对
+
+可见品牌和登录路由的重放清单在 [ADR 0002](adr/0002-kito-visible-brand-and-upstream-reapply.md)。合并完成后按那张表核对，不另建 Skill。缺一项就补回，并写入下面的同步记录。
+
 ## 验证清单
 
 - [ ] `pnpm install --frozen-lockfile` + `pnpm run build` 通过

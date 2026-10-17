@@ -769,12 +769,26 @@ const SOURCE_MARKER = `${sep}src${sep}`
 /** Trailing sourcemap reference tsc appends to every emitted module. */
 const SOURCEMAP_COMMENT = /\n\/\/# sourceMappingURL=.*\s*$/
 
-/** Resolve an emitted JS asset import against its source-tree counterpart. */
+/**
+ * Resolve an asset import from tsc's emitted JS.
+ * The importer is rewritten from `lib/types` back to `src` first, so a relative
+ * path written for the source file still finds an asset that lives outside the package.
+ * A file that only exists beside the emitted module keeps that path.
+ */
 function sourceAssetPath(source: string, importer: string): string {
   if (!source.startsWith('.') && !isAbsolute(source)) return createRequire(importer).resolve(source)
+  const fromSource = resolvePath(dirname(sourceImporter(importer)), source)
+  if (existsSync(fromSource)) return fromSource
   const emitted = resolvePath(dirname(importer), source)
   if (existsSync(emitted)) return emitted
   const boundary = emitted.indexOf(TYPES_MARKER)
   if (boundary < 0) return emitted
   return resolvePath(emitted.slice(0, boundary), 'src', emitted.slice(boundary + TYPES_MARKER.length))
+}
+
+/** Map `lib/types/.../file.js` onto `src/.../file.js`. Other importers stay put. */
+function sourceImporter(importer: string): string {
+  const boundary = importer.indexOf(TYPES_MARKER)
+  if (boundary < 0) return importer
+  return resolvePath(importer.slice(0, boundary), 'src', importer.slice(boundary + TYPES_MARKER.length))
 }
