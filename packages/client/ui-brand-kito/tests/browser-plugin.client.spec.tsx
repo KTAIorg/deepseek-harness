@@ -97,7 +97,8 @@ describe('Kito browser-brand plugin', () => {
     await ctx.plugin({ inject: [...inject], apply }).await()
     const section = slots.entries('settings.section' as never).find(entry => entry.options.id === 'kito-account')
     expect(section?.options.order).toBe(-20)
-    expect(section?.options.label?.()).toBe('账号')
+    const label = section?.options.label
+    expect(typeof label === 'function' ? label() : label).toBe('账号')
   })
 
   it('uses the desktop application icon at the requested size', () => {
