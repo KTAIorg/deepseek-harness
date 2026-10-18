@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/instance: oci-canary
   namespace: kt-deepseek-harness
 spec:
-  replicas: 1
+  replicas: 0
   strategy:
     type: Recreate
   selector:
