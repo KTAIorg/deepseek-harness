@@ -1,0 +1,46 @@
+/** Copy for the account panel. Keys match in both languages. */
+export const zh = {
+  account: '账号',
+  loading: '正在读取账号',
+  signedIn: '已登录',
+  signedOut: '尚未登录',
+  signInHint: '登录后显示 Telegram 昵称',
+  signIn: '用 Telegram 登录',
+  signOut: '退出',
+  topup: '充值',
+  topupHint: '充值记入同一条 Kito 余额',
+  topups: '充值记录',
+  usage: '消费记录',
+  tokens: 'Token',
+  balance: '余额 (USD)',
+  nickname: '昵称',
+  accountNo: 'KT 账号',
+  telegram: 'Telegram',
+  copy: '复制',
+  copied: '已复制',
+  language: '语言',
+} as const
+
+export const en = {
+  account: 'Account',
+  loading: 'Reading account',
+  signedIn: 'Signed in',
+  signedOut: 'Signed out',
+  signInHint: 'Sign in to show the Telegram name',
+  signIn: 'Sign in with Telegram',
+  signOut: 'Sign out',
+  topup: 'Top up',
+  topupHint: 'Top up the same Kito balance',
+  topups: 'Top-ups',
+  usage: 'Usage',
+  tokens: 'Token',
+  balance: 'Balance (USD)',
+  nickname: 'Name',
+  accountNo: 'KT account',
+  telegram: 'Telegram',
+  copy: 'Copy',
+  copied: 'Copied',
+  language: 'Language',
+} as const
+
+export type KitoAccountCopyKey = keyof typeof zh

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, act, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, act, within, waitFor } from '@testing-library/react'
 import { useMemo, useSyncExternalStore } from 'react'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
@@ -199,6 +199,23 @@ it.each([en, zh])('offers settings, contact and sign-in from the signed-out acco
   fireEvent.click(screen.getByRole('button', { name: copy.menu }))
   fireEvent.click(screen.getByRole('menuitem', { name: copy.contactUs }))
   expect(operations.contactUs).toHaveBeenCalledOnce()
+})
+
+it('hides the More menu sign-in after a Kito login', async () => {
+  const fetchAccount = vi.fn(async () => new Response(JSON.stringify({ signedIn: true })))
+  vi.stubGlobal('fetch', fetchAccount)
+  onTestFinished(() => { vi.unstubAllGlobals() })
+  const operations = operationsOf({ status: 'signed-out', attempt: null })
+  const { AccountMenu } = await import('../src/client/AccountMenu.tsx')
+  render(<AccountMenu {...({} as GlobalStandardProps)} {...operations} settingsOpen={false}
+    useAccount={selector => selector(operations.hooks.account.getSnapshot())}
+    useTheme={selector => selector(operations.hooks.theme.getSnapshot())} wide openOnboarding={() => {}} openSettings={() => {}}
+    t={key => key in zh ? zh[key as AccountKey] : key} />)
+  await waitFor(() => { expect(fetchAccount).toHaveBeenCalled() })
+  await act(async () => { await fetchAccount.mock.results[0]?.value })
+  fireEvent.click(screen.getByRole('button', { name: zh.menu }))
+  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([zh.settings, zh.contactUs])
+  expect(screen.queryByRole('menuitem', { name: zh.signIn })).toBeNull()
 })
 
 it('reports a failed start in the login dialog, not as a sidebar alert', async () => {

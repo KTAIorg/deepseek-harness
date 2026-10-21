@@ -3,10 +3,14 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
+import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '../src/client/index.ts'
-import { kitoAccountLabel } from '../src/client/AccountFooter.tsx'
+import { KitoAccountFooter, kitoAccountLabel } from '../src/client/AccountFooter.tsx'
+import { KITO_EXTRA_LANGUAGES, KitoLanguageDock, languageDockRight, trailingClusterLeft } from '../src/client/LanguagePicker.tsx'
+import { LANGUAGE_PACKS } from '../src/client/language-packs.ts'
+import { zh } from '../src/client/copy.ts'
 import { KitoBrandMark, KitoBrandName } from '../src/client/Brand.tsx'
 import { apply as hostApply } from '../src/index.ts'
 
@@ -15,13 +19,35 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
+const clipboard = vi.hoisted(() => ({ writeClipboard: vi.fn(async () => true) }))
+vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => clipboard)
+
+function provideLocale(ctx: Context): void {
+  ctx.provide('locale', {
+    register: () => () => undefined,
+    addLanguage: () => () => undefined,
+    setLocale: () => undefined,
+    getSnapshot: () => ({
+      active: 'zh',
+      locales: [{ id: 'zh', label: '中文' }, { id: 'en', label: 'English' }],
+      revision: 0,
+    }),
+    subscribe: () => () => undefined,
+    bind: () => (key: string) => key === 'account' ? '账号' : key,
+  } as never)
+}
+
 const HOLES = [
   'sidebar.brand.mark',
   'sidebar.brand.name',
+  'sidebar.footer.action',
+  'settings.section',
+  'shell.overlay',
 ] as const
 
 async function bench() {
   const ctx = new Context()
+  provideLocale(ctx)
   await ctx.plugin(SlotRegistry).await()
   const slots = ctx.get('slots') as SlotRegistry
   slots.register({
@@ -36,8 +62,8 @@ describe('Kito browser-brand plugin', () => {
     expect(hostApply).not.toThrow()
   })
 
-  it('declares only the slot service it uses', () => {
-    expect(inject).toEqual(['slots'])
+  it('declares the slot registry and the shared language service', () => {
+    expect(inject).toEqual(['slots', 'locale'])
   })
 
   it('leaves the slots to the official occupants in an official build', async () => {
@@ -81,8 +107,112 @@ describe('Kito browser-brand plugin', () => {
     expect(kitoAccountLabel(undefined)).toBe('账号')
   })
 
+  it('copies the KT account number and Telegram username under the balance', async () => {
+    clipboard.writeClipboard.mockClear()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      signedIn: true,
+      displayName: 'Ada',
+      accountNo: 'KT251018ABCD',
+      telegramUsername: 'ada_t',
+      balance: 2,
+    }))))
+    const view = render(<KitoAccountFooter wide t={key => zh[key]} />)
+    expect(await view.findByText('KT251018ABCD')).toBeTruthy()
+    expect(view.getByText('@ada_t')).toBeTruthy()
+    expect(view.getByText('余额 (USD) $2')).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: '消费记录' }))
+    expect(fetch).toHaveBeenCalledWith('dsh-app://app/kito/open?target=usage', { method: 'POST' })
+    fireEvent.click(view.getByRole('button', { name: '充值记录' }))
+    expect(fetch).toHaveBeenCalledWith('dsh-app://app/kito/open?target=topups', { method: 'POST' })
+    fireEvent.click(view.getByRole('button', { name: 'Token' }))
+    expect(fetch).toHaveBeenCalledWith('dsh-app://app/kito/open?target=keys', { method: 'POST' })
+    expect(view.queryByRole('button', { name: 'English' })).toBeNull()
+    view.getAllByRole('button', { name: '复制' })[1]?.click()
+    expect(clipboard.writeClipboard).toHaveBeenCalledWith('KT251018ABCD')
+  })
+
+  it('translates the shell into every language on the picker', () => {
+    const ctx = new Context()
+    const locale = new LocaleRuntime(ctx)
+    const registered = Object.keys(LANGUAGE_PACKS).sort()
+    expect(registered).toEqual(KITO_EXTRA_LANGUAGES.map(language => language.id).sort())
+    const hindi = LANGUAGE_PACKS.hi
+    for (const id of registered) {
+      expect(Object.keys(LANGUAGE_PACKS[id]!).sort()).toEqual(Object.keys(hindi!).sort())
+      for (const [namespace, dict] of Object.entries(LANGUAGE_PACKS[id]!)) {
+        expect(Object.keys(dict).sort()).toEqual(Object.keys(hindi![namespace]!).sort())
+        for (const [key, value] of Object.entries(dict)) {
+          const source = hindi![namespace]![key]!
+          const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map(match => match[1]).sort()
+          expect(placeholders(value)).toEqual(placeholders(source))
+          expect(value.trim().length).toBeGreaterThan(0)
+        }
+      }
+      locale.addLanguage({ id, label: id, fallback: 'en' })
+      for (const [namespace, dict] of Object.entries(LANGUAGE_PACKS[id]!)) {
+        locale.register(namespace, id, dict)
+      }
+    }
+    expect(LANGUAGE_PACKS.th!.model!['menu.model']).toBe('โมเดล')
+    expect(LANGUAGE_PACKS.km!.settings!.openDocument).toBe('បើកឯកសារកំណត់')
+    expect(LANGUAGE_PACKS.km!.chat!['settings.collapse.title']).toBe('ពេលបង្រួមព័ត៌មានការងារ')
+    expect(LANGUAGE_PACKS.km!.settings!['general.currentVersion']).toContain('{version}')
+    expect(LANGUAGE_PACKS.km!['permission.access']!['preset.workspaceWrite']).toBe('សរសេរក្នុងកន្លែងធ្វើការ')
+    for (const key of Object.keys(zh)) {
+      expect(LANGUAGE_PACKS.ar!['kito.account']![key]).toBeTruthy()
+    }
+    locale.setLocale('hi')
+    expect(locale.bind('model')('empty.models')).toBe('कोई मॉडल उपलब्ध नहीं')
+    expect(locale.bind('conversation')('hero.headline')).toBe('अनदेखी जगह की खोज')
+    locale.setLocale('my')
+    expect(locale.bind('model')('trigger.aria', { model: 'kito' })).toContain('kito')
+    expect(locale.bind('model')('trigger.aria', { model: 'kito' })).not.toContain('{model}')
+    expect(locale.bind('chat')('message.stepProcess.joinTwo', { first: 'က', second: 'ခ' })).toBe('က နှင့် ခ')
+  })
+
+  it('keeps the language button to the left of the session file and Finder buttons', () => {
+    const header = document.createElement('div')
+    header.setAttribute('data-window-drag', '')
+    const title = document.createElement('div')
+    title.style.flexGrow = '1'
+    const finder = document.createElement('div')
+    const corner = document.createElement('div')
+    corner.setAttribute('data-conversation-header-corner', '')
+    header.append(title, finder, corner)
+    document.body.append(header)
+    const box = (left: number, width: number): DOMRect => ({
+      left, right: left + width, width, height: 28, top: 0, bottom: 28, x: left, y: 0, toJSON() { return {} },
+    }) as DOMRect
+    vi.spyOn(title, 'getBoundingClientRect').mockReturnValue(box(0, 700))
+    vi.spyOn(finder, 'getBoundingClientRect').mockReturnValue(box(700, 140))
+    vi.spyOn(corner, 'getBoundingClientRect').mockReturnValue(box(848, 32))
+    expect(trailingClusterLeft(corner)).toBe(700)
+    expect(languageDockRight(1200, 700)).toBe('508px')
+    vi.spyOn(corner, 'getBoundingClientRect').mockReturnValue(box(0, 0))
+    expect(trailingClusterLeft(corner)).toBe(700)
+    document.body.removeChild(header)
+  })
+
+  it('opens Hindi and Burmese from the flag button without covering the header', () => {
+    const setLocale = vi.fn()
+    const view = render(
+      <KitoLanguageDock
+        setLocale={setLocale}
+        readLocale={() => 'zh'}
+        subscribeLocale={() => () => undefined}
+      />,
+    )
+    expect(view.queryByRole('menu')).toBeNull()
+    fireEvent.click(view.getByRole('button', { name: '中文' }))
+    fireEvent.click(view.getByRole('menuitem', { name: /हिन्दी/ }))
+    expect(setLocale).toHaveBeenCalledWith('hi')
+    fireEvent.click(view.getByRole('button', { name: '中文' }))
+    expect(view.getByRole('menuitem', { name: /မြန်မာ/ })).toBeTruthy()
+  })
+
   it('adds the settings account page', async () => {
     const ctx = new Context()
+    provideLocale(ctx)
     await ctx.plugin(SlotRegistry).await()
     const slots = ctx.get('slots') as SlotRegistry
     slots.register({
@@ -92,6 +222,7 @@ describe('Kito browser-brand plugin', () => {
         'sidebar.brand.name': { kind: 'single', scope: 'root' },
         'sidebar.footer.action': { kind: 'list', scope: 'root' },
         'settings.section': { kind: 'list', scope: 'root' },
+        'shell.overlay': { kind: 'list', scope: 'root' },
       },
     } as never, () => null)
     await ctx.plugin({ inject: [...inject], apply }).await()

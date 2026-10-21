@@ -15,6 +15,27 @@ import css from './AccountMenu.module.css'
 /** Account launcher composed by the settings shell. */
 export type AccountMenuProps = PropsRuntime<'settings.launcher'> & PropsLocale<'settings.account'> & InjectFace<AccountSectionInjected>
 
+/** Kito Telegram login is a different account from the DeepSeek menu. A missing route means this build has no Kito account. */
+function useKitoSignedIn(): boolean {
+  const [signedIn, setSignedIn] = useState(false)
+  useEffect(() => {
+    let active = true
+    const load = (): void => {
+      void fetch('dsh-app://app/kito/account')
+        .then(async response => response.ok ? await response.json() as { signedIn?: boolean } : { signedIn: false })
+        .then((body) => { if (active) setSignedIn(body.signedIn === true) })
+        .catch(() => { if (active) setSignedIn(false) })
+    }
+    load()
+    window.addEventListener('kito-account', load)
+    return () => {
+      active = false
+      window.removeEventListener('kito-account', load)
+    }
+  }, [])
+  return signedIn
+}
+
 /** The signed-in label stays empty while the profile loads.
  * @param props - sidebar geometry, settings navigation and account operations.
  * @returns account menu launcher.
@@ -35,6 +56,7 @@ export function AccountMenu({
   const account = useAccount(state => state)
   const colorScheme = useTheme(snapshot => snapshot.active.colorScheme)
   const signedIn = account.view?.status === 'credential-stored'
+  const kitoSignedIn = useKitoSignedIn()
   const [signInNotice, setSignInNotice] = useState(0)
   useEffect(() => subscribeModelSignInRequired?.(() => { setSignInNotice(value => value + 1) }), [subscribeModelSignInRequired])
   const [expiryNotice, setExpiryNotice] = useState(false)
@@ -76,7 +98,8 @@ export function AccountMenu({
           ...(settingsShortcut === undefined ? {} : { shortcut: settingsShortcut }) },
         { id: 'contact', label: t('contactUs'), icon: <IconPaperPlaneOutlineMedium size={16} /> },
         ...(signedIn ? [{ id: 'signout', label: t('signOut'), icon: <LogoutIcon />, disabled: busy }]
-          : [{ id: 'signin', label: t('signIn'), icon: <IconUserOutlineMedium size={16} /> }]),
+          : kitoSignedIn ? []
+            : [{ id: 'signin', label: t('signIn'), icon: <IconUserOutlineMedium size={16} /> }]),
       ]}
       onClose={() => { setOpen(false) }}
       onSelect={(id) => {

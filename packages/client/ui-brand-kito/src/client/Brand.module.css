@@ -47,13 +47,17 @@
 
 .account {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 6px;
   min-width: 0;
   margin: 0 8px 8px;
 }
 
-.account button {
+.accountButton,
+.copyButton,
+.language,
+.languageActive {
   border: none;
   border-radius: 8px;
   background: var(--dsw-alias-interactive-bg);
@@ -66,8 +70,149 @@
   text-align: left;
 }
 
-.account button:hover {
+.accountButton:hover,
+.copyButton:hover,
+.language:hover,
+.languageActive:hover {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.copies {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.copyRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.copyLabel {
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.copyValue {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copyButton {
+  flex: none;
+  padding: 2px 6px;
+}
+
+.languageDock {
+  position: absolute;
+  top: 8px;
+  /* Home screen clearance. A session header overrides this so the button sits left of its controls. */
+  right: 88px;
+  z-index: 2;
+  -webkit-app-region: no-drag;
+}
+
+.languageTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.languageTriggerName {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.languagePanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 320px;
+  max-height: min(420px, calc(100vh - 64px));
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-base);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 16%);
+}
+
+.languageGroup {
+  margin: 8px 4px 4px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.languageGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.languageOption,
+.languageOptionActive {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+}
+
+.languageOption:hover,
+.languageOptionActive {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.languageAux {
+  margin-left: auto;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
+.flag,
+.flagGlobe {
+  width: 18px;
+  height: 12px;
+  flex: none;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.flag {
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 12%);
 }
 
 .panel {
@@ -94,9 +239,24 @@
   line-height: 18px;
 }
 
+.balanceLine {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.accountActions,
 .panelActions {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.accountActions .accountButton,
+.panelActions .panelButton {
+  flex: 1 1 calc(50% - 6px);
+  text-align: center;
 }
 
 .panelButton {
