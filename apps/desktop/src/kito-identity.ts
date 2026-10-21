@@ -12,6 +12,21 @@ const NEWAPI_QUOTA_PER_USD = 500_000
 export const KITO_MANAGED_TOKEN_NAME = 'kito'
 export const KITO_WALLET_URL = 'https://www.ktapi.cc/wallet'
 
+/** Console pages opened with the same ktapi.cc session as recharge. */
+export const KITO_CONSOLE_PAGES = {
+  wallet: KITO_WALLET_URL,
+  topups: `${KITO_WALLET_URL}?show_history=true`,
+  usage: 'https://www.ktapi.cc/usage-logs/common',
+  keys: 'https://www.ktapi.cc/keys',
+} as const
+
+export type KitoConsolePage = keyof typeof KITO_CONSOLE_PAGES
+
+/** @param value - renderer target. @returns whether it is one of the console pages. */
+export function isKitoConsolePage(value: string | null): value is KitoConsolePage {
+  return value === 'wallet' || value === 'topups' || value === 'usage' || value === 'keys'
+}
+
 /** @param env - process environment. @returns identity origin without a trailing slash. */
 export function identityBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
   const value = env.KT_IDENTITY_BASE_URL?.trim()
@@ -43,6 +58,10 @@ export interface KitoIdentitySession {
 export interface KitoAccountView {
   readonly signedIn: boolean
   readonly displayName?: string
+  /** KT Identity account number, for example `KT251018…`. */
+  readonly accountNo?: string
+  /** Telegram username without a leading `@`, when this account has one. */
+  readonly telegramUsername?: string
   readonly balance?: number
 }
 
@@ -272,9 +291,13 @@ export async function fetchKitoAccount(identityToken: string, input: FetchInit =
  */
 export function kitoAccountView(profilePayload: unknown, balance: number | undefined): KitoAccountView {
   const displayName = displayNameFrom(profilePayload)
+  const accountNo = accountNoFrom(profilePayload)
+  const telegramUsername = telegramUsernameFrom(profilePayload)
   return {
     signedIn: true,
     ...(displayName === undefined ? {} : { displayName }),
+    ...(accountNo === undefined ? {} : { accountNo }),
+    ...(telegramUsername === undefined ? {} : { telegramUsername }),
     ...(balance === undefined ? {} : { balance }),
   }
 }
@@ -282,6 +305,24 @@ export function kitoAccountView(profilePayload: unknown, balance: number | undef
 /** @param quota - NewAPI quota units. @returns USD rounded to cents. */
 export function newapiQuotaToUsd(quota: number): number {
   return Math.round((quota / NEWAPI_QUOTA_PER_USD) * 100) / 100
+}
+
+function accountNoFrom(payload: unknown): string | undefined {
+  const record = asRecord(payload)
+  const account = asRecord(record?.account) ?? asRecord(asRecord(record?.data)?.account) ?? record
+  return stringField(account?.accountNo)?.trim() ?? stringField(account?.account_no)?.trim()
+}
+
+function telegramUsernameFrom(payload: unknown): string | undefined {
+  const identities = asRecord(payload)?.identities
+  if (!Array.isArray(identities)) return undefined
+  for (const item of identities) {
+    const row = asRecord(item)
+    if (stringField(row?.provider) !== 'telegram') continue
+    const username = stringField(asRecord(row?.metadata)?.username)?.replace(/^@/u, '').trim()
+    if (username) return username
+  }
+  return undefined
 }
 
 function displayNameFrom(payload: unknown): string | undefined {
@@ -319,6 +360,42 @@ export function spendableFromEnsure(payload: unknown): number | undefined {
   const user = asRecord(data?.user) ?? data
   const quota = user?.quota
   return typeof quota === 'number' && Number.isFinite(quota) ? newapiQuotaToUsd(quota) : undefined
+}
+
+/**
+ * Read the user wallet from the relay key. This does not open a website session.
+ * @param baseUrl - NewAPI origin.
+ * @param apiKey - stored `KITO_NEWAPI_API_KEY`.
+ * @returns the request. The key stays in the header.
+ */
+export function accountUsageRequest(baseUrl: string, apiKey: string): { readonly url: string; readonly init: RequestInit } {
+  return {
+    url: `${baseUrl.replace(/\/+$/u, '')}/api/usage/account/`,
+    init: {
+      method: 'GET',
+      headers: jsonHeaders({ authorization: `Bearer ${apiKey}` }),
+    },
+  }
+}
+
+/**
+ * How long to wait after a critical-route 429. Login, session refresh, and the
+ * balance read share one 20-request window, so a rejected read must not be retried immediately.
+ * @param retryAfterHeader - `Retry-After` seconds from the gateway.
+ * @returns delay in milliseconds, capped at the 20 minute window.
+ */
+export function criticalRetryDelayMs(retryAfterHeader: string | null): number {
+  const seconds = Number(retryAfterHeader)
+  if (!Number.isFinite(seconds) || seconds <= 0) return 60_000
+  return Math.min(seconds, 20 * 60) * 1000
+}
+
+/** @param payload - `GET /api/usage/account/` body. @returns USD cents, including a negative balance. */
+export function usdFromAccountUsage(payload: unknown): number | undefined {
+  const data = asRecord(asRecord(payload)?.data) ?? asRecord(payload)
+  const usd = data?.remaining_usd
+  if (typeof usd !== 'number' || !Number.isFinite(usd)) return undefined
+  return Math.round(usd * 100) / 100
 }
 
 function cookieHeader(response: Response): string | undefined {

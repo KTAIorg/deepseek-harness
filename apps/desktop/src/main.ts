@@ -39,6 +39,7 @@ import { DesktopCommandManager } from './command-management.ts'
 import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
 import { DesktopFatalRecovery } from './fatal-recovery.ts'
 import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
+import { captureKitoFailure, initKitoSentry } from './kito-sentry.ts'
 import { openWelcomeWindow } from './welcome-window.ts'
 import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
 import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
@@ -62,12 +63,23 @@ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 import { handleKitoAppRoute } from './kito-account-route.ts'
-import { openKitoWallet, readKitoConsoleBalance, signOutKitoConsole } from './kito-wallet-window.ts'
+import { openKitoConsole, readKitoAccountBalance, signOutKitoConsole } from './kito-wallet-window.ts'
 import { shouldDismissNewWelcome } from './kito-welcome-policy.ts'
-import { KITO_IDENTITY_TOKEN_REF } from './kito-identity.ts'
+import { identityBaseUrl, KITO_IDENTITY_TOKEN_REF } from './kito-identity.ts'
 import { createKitoSignIn, type KitoSignIn } from './kito-sign-in.ts'
+import { readStoredCredential } from './kito-credentials.ts'
+import { runKitoDesktopLink } from './kito-desktop-link.ts'
 
 let focusPrimaryWindow = (): void => {}
+const pendingHarnessLogins: string[] = []
+let deliverHarnessLogin = (url: string): void => {
+  if (url.startsWith('kito-harness://desktop-login')) pendingHarnessLogins.push(url)
+}
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  if (url === 'dsh://open' || url === 'dsh://open/') focusPrimaryWindow()
+  deliverHarnessLogin(url)
+})
 let stopForRecovery = async (): Promise<void> => {}
 let shuttingDown = false
 /**
@@ -84,6 +96,15 @@ let windowsLanguage: string | undefined
 let backendReady = false
 /** Error-level console output of the primary window, attached to crash reports. */
 const rendererConsole = new RendererConsoleTail()
+
+// Packaged Kito must not share Electron's userData with DeepSeek Harness.
+// The single-instance lock lives in that directory, so a shared path makes the
+// second app quit as soon as it starts.
+if (app.isPackaged) {
+  const kitoUserData = join(app.getPath('appData'), 'Kito Harness')
+  app.setPath('userData', kitoUserData)
+  app.setPath('sessionData', kitoUserData)
+}
 
 // Platform-conventional logs directory (macOS ~/Library/Logs/<name>, otherwise under userData);
 // set before ready so the first fatal report already resolves under it.
@@ -128,6 +149,7 @@ function persistCrashReport(error: unknown, source: CrashReportSource): Promise<
 
 function reportFatal(error: unknown, source: CrashReportSource): void {
   console.error(error)
+  void captureKitoFailure(error, { source, phase: backendReady ? 'running' : 'startup' })
   if (shuttingDown) {
     // No dialog during shutdown, but the report still records what failed on the way out.
     void persistCrashReport(error, source)
@@ -622,9 +644,10 @@ async function main(): Promise<void> {
     if (url.hostname === 'app') {
       const kito = await handleKitoAppRoute(request, {
         showWelcome: () => { void showWelcome(true) },
-        openWallet: token => openKitoWallet(token),
+        openWallet: token => openKitoConsole(token, 'wallet'),
+        openConsole: (token, page) => openKitoConsole(token, page),
         signOutConsole: () => signOutKitoConsole(),
-        readBalance: () => readKitoConsoleBalance(),
+        readBalance: () => readKitoAccountBalance(),
       })
       if (kito !== undefined) return kito
       if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname.startsWith('/assets/')
@@ -1201,18 +1224,59 @@ async function main(): Promise<void> {
       void (backend.state.phase === 'ready' ? openInitialWindow() : navigateMain(applicationUrl)).catch((error: unknown) => { reportFatal(error, 'main') })
       return
     }
-    // Startup and sign-out select the visible window before activation may reveal the workspace.
-    if (window === mainWindow && !enteredWorkspace) return
+    // A later launch before the workspace is open should bring the sign-in window
+    // forward. Leaving this as a no-op makes the Dock icon look like it failed.
+    if (window === mainWindow && !enteredWorkspace) {
+      void showWelcome().catch((error: unknown) => { reportFatal(error, 'main') })
+      return
+    }
     if (window.isMinimized()) window.restore()
     window.show()
     window.focus()
   }
 
-  if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') app.setAsDefaultProtocolClient('dsh')
-  app.on('open-url', (event, url) => {
-    event.preventDefault()
-    if (url === 'dsh://open' || url === 'dsh://open/') focusPrimaryWindow()
-  })
+  if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') {
+    app.setAsDefaultProtocolClient('dsh')
+    app.setAsDefaultProtocolClient('kito-harness')
+  }
+  const seenHarnessLogins = new Set<string>()
+  const waitForWelcomeBackend = async (): Promise<void> => {
+    const deadline = Date.now() + 150_000
+    while (welcomeBackend === undefined && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 250))
+    }
+  }
+  deliverHarnessLogin = (url: string): void => {
+    if (!url.startsWith('kito-harness://desktop-login') || seenHarnessLogins.has(url)) return
+    seenHarnessLogins.add(url)
+    void runKitoDesktopLink(url, {
+      currentAccountId: async () => {
+        const token = await readStoredCredential(KITO_IDENTITY_TOKEN_REF)
+        if (!token) return undefined
+        const response = await fetch(`${identityBaseUrl()}/identity/v1/account/me`, {
+          headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+        })
+        if (!response.ok) return undefined
+        const body = await response.json() as { account?: { id?: string }; id?: string }
+        return body.account?.id ?? body.id
+      },
+      saveIdentity: async (token) => {
+        await waitForWelcomeBackend()
+        return welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false }
+      },
+      saveKey: async (key) => {
+        await waitForWelcomeBackend()
+        return welcomeBackend?.save(key) ?? { ok: false }
+      },
+      onSuccess: () => {
+        void enterWorkspace({ activate: true }).then(() => { publishKitoAccount() }).catch(() => undefined)
+      },
+    }).catch((error: unknown) => {
+      console.error('kito desktop login failed', error instanceof Error ? error.message : 'unknown')
+    }).finally(() => { seenHarnessLogins.delete(url) })
+  }
+  for (const url of pendingHarnessLogins.splice(0)) deliverHarnessLogin(url)
+  for (const item of process.argv) deliverHarnessLogin(item)
 
   app.on('activate', (_event, hasVisibleWindows) => {
     if (!hasVisibleWindows) focusPrimaryWindow()
@@ -1315,9 +1379,15 @@ async function main(): Promise<void> {
   publishUpdate(updateState)
 }
 
-const ownsDesktopInstance = claimDesktopSingleInstance(app, () => { focusPrimaryWindow() })
+const ownsDesktopInstance = claimDesktopSingleInstance(app, (argv) => {
+  focusPrimaryWindow()
+  for (const item of argv ?? []) deliverHarnessLogin(item)
+})
 
-if (ownsDesktopInstance) void app.whenReady().then(main).catch(async (error: unknown) => {
+if (ownsDesktopInstance) void app.whenReady().then(async () => {
+  initKitoSentry({ packaged: app.isPackaged, release: app.getVersion() })
+  await main()
+}).catch(async (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error)
   console.error(error)
   const diagnosticFile = process.env.DSH_DESKTOP_DIAGNOSTIC_FILE

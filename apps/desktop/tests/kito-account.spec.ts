@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { handleKitoAppRoute } from '../src/kito-account-route.ts'
 import { readStoredCredential } from '../src/kito-credentials.ts'
-import { fetchKitoAccount, newapiQuotaToUsd } from '../src/kito-identity.ts'
+import { accountUsageRequest, criticalRetryDelayMs, fetchKitoAccount, KITO_CONSOLE_PAGES, newapiQuotaToUsd, usdFromAccountUsage } from '../src/kito-identity.ts'
 import { consoleLogoutRequest, consoleRefreshRequest, establishKitoConsoleSession, parseSetCookie } from '../src/kito-wallet.ts'
 
 describe('Kito account summary', () => {
@@ -21,7 +21,7 @@ describe('Kito account summary', () => {
         return new Response('unexpected', { status: 500 })
       },
     })
-    expect(view).toEqual({ signedIn: true, displayName: 'Ada', balance: 2 })
+    expect(view).toEqual({ signedIn: true, displayName: 'Ada', accountNo: 'KT1', balance: 2 })
     expect(newapiQuotaToUsd(500_000)).toBe(1)
   })
 
@@ -37,7 +37,7 @@ describe('Kito account summary', () => {
         return new Response(JSON.stringify({ data: { user: { quota: 500_000 } } }), { status: 200 })
       },
     })
-    expect(view).toEqual({ signedIn: true, displayName: '豆豆', balance: 1 })
+    expect(view).toEqual({ signedIn: true, displayName: '豆豆', accountNo: 'KT1', balance: 1 })
   })
 
   it('reads the identity token from the credentials document without coercing it', async () => {
@@ -75,6 +75,29 @@ describe('Kito account summary', () => {
       },
     })
     expect(view).toEqual({ signedIn: true, displayName: 'Ada' })
+  })
+
+  it('keeps the KT account number and the Telegram username for support copy', async () => {
+    const view = await fetchKitoAccount('token', {
+      fetchImpl: async (url) => {
+        if (String(url).endsWith('/identity/v1/account/me')) {
+          return new Response(JSON.stringify({
+            account: { displayName: 'Ada', accountNo: 'KT251018ABCD' },
+            identities: [
+              { provider: 'password', metadata: { login_name: 'ada' } },
+              { provider: 'telegram', metadata: { username: '@ada_t' } },
+            ],
+          }), { status: 200 })
+        }
+        return new Response(JSON.stringify({ data: {} }), { status: 200 })
+      },
+    })
+    expect(view).toEqual({
+      signedIn: true,
+      displayName: 'Ada',
+      accountNo: 'KT251018ABCD',
+      telegramUsername: 'ada_t',
+    })
   })
 
   it('turns the stored login into a ktapi.cc console session without putting the token in the page URL', async () => {
@@ -120,6 +143,45 @@ describe('Kito account summary', () => {
     expect(signedOut?.status).toBe(401)
     expect(welcomed).toBe(true)
     expect(opened).toEqual(['stored-token'])
+  })
+
+  it('reads the wallet balance from the relay-key usage endpoint, including a negative amount', () => {
+    const request = accountUsageRequest('https://ktapi.cc/', 'sk-secret')
+    expect(request.url).toBe('https://ktapi.cc/api/usage/account/')
+    expect(request.url).not.toContain('sk-secret')
+    expect(new Headers(request.init.headers).get('authorization')).toBe('Bearer sk-secret')
+    expect(usdFromAccountUsage({ success: true, data: { remaining_usd: 9.934818 } })).toBe(9.93)
+    expect(usdFromAccountUsage({ data: { remaining_usd: -0.0651 } })).toBe(-0.07)
+    expect(usdFromAccountUsage({ data: {} })).toBeUndefined()
+    expect(criticalRetryDelayMs('522')).toBe(522_000)
+    expect(criticalRetryDelayMs(null)).toBe(60_000)
+    expect(criticalRetryDelayMs('9999')).toBe(20 * 60 * 1000)
+    expect(KITO_CONSOLE_PAGES).toEqual({
+      wallet: 'https://www.ktapi.cc/wallet',
+      topups: 'https://www.ktapi.cc/wallet?show_history=true',
+      usage: 'https://www.ktapi.cc/usage-logs/common',
+      keys: 'https://www.ktapi.cc/keys',
+    })
+  })
+
+  it('opens recharge history, usage, and tokens on the same console login as top-up', async () => {
+    const opened: Array<[string, string]> = []
+    const response = await handleKitoAppRoute(new Request('dsh-app://app/kito/open?target=usage', { method: 'POST' }), {
+      showWelcome: () => undefined,
+      openWallet: async () => undefined,
+      openConsole: async (token, page) => { opened.push([token, page]) },
+      readToken: async () => 'stored-token',
+    })
+    expect(response?.status).toBe(200)
+    expect(opened).toEqual([['stored-token', 'usage']])
+    const rejected = await handleKitoAppRoute(new Request('dsh-app://app/kito/open?target=https://evil.example', { method: 'POST' }), {
+      showWelcome: () => undefined,
+      openWallet: async () => undefined,
+      openConsole: async (token, page) => { opened.push([token, page]) },
+      readToken: async () => 'stored-token',
+    })
+    expect(rejected?.status).toBe(400)
+    expect(opened).toEqual([['stored-token', 'usage']])
   })
 
   it('logs out through the existing ktapi.cc console logout', async () => {

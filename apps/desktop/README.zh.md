@@ -195,6 +195,8 @@ pnpm run dev:desktop
 
 开发 Harness 状态默认写入 `apps/desktop/.desktop-build/development/home`，一次性 npm 项目位于 `apps/desktop/.desktop-build/development/project`，Electron 浏览器数据则位于 `apps/desktop/.desktop-build/development/electron-user-data`。因此，会话、设置、凭据、包链接和浏览器数据都不会进入用户正常使用的 Harness home；显式 `DSH_HOME` 只会替换开发 Harness home。Renderer DevTools 默认自动打开，Main、Renderer 和 dsh Host 调试端口依次为 9229、9222 和 9230。`DSH_DESKTOP_MAIN_INSPECT_PORT`、`DSH_DESKTOP_RENDERER_DEBUG_PORT` 与 `DSH_DESKTOP_HOST_INSPECT_PORT` 可以替换这些端口，`DSH_DESKTOP_OPEN_DEVTOOLS=0` 则保持 Renderer 调试窗口关闭。
 
+在运行 `dev:desktop` 或 `start:desktop` 之前，把 `DSH_SENTRY_DSN` 写进 shell，或写进被 Git 忽略的 `apps/desktop/.env`。启动器会读这个文件，但不会覆盖 shell 里已经导出的值。致命的桌面失败会同时送进 Sentry，供事后排查。本机崩溃日志和恢复框保持原样。变量为空时不上报。使用单独的桌面收集项目，不要挂 Telegram 或分派 hook。见 ADR 0003（`docs/development/adr/0003-kito-desktop-error-collection.md`）。
+
 显式构建完成后，`start:desktop` 会重新生成一次性项目，并跳过构建直接启动已有产物：
 
 ```sh

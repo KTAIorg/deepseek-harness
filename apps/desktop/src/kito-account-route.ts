@@ -2,13 +2,15 @@
 
 import { failureDetail } from './kito-http.ts'
 import { readStoredCredential } from './kito-credentials.ts'
-import { KITO_IDENTITY_TOKEN_REF, type KitoAccountView } from './kito-identity.ts'
+import { isKitoConsolePage, KITO_IDENTITY_TOKEN_REF, type KitoAccountView, type KitoConsolePage } from './kito-identity.ts'
 import { loadKitoProfile } from './kito-wallet.ts'
 
 export interface KitoRouteOptions {
   readonly showWelcome: () => void
   /** Open the ktapi.cc recharge page with the stored Identity login. */
   readonly openWallet: (identityToken: string) => Promise<void>
+  /** Open a ktapi.cc console page with the same login. Falls back to {@link openWallet}. */
+  readonly openConsole?: (identityToken: string, page: KitoConsolePage) => Promise<void>
   /** Revoke the ktapi.cc console session kept for the recharge window. */
   readonly signOutConsole?: () => Promise<void>
   /** Read the spendable USD balance from the stored console session, without creating a new one. */
@@ -36,19 +38,30 @@ export async function handleKitoAppRoute(request: Request, options: KitoRouteOpt
     return Response.json({ ok: true })
   }
   if (url.pathname === '/kito/topup' && request.method === 'POST') {
-    const token = await (options.readToken ?? (() => readStoredCredential(KITO_IDENTITY_TOKEN_REF)))()
-    if (token === undefined) {
-      options.showWelcome()
-      return Response.json({ ok: false }, { status: 401 })
-    }
-    await options.openWallet(token)
-    return Response.json({ ok: true })
+    return openConsolePage(options, 'wallet')
+  }
+  if (url.pathname === '/kito/open' && request.method === 'POST') {
+    const page = url.searchParams.get('target')
+    if (!isKitoConsolePage(page)) return Response.json({ ok: false }, { status: 400 })
+    return openConsolePage(options, page)
   }
   if (url.pathname === '/kito/sign-out' && request.method === 'POST') {
     await options.signOutConsole?.()
     return Response.json({ ok: true })
   }
   return undefined
+}
+
+async function openConsolePage(options: KitoRouteOptions, page: KitoConsolePage): Promise<Response> {
+  const token = await (options.readToken ?? (() => readStoredCredential(KITO_IDENTITY_TOKEN_REF)))()
+  if (token === undefined) {
+    options.showWelcome()
+    return Response.json({ ok: false }, { status: 401 })
+  }
+  if (options.openConsole !== undefined) await options.openConsole(token, page)
+  else if (page === 'wallet') await options.openWallet(token)
+  else return Response.json({ ok: false }, { status: 501 })
+  return Response.json({ ok: true })
 }
 
 async function readAccount(options: KitoRouteOptions): Promise<KitoAccountView> {
