@@ -12,6 +12,7 @@
 import { globSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
+  kitoClientBuildEnvironment,
   officialClientBuildEnvironment,
   readClientBuildRecord,
 } from '../client-build-environment.ts'
@@ -353,9 +354,12 @@ class DshFamily extends ReleaseFamily {
   ] as const
   readonly tagPrefix = 'dsh-v'
 
-  /** Require current artifacts from a complete official client build. */
+  /** Require current artifacts from the selected client build. Kito packaging uses the kito profile. */
   override verifyBuildArtifacts(root: string): void {
-    readClientBuildRecord(root, officialClientBuildEnvironment(root))
+    const expected = process.env.DSH_BUILD_CLIENT_PROFILE === 'kito'
+      ? kitoClientBuildEnvironment(root)
+      : officialClientBuildEnvironment(root)
+    readClientBuildRecord(root, expected)
   }
 
   /**

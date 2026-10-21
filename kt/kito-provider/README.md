@@ -1,6 +1,6 @@
 # @kito/dsh-kito-provider
 
-DeepSeek Harness `dsh-v0.2.1-alpha.1` 的 Kito 插件。它不改 agent loop。
+DeepSeek Harness `dsh-v0.2.1-rc.2` 的 Kito 插件。它不改 agent loop。
 
 装进 profile 后做两件事：
 

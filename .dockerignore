@@ -8,8 +8,10 @@ node_modules
 **/lib
 *.tsbuildinfo
 **/.tsbuildinfo
-python
 website/.vitepress/cache
 website/.vitepress/dist
 .dsh
 .kimi-work
+**/.desktop-build
+.dsh-build
+.tmp

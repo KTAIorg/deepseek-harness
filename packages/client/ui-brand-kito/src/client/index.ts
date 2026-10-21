@@ -31,8 +31,19 @@ function localeControls(ctx: ClientContext) {
 }
 
 /**
+ * Whether this page runs inside the Kito Harness desktop shell, whose preload publishes `dshDesktop`.
+ * The account entries read the shell's `dsh-app://app/kito/*` routes. A Web deployment has no such
+ * routes; its gateway authenticates the person before the page loads.
+ * @returns true inside the desktop shell.
+ */
+export function insideDesktopShell(): boolean {
+  return 'dshDesktop' in globalThis
+}
+
+/**
  * Fill the sidebar brand slots unless this client was built as the official
  * DeepSeek profile. The conversation hero stays on its declaring package.
+ * The Telegram account footer and settings page are registered only inside the desktop shell.
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -57,15 +68,17 @@ export function apply(ctx: ClientContext): void {
       yield ctx.slots.register({ name: 'sidebar.brand.mark' }, KitoBrandMark)
       yield ctx.slots.register({ name: 'sidebar.brand.name' }, KitoBrandName)
     }))
-  ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
-    name: 'sidebar.footer.action', id: 'kito-account', order: 10, locale: ACCOUNT_NS,
-    inject: () => controls,
-  }, KitoAccountFooter))
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
-    name: 'settings.section', id: 'kito-account', order: -20, locale: ACCOUNT_NS,
-    label: () => ctx.locale.bind(ACCOUNT_NS)('account'),
-    inject: () => controls,
-  }, KitoAccountSection))
+  if (insideDesktopShell()) {
+    ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
+      name: 'sidebar.footer.action', id: 'kito-account', order: 10, locale: ACCOUNT_NS,
+      inject: () => controls,
+    }, KitoAccountFooter))
+    ctx.slots.inject('settings.section', () => ctx.slots.register({
+      name: 'settings.section', id: 'kito-account', order: -20, locale: ACCOUNT_NS,
+      label: () => ctx.locale.bind(ACCOUNT_NS)('account'),
+      inject: () => controls,
+    }, KitoAccountSection))
+  }
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'kito-language', order: 20, locale: ACCOUNT_NS,
     inject: () => controls,

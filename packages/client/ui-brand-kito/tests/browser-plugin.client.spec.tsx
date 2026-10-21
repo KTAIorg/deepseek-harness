@@ -17,6 +17,7 @@ import { apply as hostApply } from '../src/index.ts'
 afterEach(() => {
   cleanup()
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
 })
 
 const clipboard = vi.hoisted(() => ({ writeClipboard: vi.fn(async () => true) }))
@@ -74,12 +75,23 @@ describe('Kito browser-brand plugin', () => {
   })
 
   it('fills the sidebar slots for a local build and removes them on teardown', async () => {
+    vi.stubGlobal('dshDesktop', {})
     const subject = await bench()
     const fiber = subject.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     for (const hole of HOLES) expect(subject.slots.entries(hole)).toHaveLength(1)
     await fiber.dispose()
     for (const hole of HOLES) expect(subject.slots.entries(hole)).toHaveLength(0)
+  })
+
+  it('keeps the brand and language picker but no Telegram account entries on a Web page', async () => {
+    const subject = await bench()
+    await subject.ctx.plugin({ inject: [...inject], apply }).await()
+    for (const hole of ['sidebar.brand.mark', 'sidebar.brand.name', 'shell.overlay'] as const) {
+      expect(subject.slots.entries(hole)).toHaveLength(1)
+    }
+    expect(subject.slots.entries('sidebar.footer.action')).toHaveLength(0)
+    expect(subject.slots.entries('settings.section')).toHaveLength(0)
   })
 
   it('shows the product name, a local marker, and the version without the commit', () => {
@@ -211,6 +223,7 @@ describe('Kito browser-brand plugin', () => {
   })
 
   it('adds the settings account page', async () => {
+    vi.stubGlobal('dshDesktop', {})
     const ctx = new Context()
     provideLocale(ctx)
     await ctx.plugin(SlotRegistry).await()
