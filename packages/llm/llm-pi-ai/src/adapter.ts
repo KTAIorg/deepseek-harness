@@ -60,6 +60,7 @@ import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attac
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { requestImageTarget, toPiContext } from './context.ts'
+import { fetchLiveCatalog, LIVE_CATALOG_TTL_MS, materializeLiveModels } from './live-catalog.ts'
 import { conversationUpdates, createModels, getSupportedThinkingLevels } from './models.ts'
 import { toStreamChunks } from './stream.ts'
 
@@ -302,6 +303,7 @@ export class PiAiAdapter extends LlmAdapter {
         if (error instanceof LlmError && error.code === 'MISSING_CREDENTIAL') return []
         throw error
       }
+      await this.refreshLiveModels(profile)
       return snapshot.models.getModels(provider).map(model => ({
         provider,
         id: model.id,
@@ -316,8 +318,9 @@ export class PiAiAdapter extends LlmAdapter {
     model: string,
     _signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
-    return Promise.resolve().then(() => {
+    return Promise.resolve().then(async () => {
       const snapshot = this.current()
+      await this.refreshLiveModels(this.profileOf(snapshot, provider))
       return this.modelInfo(snapshot, provider, model)
     })
   }
@@ -342,15 +345,80 @@ export class PiAiAdapter extends LlmAdapter {
   }
 
   override prepareCall(provider: string, model: string, _signal?: AbortSignal): Promise<PreparedAdapterCall> {
-    const snapshot = this.current()
-    return Promise.resolve({
-      model: this.modelInfo(snapshot, provider, model),
-      stream: options => this.streamWithSnapshot(options, snapshot),
+    return Promise.resolve().then(async () => {
+      const snapshot = this.current()
+      await this.refreshLiveModels(this.profileOf(snapshot, provider))
+      return {
+        model: this.modelInfo(snapshot, provider, model),
+        stream: (options: GenerateOptions) => this.streamWithSnapshot(options, snapshot),
+      }
     })
   }
 
   stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-    return this.streamWithSnapshot(options, this.current())
+    const snapshot = this.current()
+    return this.streamAfterLiveCatalog(options, snapshot)
+  }
+
+  private async * streamAfterLiveCatalog(
+    options: GenerateOptions,
+    snapshot: PiAiSnapshot,
+  ): AsyncIterable<StreamChunk> {
+    await this.refreshLiveModels(this.profileOf(snapshot, options.provider))
+    yield * this.streamWithSnapshot(options, snapshot)
+  }
+
+  /**
+   * Fill a live route from its model endpoint. A fresh listing is reused; a
+   * failed refresh keeps the previous listing when one exists.
+   */
+  private async refreshLiveModels(profile: ResolvedPiAiProviderProfile): Promise<void> {
+    if (profile.liveModels !== true || profile.liveModelBucket === undefined) return
+    const fetchedAt = profile.liveCatalogFetchedAt
+    if (profile.liveModelBucket.length > 0 && fetchedAt !== undefined
+      && Date.now() - fetchedAt < LIVE_CATALOG_TTL_MS) return
+    if (profile.liveCatalogPending !== undefined) {
+      await profile.liveCatalogPending
+      return
+    }
+    const pending = this.loadLiveModels(profile)
+    profile.liveCatalogPending = pending
+    try {
+      await pending
+    } finally {
+      profile.liveCatalogPending = undefined
+    }
+  }
+
+  private async loadLiveModels(profile: ResolvedPiAiProviderProfile): Promise<void> {
+    const bucket = profile.liveModelBucket
+    if (bucket === undefined || profile.api === undefined || profile.baseURL === undefined) return
+    let apiKey: string | undefined
+    try {
+      apiKey = await this.config.resolveApiKey(profile.provider, profile)
+    } catch (error) {
+      if (bucket.length > 0) return
+      throw error
+    }
+    if (apiKey === undefined || apiKey.length === 0) return
+    try {
+      const listed = await fetchLiveCatalog(profile.baseURL, apiKey)
+      const models = materializeLiveModels({
+        provider: profile.provider,
+        api: profile.api,
+        baseURL: profile.baseURL,
+        models: listed,
+        ...profile.compat === undefined ? {} : { compat: profile.compat },
+        ...profile.defaultContextWindow === undefined ? {} : { defaultContextWindow: profile.defaultContextWindow },
+        ...profile.defaultMaxTokens === undefined ? {} : { defaultMaxTokens: profile.defaultMaxTokens },
+        ...profile.defaultInput === undefined ? {} : { defaultInput: profile.defaultInput },
+      })
+      bucket.splice(0, bucket.length, ...models)
+      profile.liveCatalogFetchedAt = Date.now()
+    } catch (error) {
+      if (bucket.length > 0) return
+      throw error
+    }
   }
 
   private async * streamWithSnapshot(

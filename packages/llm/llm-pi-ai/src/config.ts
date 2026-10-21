@@ -14,7 +14,7 @@
  */
 import type { Volatile } from '@deepseek-ai/cordis'
 
-import type { CacheRetention, ChatTemplateKwargValue, ModelThinkingLevel, Provider, ThinkingBudgets, Transport } from '@earendil-works/pi-ai'
+import type { Api, CacheRetention, ChatTemplateKwargValue, Model, ModelThinkingLevel, Provider, ThinkingBudgets, Transport } from '@earendil-works/pi-ai'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
@@ -100,6 +100,12 @@ export interface PiAiProviderProfile {
    * no protocol at all; a route the catalog does not ship must name one.
    */
   api?: string
+  /**
+   * Load this route's model list from `GET {baseURL}/models` with the route
+   * credential, instead of a models array written into configuration. A static
+   * `models` list on the same profile is ignored.
+   */
+  liveModels?: boolean
   /** Endpoint for this route's models; defaults to the installed catalog's endpoint. */
   baseURL?: string
   /**
@@ -208,6 +214,16 @@ export interface ResolvedPiAiProviderProfile
   piProvider?: Provider
   /** First model diagnostic, or the route failure when no model diagnostic is available. */
   catalogError?: string
+  /**
+   * Models published by the last successful live listing. The provider's
+   * `getModels` reads this same array, so a refresh replaces its contents
+   * without rebuilding the snapshot.
+   */
+  liveModelBucket?: Model<Api>[]
+  /** Epoch ms of the last successful live listing. */
+  liveCatalogFetchedAt?: number
+  /** In-flight listing shared by overlapping catalog reads. */
+  liveCatalogPending?: Promise<void> | undefined
   /** Per-model failures reported before attempting a request. */
   modelErrors: ReadonlyMap<string, string>
   /**
@@ -327,6 +343,7 @@ const profile = z.object({
   apiKeyEnv: z.string().role('credential-ref'),
   displayName: z.string(),
   api: z.union(supportedProtocols()),
+  liveModels: z.boolean(),
   baseURL: z.string(),
   models: z.array(modelProfile),
   modelOverrides: z.dict(modelOverride),
@@ -462,27 +479,46 @@ export function resolveProfiles(
     let catalog: RouteCatalog | undefined
     let piProvider: Provider | undefined
     let catalogError: string | undefined
+    let liveModelBucket: Model<Api>[] | undefined
     try {
-      catalog = resolveRouteModels({
-        provider,
-        ...source.api === undefined ? {} : { api: source.api },
-        ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
-        ...source.models === undefined ? {} : { models: source.models },
-        ...source.modelOverrides === undefined ? {} : { modelOverrides: source.modelOverrides },
-        ...source.compat === undefined ? {} : { compat: source.compat },
-        defaultInput,
-        defaultContextWindow: source.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
-        defaultMaxTokens: source.defaultMaxTokens ?? DEFAULT_MAX_TOKENS,
-      }, validation)
-      catalogError = catalog.modelErrors.values().next().value
-      piProvider = buildProvider({
-        provider,
-        displayName,
-        ...source.api === undefined ? {} : { api: source.api },
-        ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
-        models: catalog.models,
-        namesCredential: source.apiKeyEnv !== undefined,
-      })
+      if (source.liveModels === true) {
+        if (source.api === undefined) {
+          throw new Error(`llm-pi-ai: provider "${provider}" liveModels needs an api`)
+        }
+        if (source.baseURL === undefined || source.baseURL.length === 0) {
+          throw new Error(`llm-pi-ai: provider "${provider}" liveModels needs a baseURL`)
+        }
+        liveModelBucket = []
+        piProvider = buildProvider({
+          provider,
+          displayName,
+          api: source.api,
+          baseURL: source.baseURL,
+          models: liveModelBucket,
+          namesCredential: source.apiKeyEnv !== undefined,
+        })
+      } else {
+        catalog = resolveRouteModels({
+          provider,
+          ...source.api === undefined ? {} : { api: source.api },
+          ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
+          ...source.models === undefined ? {} : { models: source.models },
+          ...source.modelOverrides === undefined ? {} : { modelOverrides: source.modelOverrides },
+          ...source.compat === undefined ? {} : { compat: source.compat },
+          defaultInput,
+          defaultContextWindow: source.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
+          defaultMaxTokens: source.defaultMaxTokens ?? DEFAULT_MAX_TOKENS,
+        }, validation)
+        catalogError = catalog.modelErrors.values().next().value
+        piProvider = buildProvider({
+          provider,
+          displayName,
+          ...source.api === undefined ? {} : { api: source.api },
+          ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
+          models: catalog.models,
+          namesCredential: source.apiKeyEnv !== undefined,
+        })
+      }
     } catch (error) {
       if (validation === 'strict' || !(error instanceof PiAiCatalogError)) throw error
       catalogError ??= error.message
@@ -503,6 +539,7 @@ export function resolveProfiles(
       configuredMaxTokens: catalog?.configuredMaxTokens ?? new Map(),
       modelErrors: catalog?.modelErrors ?? new Map(),
       ...piProvider === undefined ? {} : { piProvider },
+      ...liveModelBucket === undefined ? {} : { liveModels: true, liveModelBucket },
       ...catalogError === undefined ? {} : { catalogError },
     })
   }
