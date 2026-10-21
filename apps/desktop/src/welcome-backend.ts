@@ -30,6 +30,8 @@ export interface DesktopWelcomeBackend {
   save(apiKey: string): Promise<{ ok: boolean }>
   /** @param ref - credential name. @param value - secret. @returns whether the host stored it. */
   saveNamed(ref: string, value: string): Promise<{ ok: boolean }>
+  /** @param ref - credential name. @returns whether the host removed it. */
+  removeNamed(ref: string): Promise<{ ok: boolean }>
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -148,6 +150,14 @@ export async function connectDesktopWelcome(
       if (!/^[\x21-\x7e]+$/.test(value)) return { ok: false }
       try {
         await invoke({ namespace: 'credentials', method: 'set', args: { ref, value } })
+        return { ok: true }
+      } catch {
+        return { ok: false }
+      }
+    },
+    async removeNamed(ref) {
+      try {
+        await invoke({ namespace: 'credentials', method: 'unset', args: { ref } })
         return { ok: true }
       } catch {
         return { ok: false }

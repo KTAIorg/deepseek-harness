@@ -8,6 +8,8 @@ export const KITO_DEVICE_CLIENT_ID = 'kito-desktop'
 export const KITO_NEWAPI_BASE_URL = 'https://ktapi.cc'
 export const KITO_NEWAPI_KEY_REF = 'KITO_NEWAPI_API_KEY'
 export const KITO_IDENTITY_TOKEN_REF = 'KITO_IDENTITY_TOKEN'
+/** Device-session refresh token that renews {@link KITO_IDENTITY_TOKEN_REF} without a new Telegram login. */
+export const KITO_IDENTITY_REFRESH_TOKEN_REF = 'KITO_IDENTITY_REFRESH_TOKEN'
 const NEWAPI_QUOTA_PER_USD = 500_000
 export const KITO_MANAGED_TOKEN_NAME = 'kito'
 export const KITO_WALLET_URL = 'https://www.ktapi.cc/wallet'
@@ -52,11 +54,22 @@ export interface KitoDeviceChallenge {
 export interface KitoIdentitySession {
   readonly accountId: string
   readonly token: string
+  /** Present when KT Identity issued a device refresh token with the access token. */
+  readonly refreshToken?: string
+}
+
+/** Result of renewing the Identity access token. */
+export interface KitoIdentityRefresh {
+  readonly token: string
+  /** Present only when KT Identity rotated the refresh token. */
+  readonly refreshToken?: string
 }
 
 /** Public account row. Balance is the shared NewAPI spendable amount in USD. */
 export interface KitoAccountView {
   readonly signedIn: boolean
+  /** The model key is stored, so models work while the Identity login is missing. */
+  readonly keyConfigured?: boolean
   readonly displayName?: string
   /** KT Identity account number, for example `KT251018…`. */
   readonly accountNo?: string
@@ -198,7 +211,34 @@ async function exchange(
   const token = stringField(source?.access_token) ?? stringField(source?.accessToken)
   const accountId = stringField(source?.subject) ?? stringField(source?.account_id)
   if (!token || !accountId) throw new Error('KT Identity device token exchange returned an unexpected payload')
-  return { accountId, token }
+  const refreshToken = stringField(source?.refresh_token) ?? stringField(source?.refreshToken)
+  return refreshToken === undefined ? { accountId, token } : { accountId, token, refreshToken }
+}
+
+/**
+ * Renew the Identity access token with the device refresh token.
+ * KT Identity keeps the refresh token and omits it from the reply; a reply that carries one replaces it.
+ * @param refreshToken - stored {@link KITO_IDENTITY_REFRESH_TOKEN_REF}.
+ * @param input - optional origin, cancellation, and fetch.
+ * @returns the new access token, or undefined when KT Identity rejects the refresh token.
+ */
+export async function refreshKitoIdentity(refreshToken: string, input: FetchInit = {}): Promise<KitoIdentityRefresh | undefined> {
+  const fetchImpl = input.fetchImpl ?? kitoFetch
+  const response = await fetchImpl(`${input.baseUrl ?? identityBaseUrl()}/identity/v1/device/token/refresh`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ refresh_token: refreshToken }),
+    signal: withTimeout(input.signal),
+  })
+  const payload = await readJson(response)
+  if (response.status === 401 || response.status === 403) return undefined
+  if (!response.ok) throw new Error(errorMessage(payload, `KT Identity refresh failed (${response.status})`))
+  const record = asRecord(payload)
+  const source = asRecord(record?.data) ?? record
+  const token = stringField(source?.access_token) ?? stringField(source?.accessToken)
+  if (!token) throw new Error('KT Identity refresh returned an unexpected payload')
+  const rotated = stringField(source?.refresh_token) ?? stringField(source?.refreshToken)
+  return rotated === undefined ? { token } : { token, refreshToken: rotated }
 }
 
 /**

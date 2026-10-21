@@ -8,6 +8,8 @@ import css from './Brand.module.css'
 
 interface KitoAccountView {
   readonly signedIn: boolean
+  /** No Identity login, but the model key is stored and models keep working. */
+  readonly keyConfigured?: boolean
   readonly displayName?: string
   readonly accountNo?: string
   readonly telegramUsername?: string
@@ -101,6 +103,21 @@ function openConsole(account: KitoAccountView | undefined, target: ConsoleTarget
   void fetch(path, { method: 'POST' })
 }
 
+/** Sign out, then ask every account view to read the cleared state. */
+function signOut(): void {
+  void fetch('dsh-app://app/kito/sign-out', { method: 'POST' })
+    .then(() => { window.dispatchEvent(new Event(KITO_ACCOUNT_REFRESH)) })
+}
+
+/**
+ * @param account - latest summary.
+ * @returns the balance a signed-in account or a stored model key can spend, when known.
+ */
+function spendableBalance(account: KitoAccountView | undefined): number | undefined {
+  if (account === undefined || (!account.signedIn && account.keyConfigured !== true)) return undefined
+  return account.balance
+}
+
 function CopyLine({ label, value, copyLabel, copiedLabel }: {
   label: string
   value: string
@@ -178,27 +195,28 @@ export function KitoAccountFooter({ wide, ...controls }: SidebarFooterActionOwne
   const account = useKitoAccount()
   const label = (key: KitoAccountCopyKey): string => controls.t?.(key) ?? zh[key]
   const signedIn = account?.signedIn === true
+  const keyOnly = account !== undefined && !signedIn && account.keyConfigured === true
+  const balance = spendableBalance(account)
   const title = kitoAccountLabel(account, label)
   if (!wide) {
+    const hint = !signedIn && balance !== undefined ? `${title} · ${formatKitoBalance(balance)}` : title
     return (
       <div className={css.account}>
-        <button type="button" className={css.accountButton} onClick={() => { openConsole(account, 'wallet') }} title={title}>K</button>
+        <button type="button" className={css.accountButton} onClick={() => { openConsole(account, 'wallet') }} title={hint}>K</button>
       </div>
     )
   }
   return (
     <div className={css.account}>
-      {signedIn && account !== undefined
-        ? <AccountFacts account={account} label={label} />
-        : (
-          <button type="button" className={css.accountButton} onClick={() => { openConsole(account, 'wallet') }} title={title}>
-            {title}
-          </button>
-        )}
-      {signedIn && account !== undefined && typeof account.balance === 'number' && (
-        <BalanceLine balance={account.balance} label={label} />
-      )}
+      {signedIn && account !== undefined && <AccountFacts account={account} label={label} />}
+      {balance !== undefined && <BalanceLine balance={balance} label={label} />}
       {signedIn && account !== undefined && <AccountLinks account={account} label={label} buttonClass={css.accountButton} />}
+      {keyOnly && <p className={css.accountHint}>{label('signInHint')}</p>}
+      {!signedIn && (
+        <button type="button" className={css.accountButton} onClick={() => { openConsole(account, 'wallet') }} title={title}>
+          {title}
+        </button>
+      )}
     </div>
   )
 }
@@ -212,6 +230,7 @@ export function KitoAccountSection({ t }: SettingsSectionOwnerProps & KitoLocale
   const account = useKitoAccount()
   const label = (key: KitoAccountCopyKey): string => t?.(key) ?? zh[key]
   const signedIn = account?.signedIn === true
+  const balance = spendableBalance(account)
   const name = account?.displayName?.trim() || 'Kito'
   return (
     <section className={css.panel} aria-label={label('account')}>
@@ -220,15 +239,13 @@ export function KitoAccountSection({ t }: SettingsSectionOwnerProps & KitoLocale
         {account === undefined ? label('loading') : signedIn ? label('signedIn') : label('signInHint')}
       </p>
       {signedIn && account !== undefined && <AccountFacts account={account} label={label} />}
-      {signedIn && account !== undefined && typeof account.balance === 'number' && (
-        <BalanceLine balance={account.balance} label={label} />
-      )}
+      {balance !== undefined && <BalanceLine balance={balance} label={label} />}
       {account !== undefined && (
         signedIn
           ? (
             <>
               <AccountLinks account={account} label={label} buttonClass={css.panelButton} />
-              <button type="button" className={css.panelButton} onClick={() => { void fetch('dsh-app://app/kito/sign-out', { method: 'POST' }) }}>
+              <button type="button" className={css.panelButton} onClick={signOut}>
                 {label('signOut')}
               </button>
             </>

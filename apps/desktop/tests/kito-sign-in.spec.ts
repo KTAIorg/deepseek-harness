@@ -6,11 +6,15 @@ describe('Kito welcome sign-in', () => {
   it('shows the Telegram code, then stores the NewAPI key', async () => {
     const published: string[] = []
     const saved: string[] = []
+    const identities: string[] = []
+    const refreshTokens: string[] = []
     let opened = ''
     let succeeded = false
     const signIn = createKitoSignIn({
       publish: (state) => { published.push(state.attempt?.phase ?? state.status) },
       saveKey: (key) => { saved.push(key); return Promise.resolve({ ok: true }) },
+      saveIdentity: (token) => { identities.push(token); return Promise.resolve({ ok: true }) },
+      saveRefreshToken: (token) => { refreshTokens.push(token); return Promise.resolve({ ok: true }) },
       onSuccess: () => { succeeded = true },
       openLogin: (url) => { opened = url },
       fetchImpl: async (url, init) => {
@@ -29,7 +33,9 @@ describe('Kito welcome sign-in', () => {
           return new Response(JSON.stringify({ status: 'approved' }), { status: 200 })
         }
         if (target.endsWith('/token')) {
-          return new Response(JSON.stringify({ access_token: 'identity-token', subject: 'acc-1' }), { status: 200 })
+          return new Response(JSON.stringify({
+            access_token: 'identity-token', subject: 'acc-1', refresh_token: 'refresh-1',
+          }), { status: 200 })
         }
         if (target.endsWith('/api/iam/token/ensure')) {
           return new Response(JSON.stringify({ key: 'relay' }), { status: 200 })
@@ -40,6 +46,8 @@ describe('Kito welcome sign-in', () => {
     const state = await signIn.start()
     expect(opened).toBe('https://login.ktyun.cc/device')
     expect(saved).toEqual(['sk-relay'])
+    expect(identities).toEqual(['identity-token'])
+    expect(refreshTokens).toEqual(['refresh-1'])
     expect(succeeded).toBe(true)
     expect(state.status).toBe('credential-stored')
     expect(state.attempt?.phase).toBe('succeeded')

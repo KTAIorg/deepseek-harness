@@ -28,6 +28,8 @@ export interface KitoSignIn {
  * Run one Telegram device login and store the resulting NewAPI key.
  * @param options.publish - push a snapshot to the welcome window.
  * @param options.saveKey - persist `KITO_NEWAPI_API_KEY`.
+ * @param options.saveIdentity - persist `KITO_IDENTITY_TOKEN`.
+ * @param options.saveRefreshToken - persist `KITO_IDENTITY_REFRESH_TOKEN` when KT Identity issued one.
  * @param options.onSuccess - open the workspace after the key is stored.
  * @param options.openLogin - open the confirmation page.
  * @returns start, cancel, and state operations.
@@ -36,6 +38,7 @@ export function createKitoSignIn(options: {
   publish: (state: KitoWelcomeState) => void
   saveKey: (key: string) => Promise<{ ok: boolean }>
   saveIdentity?: (token: string) => Promise<{ ok: boolean }>
+  saveRefreshToken?: (token: string) => Promise<{ ok: boolean }>
   onSuccess: () => void
   openLogin?: (url: string) => void
   fetchImpl?: typeof fetch
@@ -103,6 +106,7 @@ export function createKitoSignIn(options: {
         const saved = await options.saveKey(key)
         if (!saved.ok) throw new Error('KT Identity sign-in could not store the API key')
         await options.saveIdentity?.(identity.token)
+        if (identity.refreshToken !== undefined) await options.saveRefreshToken?.(identity.refreshToken)
         if (current.id !== id) return snapshot()
         current.phase = 'succeeded'
         current.status = 'credential-stored'

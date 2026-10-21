@@ -3,11 +3,11 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '../src/client/index.ts'
-import { KitoAccountFooter, kitoAccountLabel } from '../src/client/AccountFooter.tsx'
+import { KitoAccountFooter, KitoAccountSection, kitoAccountLabel } from '../src/client/AccountFooter.tsx'
 import { KITO_EXTRA_LANGUAGES, KitoLanguageDock, languageDockRight, trailingClusterLeft } from '../src/client/LanguagePicker.tsx'
 import { LANGUAGE_PACKS } from '../src/client/language-packs.ts'
 import { zh } from '../src/client/copy.ts'
@@ -141,6 +141,53 @@ describe('Kito browser-brand plugin', () => {
     expect(view.queryByRole('button', { name: 'English' })).toBeNull()
     view.getAllByRole('button', { name: '复制' })[1]?.click()
     expect(clipboard.writeClipboard).toHaveBeenCalledWith('KT251018ABCD')
+  })
+
+  it('shows the spendable balance and a Telegram sign-in when only the model key is stored', async () => {
+    const fetchMock = vi.fn(async (url: string) => url.endsWith('/kito/account')
+      ? new Response(JSON.stringify({ signedIn: false, keyConfigured: true, balance: 499.95 }))
+      : new Response(JSON.stringify({ ok: true })))
+    vi.stubGlobal('fetch', fetchMock)
+    const view = render(<KitoAccountFooter wide t={key => zh[key]} />)
+    expect(await view.findByText('余额 (USD) $499.95')).toBeTruthy()
+    expect(view.getByText(zh.signInHint)).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: zh.signIn }))
+    expect(fetchMock).toHaveBeenCalledWith('dsh-app://app/kito/sign-in', { method: 'POST' })
+    cleanup()
+    const narrow = render(<KitoAccountFooter wide={false} t={key => zh[key]} />)
+    await waitFor(() => {
+      expect(narrow.getByRole('button', { name: 'K' }).getAttribute('title')).toBe(`${zh.signIn} · $499.95`)
+    })
+  })
+
+  it('keeps one sign-in button and no balance when neither a login nor a model key is stored', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ signedIn: false, balance: 3 }))))
+    const view = render(<KitoAccountFooter wide t={key => zh[key]} />)
+    expect(await view.findByRole('button', { name: zh.signIn })).toBeTruthy()
+    expect(view.queryByText(zh.signInHint)).toBeNull()
+    expect(view.queryByText(/余额/)).toBeNull()
+  })
+
+  it('shows the model-key balance on the settings page and refreshes after signing out', async () => {
+    let account: object = { signedIn: false, keyConfigured: true, balance: 1.5 }
+    const fetchMock = vi.fn(async (url: string) => url.endsWith('/kito/account')
+      ? new Response(JSON.stringify(account))
+      : new Response(JSON.stringify({ ok: true })))
+    vi.stubGlobal('fetch', fetchMock)
+    const keyOnly = render(<KitoAccountSection close={() => {}} t={key => zh[key]} />)
+    expect(await keyOnly.findByText('余额 (USD) $1.50')).toBeTruthy()
+    expect(keyOnly.getByRole('heading', { name: zh.signedOut })).toBeTruthy()
+    cleanup()
+    account = { signedIn: true, displayName: 'Ada', balance: 2 }
+    const view = render(<KitoAccountSection close={() => {}} t={key => zh[key]} />)
+    expect(await view.findByRole('heading', { name: 'Ada' })).toBeTruthy()
+    const accountReads = () => fetchMock.mock.calls.filter(([url]) => url.endsWith('/kito/account')).length
+    const before = accountReads()
+    account = { signedIn: false }
+    fireEvent.click(view.getByRole('button', { name: zh.signOut }))
+    expect(fetchMock).toHaveBeenCalledWith('dsh-app://app/kito/sign-out', { method: 'POST' })
+    await waitFor(() => { expect(accountReads()).toBe(before + 1) })
+    expect(await view.findByRole('heading', { name: zh.signedOut })).toBeTruthy()
   })
 
   it('translates the shell into every language on the picker', () => {

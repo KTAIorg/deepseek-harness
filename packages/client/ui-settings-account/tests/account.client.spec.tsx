@@ -218,6 +218,23 @@ it('hides the More menu sign-in after a Kito login', async () => {
   expect(screen.queryByRole('menuitem', { name: zh.signIn })).toBeNull()
 })
 
+it('hides the More menu sign-in while a Kito model key works without a login', async () => {
+  const fetchAccount = vi.fn(async () => new Response(JSON.stringify({ signedIn: false, keyConfigured: true })))
+  vi.stubGlobal('fetch', fetchAccount)
+  onTestFinished(() => { vi.unstubAllGlobals() })
+  const operations = operationsOf({ status: 'signed-out', attempt: null })
+  const { AccountMenu } = await import('../src/client/AccountMenu.tsx')
+  render(<AccountMenu {...({} as GlobalStandardProps)} {...operations} settingsOpen={false}
+    useAccount={selector => selector(operations.hooks.account.getSnapshot())}
+    useTheme={selector => selector(operations.hooks.theme.getSnapshot())} wide openOnboarding={() => {}} openSettings={() => {}}
+    t={key => key in zh ? zh[key as AccountKey] : key} />)
+  await waitFor(() => { expect(fetchAccount).toHaveBeenCalled() })
+  await act(async () => { await fetchAccount.mock.results[0]?.value })
+  fireEvent.click(screen.getByRole('button', { name: zh.menu }))
+  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([zh.settings, zh.contactUs])
+  expect(screen.queryByRole('menuitem', { name: zh.signIn })).toBeNull()
+})
+
 it('reports a failed start in the login dialog, not as a sidebar alert', async () => {
   const operations = mount({ status: 'signed-out', attempt: null })
   cleanup()

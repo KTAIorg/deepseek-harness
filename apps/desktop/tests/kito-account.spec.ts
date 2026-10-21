@@ -4,7 +4,15 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { handleKitoAppRoute } from '../src/kito-account-route.ts'
 import { readStoredCredential } from '../src/kito-credentials.ts'
-import { accountUsageRequest, criticalRetryDelayMs, fetchKitoAccount, KITO_CONSOLE_PAGES, newapiQuotaToUsd, usdFromAccountUsage } from '../src/kito-identity.ts'
+import {
+  accountUsageRequest,
+  criticalRetryDelayMs,
+  fetchKitoAccount,
+  KITO_CONSOLE_PAGES,
+  newapiQuotaToUsd,
+  refreshKitoIdentity,
+  usdFromAccountUsage,
+} from '../src/kito-identity.ts'
 import { consoleLogoutRequest, consoleRefreshRequest, establishKitoConsoleSession, parseSetCookie } from '../src/kito-wallet.ts'
 
 describe('Kito account summary', () => {
@@ -199,5 +207,65 @@ describe('Kito account summary', () => {
     })
     expect(response?.status).toBe(200)
     expect(signedOut).toBe(true)
+  })
+
+  it('removes the stored login on sign-out so a refresh cannot sign the person back in', async () => {
+    const steps: string[] = []
+    await handleKitoAppRoute(new Request('dsh-app://app/kito/sign-out', { method: 'POST' }), {
+      showWelcome: () => undefined,
+      openWallet: async () => undefined,
+      signOutConsole: async () => { steps.push('console') },
+      forgetIdentity: async () => { steps.push('identity') },
+    })
+    expect(steps).toEqual(['console', 'identity'])
+  })
+
+  it('renews an expired login once from the refresh token', async () => {
+    let refreshes = 0
+    const response = await handleKitoAppRoute(new Request('dsh-app://app/kito/account'), {
+      showWelcome: () => undefined,
+      openWallet: async () => undefined,
+      readToken: async () => 'expired',
+      loadAccount: async token => token === 'renewed' ? { signedIn: true, displayName: 'Ada' } : { signedIn: false },
+      refreshIdentity: async () => { refreshes += 1; return 'renewed' },
+    })
+    await expect(response?.json()).resolves.toEqual({ signedIn: true, displayName: 'Ada' })
+    expect(refreshes).toBe(1)
+  })
+
+  it('reports a stored model key and its balance when there is no login', async () => {
+    const options = {
+      showWelcome: () => undefined,
+      openWallet: async () => undefined,
+      readToken: async () => undefined,
+      refreshIdentity: async () => undefined,
+      readBalance: async () => 499.95,
+    }
+    const withKey = await handleKitoAppRoute(new Request('dsh-app://app/kito/account'), { ...options, hasModelKey: async () => true })
+    await expect(withKey?.json()).resolves.toEqual({ signedIn: false, keyConfigured: true, balance: 499.95 })
+    const unreadable = await handleKitoAppRoute(new Request('dsh-app://app/kito/account'), {
+      ...options,
+      hasModelKey: async () => true,
+      readBalance: async () => { throw new Error('offline') },
+    })
+    await expect(unreadable?.json()).resolves.toEqual({ signedIn: false, keyConfigured: true })
+    const withoutKey = await handleKitoAppRoute(new Request('dsh-app://app/kito/account'), { ...options, hasModelKey: async () => false })
+    await expect(withoutKey?.json()).resolves.toEqual({ signedIn: false })
+  })
+
+  it('renews the Identity token through the device refresh endpoint', async () => {
+    const requests: Array<{ url: string; body: unknown }> = []
+    const reply = (status: number, body: unknown) => async (url: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: String(url), body: JSON.parse(String(init?.body)) })
+      return new Response(JSON.stringify(body), { status })
+    }
+    await expect(refreshKitoIdentity('refresh-1', { baseUrl: 'https://login.test', fetchImpl: reply(200, { access_token: 'fresh' }) }))
+      .resolves.toEqual({ token: 'fresh' })
+    expect(requests[0]).toEqual({ url: 'https://login.test/identity/v1/device/token/refresh', body: { refresh_token: 'refresh-1' } })
+    await expect(refreshKitoIdentity('refresh-1', { fetchImpl: reply(200, { data: { accessToken: 'fresh', refreshToken: 'refresh-2' } }) }))
+      .resolves.toEqual({ token: 'fresh', refreshToken: 'refresh-2' })
+    await expect(refreshKitoIdentity('refresh-1', { fetchImpl: reply(401, { error: 'invalid_refresh_token' }) })).resolves.toBeUndefined()
+    await expect(refreshKitoIdentity('refresh-1', { fetchImpl: reply(503, { message: 'down' }) })).rejects.toThrow()
+    await expect(refreshKitoIdentity('refresh-1', { fetchImpl: reply(200, {}) })).rejects.toThrow('unexpected payload')
   })
 })

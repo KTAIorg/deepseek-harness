@@ -65,7 +65,8 @@ import { DesktopBackgroundNotice } from './background-notice.ts'
 import { handleKitoAppRoute } from './kito-account-route.ts'
 import { openKitoConsole, readKitoAccountBalance, signOutKitoConsole } from './kito-wallet-window.ts'
 import { shouldDismissNewWelcome } from './kito-welcome-policy.ts'
-import { identityBaseUrl, KITO_IDENTITY_TOKEN_REF } from './kito-identity.ts'
+import { identityBaseUrl, KITO_IDENTITY_REFRESH_TOKEN_REF, KITO_IDENTITY_TOKEN_REF, refreshKitoIdentity } from './kito-identity.ts'
+import { createKitoIdentityRefresher } from './kito-identity-refresh.ts'
 import { createKitoSignIn, type KitoSignIn } from './kito-sign-in.ts'
 import { readStoredCredential } from './kito-credentials.ts'
 import { runKitoDesktopLink } from './kito-desktop-link.ts'
@@ -637,6 +638,13 @@ async function main(): Promise<void> {
     window.once('closed', () => { resolve() })
   })
 
+  const refreshKitoIdentityToken = createKitoIdentityRefresher({
+    readRefreshToken: () => readStoredCredential(KITO_IDENTITY_REFRESH_TOKEN_REF),
+    refresh: refreshToken => refreshKitoIdentity(refreshToken),
+    saveToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false },
+    saveRefreshToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false },
+  })
+
   protocol.handle(SCHEME, async (request) => {
     const url = new URL(request.url)
     // Shell-owned documents live in the application bundle and never pass through the Host.
@@ -648,6 +656,13 @@ async function main(): Promise<void> {
         openConsole: (token, page) => openKitoConsole(token, page),
         signOutConsole: () => signOutKitoConsole(),
         readBalance: () => readKitoAccountBalance(),
+        refreshIdentity: () => refreshKitoIdentityToken(),
+        forgetIdentity: async () => {
+          for (const ref of [KITO_IDENTITY_TOKEN_REF, KITO_IDENTITY_REFRESH_TOKEN_REF]) {
+            const removed = await welcomeBackend?.removeNamed(ref)
+            if (removed?.ok !== true) console.error('kito sign-out could not remove a stored login credential')
+          }
+        },
       })
       if (kito !== undefined) return kito
       if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname.startsWith('/assets/')
@@ -1151,6 +1166,7 @@ async function main(): Promise<void> {
             },
             saveKey: async key => welcomeBackend?.save(key) ?? { ok: false },
             saveIdentity: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false },
+            saveRefreshToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false },
             onSuccess: () => {
               void enterWorkspace({ activate: false }).then(() => { publishKitoAccount() }).catch(() => undefined)
             },
@@ -1263,6 +1279,10 @@ async function main(): Promise<void> {
       saveIdentity: async (token) => {
         await waitForWelcomeBackend()
         return welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false }
+      },
+      saveRefreshToken: async (token) => {
+        await waitForWelcomeBackend()
+        return welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false }
       },
       saveKey: async (key) => {
         await waitForWelcomeBackend()

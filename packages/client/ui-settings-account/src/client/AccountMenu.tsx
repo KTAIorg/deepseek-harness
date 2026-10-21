@@ -15,15 +15,20 @@ import css from './AccountMenu.module.css'
 /** Account launcher composed by the settings shell. */
 export type AccountMenuProps = PropsRuntime<'settings.launcher'> & PropsLocale<'settings.account'> & InjectFace<AccountSectionInjected>
 
-/** Kito Telegram login is a different account from the DeepSeek menu. A missing route means this build has no Kito account. */
+/**
+ * Kito Telegram login is a different account from the DeepSeek menu. A stored Kito model key also
+ * counts, because models already work. A missing route means this build has no Kito account.
+ */
 function useKitoSignedIn(): boolean {
   const [signedIn, setSignedIn] = useState(false)
   useEffect(() => {
     let active = true
     const load = (): void => {
       void fetch('dsh-app://app/kito/account')
-        .then(async response => response.ok ? await response.json() as { signedIn?: boolean } : { signedIn: false })
-        .then((body) => { if (active) setSignedIn(body.signedIn === true) })
+        .then(async response => response.ok
+          ? await response.json() as { signedIn?: boolean; keyConfigured?: boolean }
+          : { signedIn: false })
+        .then((body) => { if (active) setSignedIn(body.signedIn === true || body.keyConfigured === true) })
         .catch(() => { if (active) setSignedIn(false) })
     }
     load()
