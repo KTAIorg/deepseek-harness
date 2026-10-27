@@ -1,6 +1,9 @@
 /** Compact language control: a flag button that opens the language list. */
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { KitoLocaleControls } from './AccountFooter.tsx'
+import { en, zh, type KitoAccountCopyKey } from './copy.ts'
 import css from './Brand.module.css'
 
 interface LanguageChoice {
@@ -29,11 +32,11 @@ export const KITO_LANGUAGES: readonly LanguageChoice[] = [
   { id: 'ar', native: 'العربية', zhName: '阿拉伯语', region: 'africaMiddleEast' },
 ]
 
-const REGION_LABEL: Record<LanguageChoice['region'], { zh: string; en: string }> = {
-  common: { zh: '常用', en: 'Common' },
-  southeastAsia: { zh: '东南亚', en: 'Southeast Asia' },
-  southAsia: { zh: '南亚', en: 'South Asia' },
-  africaMiddleEast: { zh: '非洲与中东', en: 'Africa and Middle East' },
+const REGION_LABEL: Record<LanguageChoice['region'], KitoAccountCopyKey> = {
+  common: 'regionCommon',
+  southeastAsia: 'regionSoutheastAsia',
+  southAsia: 'regionSouthAsia',
+  africaMiddleEast: 'regionAfricaMiddleEast',
 }
 
 /** Extra languages registered onto the shared catalog. Chinese and English are already built in. */
@@ -126,124 +129,76 @@ function Flag({ code }: { code: string }) {
   )
 }
 
-/**
- * Left edge of the session header's trailing buttons, skipping the flexible title.
- * Empty when that row has not rendered a visible control.
- * @param corner - the header corner seat.
- * @returns the leftmost visible trailing control, in viewport pixels.
- */
-export function trailingClusterLeft(corner: Element): number | null {
-  const boxes: number[] = []
-  let node: Element | null = corner
-  while (node !== null) {
-    const box = node.getBoundingClientRect()
-    if (box.width > 0 && box.height > 0) boxes.push(box.left)
-    const previous: Element | null = node.previousElementSibling
-    if (previous === null) break
-    const grow = getComputedStyle(previous).flexGrow
-    if (grow !== '' && grow !== '0') break
-    node = previous
-  }
-  if (boxes.length === 0) return null
-  return Math.min(...boxes)
-}
-
-/** Pixel offset that keeps the language button to the left of the trailing header buttons. */
-export function languageDockRight(viewportWidth: number, clusterLeft: number | null): string {
-  if (clusterLeft === null) return ''
-  return `${Math.max(8, Math.round(viewportWidth - clusterLeft + 8))}px`
+/** Locale controls and the visibility of a sessionless trailing entry. */
+export interface KitoLanguageDockProps extends KitoLocaleControls {
+  /** Selected Session supplied by the slot, absent when none is selected. */
+  readonly sessionId?: PropsRuntime<'conversation.header.trailing'>['sessionId']
+  /** Show this entry only when no Session is selected. */
+  readonly hideWhenSession?: boolean
 }
 
 /**
- * One flag button. The list opens underneath. On a session the button sits
- * left of the file, Finder, and other header controls.
- * @param controls - shared locale read and write.
- * @returns the picker.
+ * One flag button, shown only by the placement that owns the current Session state.
+ * @param props - locale controls and sessionless-entry visibility.
+ * @returns the picker, or null when a Session-specific placement owns the entry.
  */
-export function KitoLanguageDock(controls: KitoLocaleControls) {
+export function KitoLanguageDock({ hideWhenSession, sessionId, ...controls }: KitoLanguageDockProps) {
+  if (hideWhenSession && sessionId !== undefined) return null
+  return <KitoLanguageDockView {...controls} />
+}
+
+function KitoLanguageDockView(controls: KitoLocaleControls) {
   const { active } = useActiveLocale(controls)
   const current = KITO_LANGUAGES.find(item => item.id === active) ?? KITO_LANGUAGES[0]
   const [open, setOpen] = useState(false)
-  const root = useRef<HTMLDivElement>(null)
-  const panelId = useId()
   const chinese = active === 'zh'
-  useLayoutEffect(() => {
-    const dock = root.current
-    if (dock === null) return undefined
-    let frame = 0
-    const place = (): void => {
-      const corner = document.querySelector('[data-conversation-header-corner]')
-      dock.style.right = languageDockRight(
-        window.innerWidth,
-        corner === null ? null : trailingClusterLeft(corner),
-      )
-    }
-    const schedule = (): void => {
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(place)
-    }
-    schedule()
-    const resize = new ResizeObserver(schedule)
-    resize.observe(document.documentElement)
-    const header = document.querySelector('[data-window-drag]')
-    if (header !== null) {
-      resize.observe(header)
-    }
-    const mutation = new MutationObserver(schedule)
-    if (header !== null) mutation.observe(header, { childList: true, subtree: true })
-    return () => {
-      cancelAnimationFrame(frame)
-      resize.disconnect()
-      mutation.disconnect()
-    }
-  }, [])
-  useEffect(() => {
-    if (!open) return undefined
-    const close = (event: MouseEvent): void => {
-      if (root.current !== null && !root.current.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => { document.removeEventListener('mousedown', close) }
-  }, [open])
+  const label = (key: KitoAccountCopyKey): string => controls.t?.(key) ?? (chinese ? zh[key] : en[key])
+  /* v8 ignore next -- KITO_LANGUAGES always includes zh as the fallback. */
   if (current === undefined || controls.setLocale === undefined) return null
   return (
-    <div className={css.languageDock} ref={root}>
-      <button
-        type="button"
-        className={css.languageTrigger}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => { setOpen(value => !value) }}
-      >
-        <Flag code={current.id} />
-        <span className={css.languageTriggerName}>{current.native}</span>
-      </button>
-      {open && (
-        <div className={css.languagePanel} id={panelId} role="menu" aria-label={chinese ? '选择语言' : 'Language'}>
-          {(['common', 'southeastAsia', 'southAsia', 'africaMiddleEast'] as const).map(region => (
-            <section key={region}>
-              <p className={css.languageGroup}>{REGION_LABEL[region][chinese ? 'zh' : 'en']}</p>
-              <div className={css.languageGrid}>
-                {KITO_LANGUAGES.filter(item => item.region === region).map(item => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    role="menuitem"
-                    className={item.id === active ? css.languageOptionActive : css.languageOption}
-                    onClick={() => { controls.setLocale?.(item.id); setOpen(false) }}
-                  >
-                    <Flag code={item.id} />
-                    <span>{item.native}</span>
-                    {item.id !== active && <span className={css.languageAux}>{chinese ? item.zhName : item.native}</span>}
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+    <Menu
+      open={open}
+      onClose={() => { setOpen(false) }}
+      portal
+      autoFocus
+      align="end"
+      className={css.languageDock}
+      listClassName={css.languagePanel}
+      anchor={(
+        <button
+          type="button"
+          className={css.languageTrigger}
+          aria-label={current.native}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          title={label('language')}
+          onClick={() => { setOpen(value => !value) }}
+        >
+          <Flag code={current.id} />
+        </button>
       )}
-    </div>
+    >
+      {(['common', 'southeastAsia', 'southAsia', 'africaMiddleEast'] as const).map(region => (
+        <section key={region}>
+          <p className={css.languageGroup}>{label(REGION_LABEL[region])}</p>
+          <div className={css.languageGrid}>
+            {KITO_LANGUAGES.filter(item => item.region === region).map(item => (
+              <button
+                key={item.id}
+                type="button"
+                role="menuitem"
+                className={item.id === active ? css.languageOptionActive : css.languageOption}
+                onClick={() => { controls.setLocale?.(item.id); setOpen(false) }}
+              >
+                <Flag code={item.id} />
+                <span>{item.native}</span>
+                {item.id !== active && <span className={css.languageAux}>{chinese ? item.zhName : item.native}</span>}
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+    </Menu>
   )
 }
 

@@ -12,6 +12,7 @@ function assemble(namespaces: Record<string, Record<string, Row>>): Record<strin
       const dict: Record<string, string> = {}
       for (const [key, values] of Object.entries(rows)) {
         const value = values[index]
+        /* v8 ignore next -- Every shipped locale row has all 13 values. */
         if (value !== undefined) dict[key] = value
       }
       pack[namespace] = dict

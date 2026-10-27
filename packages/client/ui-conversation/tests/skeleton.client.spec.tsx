@@ -426,13 +426,18 @@ describe('Hero chrome', () => {
 })
 
 describe('ConversationRoot resident composer', () => {
-  it('keeps global header navigation without selecting a Session', () => {
+  it('keeps global header navigation with or without selecting a Session', () => {
     const b = mount(sessionSnapshotOf(), [], undefined, { sessionId: undefined })
     expect(b.view.container.querySelector('header')).not.toBeNull()
     expect(b.view.getByTestId('view-conversation.header.leading')).toBeTruthy()
+    expect(b.view.getByTestId('view-conversation.header.trailing')).toBeTruthy()
     expect(b.slotCalls).not.toContain('conversation.session.header')
     expect(b.view.queryByRole('tablist')).toBeNull()
     expect(b.view.queryByTestId('view-conversation.session.header.corner')).toBeNull()
+
+    const active = mount(sessionSnapshotOf())
+    expect(within(active.view.container).getByTestId('view-conversation.header.trailing')).toBeTruthy()
+    expect(within(active.view.container).getByTestId('view-conversation.session.header.utilities')).toBeTruthy()
   })
 
   it('does not redispatch composer child slots for an unrelated Session publication', () => {

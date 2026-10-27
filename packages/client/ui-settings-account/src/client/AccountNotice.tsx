@@ -6,7 +6,7 @@
  * because the user acted on it. An award that expired before a render is not
  * drawn at all.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { IconCloseOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { BonusNotice } from './bonus-notices.ts'
@@ -60,7 +60,7 @@ export function AccountNoticeStack({ notices, anchor, title, closeLabel, onShown
   onDismiss: (orderId: BonusNotice['orderId']) => void
 }) {
   const [position, setPosition] = useState<{ left: number; bottom: number }>()
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!anchor.current) return
     const element = anchor.current
     const update = () => {

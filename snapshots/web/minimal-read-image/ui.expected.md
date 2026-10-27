@@ -1,6 +1,7 @@
 - banner:
   - navigation "Session hierarchy": Use read_image to inspect red.png.
   - text: Minimal mode
+  - button "English"
   - button "More actions"
   - button "Open right sidebar"
   - tablist:

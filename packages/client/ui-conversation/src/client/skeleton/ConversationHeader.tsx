@@ -22,6 +22,9 @@ export function ConversationHeader({ sessionId, useSession, useConversation, ren
       {sessionId === undefined
         ? <div className={css.titleRow} />
         : renderSlot('conversation.session.header', { hideChrome: blank })}
+      <div className={css.headerTrailing}>
+        {renderSlot('conversation.header.trailing', {})}
+      </div>
     </header>
   )
 }

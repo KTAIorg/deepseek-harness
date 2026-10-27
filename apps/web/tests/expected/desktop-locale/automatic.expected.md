@@ -1,6 +1,7 @@
 - dialog "设置":
   - text: 设置
   - navigation:
+    - button "账号"
     - button "通用设置"
     - button "模型"
     - button "内置插件"

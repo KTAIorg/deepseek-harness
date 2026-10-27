@@ -127,6 +127,7 @@ root [AppFrame]
    └─ main.conversation [ConversationRoot / ConversationMainPanel]
       ├─ conversation.header [ConversationHeader]
       │  ├─ conversation.header.leading
+      │  ├─ conversation.header.trailing
       │  └─ conversation.session.header [ConversationSessionHeader]
       │     ├─ conversation.session.header.lineage
       │     ├─ conversation.session.header.actions

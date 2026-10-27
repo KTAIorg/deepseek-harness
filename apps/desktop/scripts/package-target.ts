@@ -436,6 +436,7 @@ export async function packageTarget(
   const artifactsRoot = desktopArtifactOutput(buildPaths, invocation).directory
   const buildEnv = withoutWindowsSigningEnvironment(withoutDesktopUploadCredentials(
     desktopElectronBuilderEnvironment(environment, invocation.unsigned)))
+  if (process.env.DSH_BUILD_CLIENT_PROFILE === 'kito') buildEnv.DSH_BUILD_CLIENT_PROFILE = 'kito'
   const targetEnv: NodeJS.ProcessEnv = {
     ...buildEnv,
     DSH_DESKTOP_MACOS_SKIP_NOTARIZATION: invocation.skipNotarization ? '1' : '0',

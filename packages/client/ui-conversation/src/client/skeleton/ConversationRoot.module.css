@@ -15,7 +15,7 @@
    grows past 76px. */
 .header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   flex: none;
   box-sizing: border-box;
   min-height: 76px;
@@ -58,7 +58,8 @@
 :global([data-platform='darwin']) .headerLeading,
 :global([data-platform='darwin']) .headerActions,
 :global([data-platform='darwin']) .headerUtilities,
-:global([data-platform='darwin']) .headerCorner {
+:global([data-platform='darwin']) .headerCorner,
+:global([data-platform='darwin']) .headerTrailing {
   -webkit-app-region: no-drag;
 }
 
@@ -98,6 +99,20 @@
   flex: none;
   align-items: center;
   gap: 8px;
+}
+
+.headerTrailing {
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-left: 8px;
+}
+
+.headerTrailing:empty {
+  display: none;
 }
 
 .crumbs {

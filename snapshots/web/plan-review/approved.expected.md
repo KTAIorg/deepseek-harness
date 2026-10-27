@@ -1,6 +1,7 @@
 - banner:
   - navigation "Session hierarchy": "Plan a small change: add"
   - text: Standard mode
+  - button "English"
   - button "More actions"
   - tablist:
     - tab "Chat" [selected]

@@ -430,6 +430,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     name: 'conversation.header',
     children: {
       'conversation.header.leading': { kind: 'single', scope: 'root' },
+      'conversation.header.trailing': { kind: 'list', scope: 'session-maybe' },
       'conversation.session.header': { kind: 'single', scope: 'session' },
     },
   }, ConversationHeader)

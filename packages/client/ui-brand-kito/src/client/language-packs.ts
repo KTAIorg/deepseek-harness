@@ -13,6 +13,7 @@ function assemble(namespaces: Record<string, Record<string, Row>>): Record<strin
       const dict: Record<string, string> = {}
       for (const [key, values] of Object.entries(rows)) {
         const value = values[index]
+        /* v8 ignore next -- Every shipped locale row has all 13 values. */
         if (value !== undefined) dict[key] = value
       }
       pack[namespace] = dict
@@ -29,6 +30,7 @@ function mergePacks(
   const merged: Record<string, Record<string, Record<string, string>>> = {}
   for (const locale of new Set([...Object.keys(base), ...Object.keys(extra)])) {
     const target: Record<string, Record<string, string>> = { ...base[locale] }
+    /* v8 ignore next -- assemble() materializes every locale id before this merge. */
     for (const [namespace, dict] of Object.entries(extra[locale] ?? {})) {
       target[namespace] = { ...target[namespace], ...dict }
     }
@@ -64,6 +66,10 @@ export const LANGUAGE_PACKS = mergePacks(assemble({
     loading: ['खाता पढ़ा जा रहा है', 'Đang đọc tài khoản', 'กำลังอ่านบัญชี', 'Membaca akun', 'အကောင့်ဖတ်နေသည်', 'Binabasa ang account', 'កំពុងអានគណនី', 'ගිණුම කියවමින්', 'खाता पढ्दै', 'Account chhiar mek', 'መለያ በማንበብ ላይ', 'Herrega dubbisaa jira', 'جارٍ قراءة الحساب'],
     signedIn: ['साइन इन हो गया', 'Đã đăng nhập', 'เข้าสู่ระบบแล้ว', 'Sudah masuk', 'ဝင်ပြီး', 'Naka-sign in', 'បានចូល', 'පිවිස ඇත', 'लगइन भयो', 'Lut a ni', 'ገብቷል', 'Seente', 'تم تسجيل الدخول'],
     signedOut: ['साइन इन नहीं है', 'Chưa đăng nhập', 'ยังไม่เข้าสู่ระบบ', 'Belum masuk', 'မဝင်ရသေး', 'Hindi naka-sign in', 'មិនទាន់ចូល', 'පිවිස නැත', 'लगइन छैन', 'Lut lo', 'አልገባም', 'Hin seenne', 'غير مسجّل'],
+    keyReady: ['मॉडल उपलब्ध है', 'Mô hình khả dụng', 'โมเดลพร้อมใช้งาน', 'Model tersedia', 'မော်ဒယ် အသုံးပြုနိုင်သည်', 'Available ang model', 'ម៉ូដែលអាចប្រើបាន', 'ආකෘතිය තිබේ', 'मोडेल उपलब्ध छ', 'Model a awm', 'ሞዴሉ ይገኛል', 'Moodeelni ni jira', 'النموذج متاح'],
+    bindTelegram: ['Telegram लिंक करें (वैकल्पिक)', 'Liên kết Telegram (tùy chọn)', 'เชื่อมโยง Telegram (ไม่บังคับ)', 'Tautkan Telegram (opsional)', 'Telegram ချိတ်ဆက်ရန် (ရွေးချယ်နိုင်သည်)', 'I-link ang Telegram (opsyonal)', 'ភ្ជាប់ Telegram (ជម្រើស)', 'Telegram සම්බන්ධ කරන්න (විකල්ප)', 'Telegram जोड्नुहोस् (वैकल्पिक)', 'Telegram inzawm (duh thlan)', 'Telegramን ያገናኙ (አማራጭ)', 'Telegram walii hidhi (filannoo)', 'ربط Telegram (اختياري)'],
+    accountUnavailable: ['खाता उपलब्ध नहीं है', 'Tài khoản tạm thởi không khả dụng', 'บัญชีไม่พร้อมใช้งานชั่วคราว', 'Akun sementara tidak tersedia', 'အကောင့် ယာယီ အသုံးမပြုနိုင်ပါ', 'Pansamantalang hindi available ang account', 'គណនីមិនអាចប្រើបានជាបណ្តោះអាសន្ន', 'ගිණුම තාවකාලිකව නොමැත', 'खाता अस्थायी रूपमा उपलब्ध छैन', 'Account a awm rih lo', 'መለያው ለጊዜው አይገኝም', 'Herregni yeroo ammaa hin jiru', 'الحساب غير متاح مؤقتًا'],
+    retry: ['फिर कोशिश करें', 'Thử lại', 'ลองอีกครั้ง', 'Coba lagi', 'ပြန်ကြိုးစားမည်', 'Subukan muli', 'ព្យាយាមម្ដងទៀត', 'නැවත උත්සාහ කරන්න', 'फेरि प्रयास गर्नुहोस्', 'Nakin tum', 'እንደገና ሞክር', 'Irra deebi’i', 'أعد المحاولة'],
     signIn: ['Telegram से साइन इन', 'Đăng nhập bằng Telegram', 'เข้าสู่ระบบด้วย Telegram', 'Masuk dengan Telegram', 'Telegram ဖြင့်ဝင်မည်', 'Mag-sign in gamit ang Telegram', 'ចូលដោយ Telegram', 'Telegram මගින් පිවිසෙන්න', 'Telegram बाट लगइन', 'Telegram hmangin lut', 'በ Telegram ግባ', 'Telegram’n seeni', 'تسجيل الدخول بتيليغرام'],
     signInHint: ['साइन इन करने पर Telegram नाम दिखेगा', 'Đăng nhập để hiện tên Telegram', 'เข้าสู่ระบบเพื่อแสดงชื่อ Telegram', 'Masuk untuk menampilkan nama Telegram', 'Telegram အမည်ပြရန် ဝင်ပါ', 'Mag-sign in para lumabas ang pangalan sa Telegram', 'ចូលដើម្បីបង្ហាញឈ្មោះ Telegram', 'Telegram නම පෙන්වීමට පිවිසෙන්න', 'Telegram नाम देखाउन लगइन गर्नुहोस्', 'Telegram hming lang tir nan lut rawh', 'የ Telegram ስም ለማሳየት ግባ', 'Maqaa Telegram agarsiisuuf seeni', 'سجّل الدخول لإظهار اسم تيليغرام'],
     topupHint: ['रिचार्ज उसी Kito शेष में जाता है', 'Nạp vào cùng số dư Kito', 'เติมเข้ายอด Kito เดียวกัน', 'Isi ke saldo Kito yang sama', 'Kito လက်ကျန်တစ်ခုတည်းသို့ ဖြည့်သည်', 'Papasok sa parehong balanse ng Kito', 'បញ្ចូលទៅសមតុល្យ Kito ដូចគ្នា', 'එම Kito ශේෂයටම යයි', 'उही Kito बाँकीमा जान्छ', 'Kito balance khatah a dah', 'ወደ ተመሳሳዩ የ Kito ቀሪ ይገባል', 'Gara haftee Kito wal fakkaataa seena', 'يُضاف إلى رصيد Kito نفسه'],
@@ -79,6 +85,12 @@ export const LANGUAGE_PACKS = mergePacks(assemble({
     copy: ['कॉपी', 'Sao chép', 'คัดลอก', 'Salin', 'ကူးယူမည်', 'Kopyahin', 'ចម្លង', 'පිටපත් කරන්න', 'प्रतिलिपि', 'Copy', 'ቅዳ', 'Koppii', 'نسخ'],
     copied: ['कॉपी हो गया', 'Đã sao chép', 'คัดลอกแล้ว', 'Tersalin', 'ကူးယူပြီး', 'Nakopya na', 'បានចម្លង', 'පිටපත් විය', 'प्रतिलिपि भयो', 'Copy a ni', 'ተቀድቷል', 'Koppii ta’e', 'تم النسخ'],
     language: ['भाषा', 'Ngôn ngữ', 'ภาษา', 'Bahasa', 'ဘာသာစကား', 'Wika', 'ភាសា', 'භාෂාව', 'भाषा', 'Ṭawng', 'ቋንቋ', 'Afaan', 'اللغة'],
+    productName: ['Kito Harness', 'Kito Harness', 'Kito Harness', 'Kito Harness', 'Kito Harness', 'Kito Harness', 'Kito Harness', 'Kito Harness', 'Kito Harness', 'Kito Harness', 'Kito Harness', 'Kito Harness', 'Kito Harness'],
+    local: ['लोकल', 'Bản địa', 'ท้องถิ่น', 'Lokal', 'ပြည်တွင်း', 'Lokal', 'ក្នុងស្រុក', 'දේශීය', 'स्थानीय', 'Local', 'አካባቢያዊ', 'Naannoo', 'محلي'],
+    regionCommon: ['सामान्य', 'Thông dụng', 'ทั่วไป', 'Umum', 'အများသုံး', 'Karaniwan', 'ទូទៅ', 'පොදු', 'सामान्य', 'Tlanglām', 'አጠቃላይ', 'Waliigalaa', 'عام'],
+    regionSoutheastAsia: ['दक्षिण पूर्व एशिया', 'Đông Nam Á', 'เอเชียตะวันออกเฉียงใต้', 'Asia Tenggara', 'အရှေ့တောင်အာရှ', 'Timog-Silangang Asya', 'អាស៊ីអាគ្នេយ៍', 'අග්නිදිග ආසියාව', 'दक्षिणपूर्व एसिया', 'Southeast Asia', 'ደቡብ ምስራቅ እስያ', 'Kibba Bahaa Esiyaa', 'جنوب شرق آسيا'],
+    regionSouthAsia: ['दक्षिण एशिया', 'Nam Á', 'เอเชียใต้', 'Asia Selatan', 'တောင်အာရှ', 'Timog Asya', 'អាស៊ីខាងត្បូង', 'දකුණු ආසියාව', 'दक्षिण एसिया', 'South Asia', 'ደቡብ እስያ', 'Kibba Esiyaa', 'جنوب آسيا'],
+    regionAfricaMiddleEast: ['अफ्रीका और मध्य पूर्व', 'Châu Phi và Trung Đông', 'แอฟริกาและตะวันออกกลาง', 'Afrika dan Timur Tengah', 'အာဖရိကနှင့် အရှေ့အလယ်ပိုင်း', 'Aprika at Gitnang Silangan', 'អាហ្វ្រិក និងមជ្ឈិមបូព៌ា', 'අප්‍රිකාව සහ මැද පෙරදිග', 'अफ्रिका र मध्यपूर्व', 'Africa leh Middle East', 'አፍሪካ እና መካከለኛ ምስራቅ', 'Afrikaa fi Bahaa Gidduu', 'أفريقيا والشرق الأوسط'],
   },
   model: {
     'command.label': ['मॉडल', 'Mô hình', 'โมเดล', 'Model', 'မော်ဒယ်', 'Model', 'ម៉ូដែល', 'ආකෘතිය', 'मोडेल', 'Model', 'ሞዴል', 'Moodeela', 'النموذج'],
@@ -155,5 +167,6 @@ export const LANGUAGE_PACKS = mergePacks(assemble({
 // These comma characters break the TypeScript lexer when written in source.
 for (const [locale, comma] of [['my', 0x104a], ['ar', 0x060c]] as const) {
   const chat = LANGUAGE_PACKS[locale]?.chat
+  /* v8 ignore next -- Both punctuation-override locales include a chat dictionary. */
   if (chat !== undefined) chat['message.stepProcess.comma'] = `${String.fromCodePoint(comma)} `
 }

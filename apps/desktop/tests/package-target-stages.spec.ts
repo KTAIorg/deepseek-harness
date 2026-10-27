@@ -230,6 +230,15 @@ it.each(['mac-arm64', 'mac-x64', 'win-x64'] as const)('selects branding from the
   }
 })
 
+it('keeps the selected Kito profile through unsigned packaging and local packing', async () => {
+  vi.stubEnv('DSH_BUILD_CLIENT_PROFILE', 'kito')
+  const { run, stages } = supervisor()
+  await packageTarget(parseDesktopPackageInvocation(['mac-arm64', '--unsigned'], 'darwin', 'arm64'), environment, run)
+  expect(stages[0]).toBe('run build:kito')
+  const pack = run.run.mock.calls.find(([stage]) => stage.startsWith('exec tsx apps/desktop/scripts/pack-local-packages.ts'))!
+  expect(pack[3].env.DSH_BUILD_CLIENT_PROFILE).toBe('kito')
+})
+
 it.each([
   ['mac-arm64', 'run build --profile local'],
   ['win-x64', 'run build --profile local'],

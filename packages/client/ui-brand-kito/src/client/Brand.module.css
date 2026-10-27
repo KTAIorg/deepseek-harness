@@ -1,6 +1,6 @@
 .mark {
   display: block;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
 }
 
 .local {
@@ -49,17 +49,102 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   margin: 0 8px 8px;
 }
 
-.accountButton,
+.account[data-wide='false'] {
+  align-items: center;
+  margin: 0 0 8px;
+}
+
+.accountButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-interactive-bg);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+}
+
+.account[data-wide='false'] .accountButton {
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+}
+
+.accountButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+@media (hover: hover) {
+  .accountButton:hover:not(:disabled),
+  .copyButton:hover,
+  .bindButton:hover,
+  .language:hover,
+  .languageActive:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.accountIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+.accountName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountStatusLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.bindButton {
+  min-height: 24px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-link);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  line-height: 14px;
+  text-align: left;
+}
+
 .copyButton,
 .language,
 .languageActive {
   border: none;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-interactive-bg);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
@@ -68,13 +153,6 @@
   line-height: 16px;
   padding: 6px 8px;
   text-align: left;
-}
-
-.accountButton:hover,
-.copyButton:hover,
-.language:hover,
-.languageActive:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .copies {
@@ -98,13 +176,6 @@
   line-height: 14px;
 }
 
-.accountHint {
-  margin: 0;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 11px;
-  line-height: 14px;
-}
-
 .copyValue {
   flex: 1;
   min-width: 0;
@@ -123,11 +194,7 @@
 }
 
 .languageDock {
-  position: absolute;
-  top: 8px;
-  /* Home screen clearance. A session header overrides this so the button sits left of its controls. */
-  right: 88px;
-  z-index: 2;
+  flex: none;
   -webkit-app-region: no-drag;
 }
 
@@ -137,8 +204,8 @@
   gap: 6px;
   height: 28px;
   padding: 0 8px;
-  border: 1px solid var(--dsw-alias-border-l3);
-  border-radius: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
@@ -147,25 +214,8 @@
   line-height: 16px;
 }
 
-.languageTriggerName {
-  max-width: 72px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .languagePanel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  width: 320px;
-  max-height: min(420px, calc(100vh - 64px));
-  overflow: auto;
-  padding: 10px;
-  border: 1px solid var(--dsw-alias-border-l3);
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-base);
-  box-shadow: 0 8px 28px rgb(0 0 0 / 16%);
+  width: min(320px, calc(100vw - 24px));
 }
 
 .languageGroup {
@@ -189,7 +239,7 @@
   min-width: 0;
   padding: 6px 8px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
@@ -198,9 +248,14 @@
   text-align: start;
 }
 
-.languageOption:hover,
 .languageOptionActive {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+@media (hover: hover) {
+  .languageOption:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 .languageAux {
@@ -235,7 +290,7 @@
   margin: 0;
   color: var(--dsw-alias-label-primary);
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 22px;
 }
 
@@ -253,14 +308,12 @@
   min-width: 0;
 }
 
-.accountActions,
 .panelActions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.accountActions .accountButton,
 .panelActions .panelButton {
   flex: 1 1 calc(50% - 6px);
   text-align: center;
@@ -268,7 +321,7 @@
 
 .panelButton {
   border: none;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-interactive-bg);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
@@ -278,6 +331,8 @@
   padding: 6px 10px;
 }
 
-.panelButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .panelButton:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }

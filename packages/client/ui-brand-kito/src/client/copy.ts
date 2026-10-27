@@ -1,12 +1,16 @@
-/** Copy for the account panel. Keys match in both languages. */
+/** Chinese copy for Kito branding, language selection, accounts, and Settings. */
 export const zh = {
   account: '账号',
-  loading: '正在读取账号',
+  loading: '正在恢复账号…',
   signedIn: '已登录',
   signedOut: '尚未登录',
+  keyReady: '模型可用',
   signInHint: '登录后显示 Telegram 昵称',
   signIn: '用 Telegram 登录',
-  signOut: '退出',
+  bindTelegram: '绑定 Telegram（可选）',
+  signOut: '退出登录',
+  accountUnavailable: '账号暂不可用',
+  retry: '重试',
   topup: '充值',
   topupHint: '充值记入同一条 Kito 余额',
   topups: '充值记录',
@@ -19,16 +23,27 @@ export const zh = {
   copy: '复制',
   copied: '已复制',
   language: '语言',
+  productName: 'Kito Harness',
+  local: '本地',
+  regionCommon: '常用',
+  regionSoutheastAsia: '东南亚',
+  regionSouthAsia: '南亚',
+  regionAfricaMiddleEast: '非洲与中东',
 } as const
 
+/** English copy for Kito branding, language selection, accounts, and Settings. */
 export const en = {
   account: 'Account',
-  loading: 'Reading account',
+  loading: 'Restoring account…',
   signedIn: 'Signed in',
   signedOut: 'Signed out',
+  keyReady: 'Model available',
   signInHint: 'Sign in to show the Telegram name',
   signIn: 'Sign in with Telegram',
+  bindTelegram: 'Link Telegram (optional)',
   signOut: 'Sign out',
+  accountUnavailable: 'Account temporarily unavailable',
+  retry: 'Retry',
   topup: 'Top up',
   topupHint: 'Top up the same Kito balance',
   topups: 'Top-ups',
@@ -41,6 +56,13 @@ export const en = {
   copy: 'Copy',
   copied: 'Copied',
   language: 'Language',
+  productName: 'Kito Harness',
+  local: 'Local',
+  regionCommon: 'Common',
+  regionSoutheastAsia: 'Southeast Asia',
+  regionSouthAsia: 'South Asia',
+  regionAfricaMiddleEast: 'Africa and Middle East',
 } as const
 
+/** Typed copy keys accepted by the account locale seat. */
 export type KitoAccountCopyKey = keyof typeof zh

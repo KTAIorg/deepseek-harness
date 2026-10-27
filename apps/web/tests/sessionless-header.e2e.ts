@@ -19,7 +19,7 @@ afterAll(async () => {
 })
 
 describe('navigation without a selected Session', () => {
-  it.each(['web', 'win32', 'linux', 'darwin'] as const)('%s preserves its empty-header geometry and sidebar access', async (platform) => {
+  it.each(['web', 'win32', 'linux', 'darwin'] as const)('%s preserves its language control and sidebar access', async (platform) => {
     const page = await newEnglishPage(browser)
     try {
       if (platform !== 'web') {
@@ -41,14 +41,17 @@ describe('navigation without a selected Session', () => {
       const sessionHeader = page.locator('[data-slot="conversation.session.header"]')
       expect(await sessionHeader.count()).toBe(0)
       const header = page.locator('[data-slot="conversation.header"] > header')
-      expect(await header.evaluate(element => element.getBoundingClientRect().height)).toBe(platform === 'darwin' ? 40 : 0)
+      const language = header.getByRole('button', { name: 'English', exact: true })
+      await language.waitFor({ state: 'visible' })
+      expect(await header.evaluate(element => element.getBoundingClientRect().height)).toBe(platform === 'darwin' ? 40 : 28)
       await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click()
       const reopen = platform === 'darwin'
         ? page.locator('[data-shell-leading]').getByRole('button', { name: 'Open sidebar', exact: true })
         : page.getByRole('button', { name: 'Open sidebar', exact: true })
       await reopen.waitFor({ state: 'visible' })
       expect(await sessionHeader.count()).toBe(0)
-      expect(await header.evaluate(element => element.getBoundingClientRect().height)).toBe(platform === 'darwin' ? 40 : 0)
+      expect(await language.isVisible()).toBe(true)
+      expect(await header.evaluate(element => element.getBoundingClientRect().height)).toBe(platform === 'darwin' ? 40 : 28)
       if (platform === 'darwin') {
         expect(await page.locator('[data-shell-leading]').getByRole('button', { name: 'New session', exact: true }).isVisible()).toBe(true)
       }

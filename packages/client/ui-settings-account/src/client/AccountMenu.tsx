@@ -4,6 +4,7 @@ import {
   Toast, Menu, IconEllipsisOutlineMedium, IconPaperPlaneOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type { AccountSectionInjected } from './AccountSection.tsx'
 import { SignOutDialog } from './SignOutDialog.tsx'
 import { SignInDialog } from './SignInDialog.tsx'
@@ -15,39 +16,13 @@ import css from './AccountMenu.module.css'
 /** Account launcher composed by the settings shell. */
 export type AccountMenuProps = PropsRuntime<'settings.launcher'> & PropsLocale<'settings.account'> & InjectFace<AccountSectionInjected>
 
-/**
- * Kito Telegram login is a different account from the DeepSeek menu. A stored Kito model key also
- * counts, because models already work. A missing route means this build has no Kito account.
- */
-function useKitoSignedIn(): boolean {
-  const [signedIn, setSignedIn] = useState(false)
-  useEffect(() => {
-    let active = true
-    const load = (): void => {
-      void fetch('dsh-app://app/kito/account')
-        .then(async response => response.ok
-          ? await response.json() as { signedIn?: boolean; keyConfigured?: boolean }
-          : { signedIn: false })
-        .then((body) => { if (active) setSignedIn(body.signedIn === true || body.keyConfigured === true) })
-        .catch(() => { if (active) setSignedIn(false) })
-    }
-    load()
-    window.addEventListener('kito-account', load)
-    return () => {
-      active = false
-      window.removeEventListener('kito-account', load)
-    }
-  }, [])
-  return signedIn
-}
-
 /** The signed-in label stays empty while the profile loads.
  * @param props - sidebar geometry, settings navigation and account operations.
  * @returns account menu launcher.
  */
 export function AccountMenu({
   subscribeSessionExpired, subscribeModelSignInRequired, wide, settingsShortcut, openSettings, openOnboarding, settingsOpen,
-  useAccount, useTheme, signOut, hasRunningAccountTasks, refreshAccount, bonusNoticeShown, bonusNoticeDismissed,
+  useAccount, useTheme, useResource, signOut, hasRunningAccountTasks, refreshAccount, bonusNoticeShown, bonusNoticeDismissed,
   contactUs, showLogin, start, cancel, avatarFailed, t,
 }: AccountMenuProps) {
   const anchor = useRef<HTMLDivElement>(null)
@@ -60,8 +35,11 @@ export function AccountMenu({
   }, [refreshAccount, settingsOpen])
   const account = useAccount(state => state)
   const colorScheme = useTheme(snapshot => snapshot.active.colorScheme)
-  const signedIn = account.view?.status === 'credential-stored'
-  const kitoSignedIn = useKitoSignedIn()
+  // Kito owns its Telegram entry from the first Desktop frame; provider presence
+  // also covers shells without the build marker. Absence preserves the official menu.
+  const kitoOwnsLauncher = useResource('dsh-resource://kitoaccount/current').status !== 'none'
+    || ('dshDesktop' in globalThis && process.env.DSH_CLIENT_BUILD_PROFILE !== 'official')
+  const signedIn = !kitoOwnsLauncher && account.view?.status === 'credential-stored'
   const [signInNotice, setSignInNotice] = useState(0)
   useEffect(() => subscribeModelSignInRequired?.(() => { setSignInNotice(value => value + 1) }), [subscribeModelSignInRequired])
   const [expiryNotice, setExpiryNotice] = useState(false)
@@ -84,7 +62,7 @@ export function AccountMenu({
   return <div ref={anchor} className={css.root}>
     {signInNotice > 0 && <Toast key={signInNotice} text={t('modelSignInRequired')} onDone={() => { setSignInNotice(0) }} />}
     {expiryNotice && <Toast text={t('sessionExpired')} onDone={() => { setExpiryNotice(false) }} />}
-    {signedIn && !account.desktopOnboardingVisible && !account.onboarding && account.notices && <AccountNoticeStack
+    {account.view?.status === 'credential-stored' && !account.desktopOnboardingVisible && !account.onboarding && account.notices && <AccountNoticeStack
       notices={account.notices}
       anchor={anchor} title={t('bonusNoticeTitle')} closeLabel={t('close')}
       onShown={bonusNoticeShown} onDismiss={bonusNoticeDismissed} />}
@@ -103,7 +81,7 @@ export function AccountMenu({
           ...(settingsShortcut === undefined ? {} : { shortcut: settingsShortcut }) },
         { id: 'contact', label: t('contactUs'), icon: <IconPaperPlaneOutlineMedium size={16} /> },
         ...(signedIn ? [{ id: 'signout', label: t('signOut'), icon: <LogoutIcon />, disabled: busy }]
-          : kitoSignedIn ? []
+          : kitoOwnsLauncher ? []
             : [{ id: 'signin', label: t('signIn'), icon: <IconUserOutlineMedium size={16} /> }]),
       ]}
       onClose={() => { setOpen(false) }}

@@ -21,6 +21,9 @@
       "path": "../store"
     },
     {
+      "path": "../resources"
+    },
+    {
       "path": "../ui-settings/tsconfig.client.json"
     },
     {

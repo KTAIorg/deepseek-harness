@@ -1,15 +1,21 @@
 /** Kito Harness occupants for the generic browser-brand slots. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+import type {} from '@deepseek-ai/dsh-client-resources/client'
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type { Config } from '../index.ts'
 import { KitoAccountFooter, KitoAccountSection } from './AccountFooter.tsx'
+import { kitoAccountResource } from './account-resource.ts'
 import { KITO_EXTRA_LANGUAGES, KitoLanguageDock } from './LanguagePicker.tsx'
 import { LANGUAGE_PACKS } from './language-packs.ts'
 import { KitoBrandMark, KitoBrandName } from './Brand.tsx'
 import { en, zh } from './copy.ts'
+
+export { Config } from '../index.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -17,8 +23,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Required services: the UI slot registry and the shared language preference. */
-export const inject = ['slots', 'locale']
+/** Required services: slots, shared language preferences, and account resources. */
+export const inject = ['slots', 'locale', 'resources']
 
 const ACCOUNT_NS = 'kito.account' as const
 
@@ -45,9 +51,11 @@ export function insideDesktopShell(): boolean {
  * DeepSeek profile. The conversation hero stays on its declaring package.
  * The Telegram account footer and settings page are registered only inside the desktop shell.
  * @param ctx - Client root context.
+ * @param config - validated account settings; direct composition uses the documented default.
  */
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: ClientContext, config: Config = {}): void {
   if (process.env.DSH_CLIENT_BUILD_PROFILE === 'official') return
+  const accountRefreshIntervalMs = config.accountRefreshIntervalMs ?? 180000
   ctx.effect(() => ctx.locale.register(ACCOUNT_NS, { zh, en }), 'ui-brand-kito: account copy')
   ctx.effect(() => {
     const remove = KITO_EXTRA_LANGUAGES.map(language => ctx.locale.addLanguage(language))
@@ -65,10 +73,11 @@ export function apply(ctx: ClientContext): void {
   const controls = localeControls(ctx)
   ctx.slots.inject('sidebar.brand.mark', () =>
     ctx.slots.inject('sidebar.brand.name', function* () {
-      yield ctx.slots.register({ name: 'sidebar.brand.mark' }, KitoBrandMark)
-      yield ctx.slots.register({ name: 'sidebar.brand.name' }, KitoBrandName)
+      yield ctx.slots.register({ name: 'sidebar.brand.mark', locale: ACCOUNT_NS }, KitoBrandMark)
+      yield ctx.slots.register({ name: 'sidebar.brand.name', locale: ACCOUNT_NS }, KitoBrandName)
     }))
   if (insideDesktopShell()) {
+    ctx.effect(() => ctx.resources.register(kitoAccountResource(accountRefreshIntervalMs)), 'ui-brand-kito: account resource')
     ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
       name: 'sidebar.footer.action', id: 'kito-account', order: 10, locale: ACCOUNT_NS,
       inject: () => controls,
@@ -79,8 +88,14 @@ export function apply(ctx: ClientContext): void {
       inject: () => controls,
     }, KitoAccountSection))
   }
-  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-    name: 'shell.overlay', id: 'kito-language', order: 20, locale: ACCOUNT_NS,
-    inject: () => controls,
+  for (const name of ['conversation.session.header.utilities', 'conversation.hero.options'] as const) {
+    ctx.slots.inject(name, () => ctx.slots.register({
+      name, id: 'kito-language', order: name === 'conversation.session.header.utilities' ? -20 : 20, locale: ACCOUNT_NS,
+      inject: () => controls,
+    }, KitoLanguageDock))
+  }
+  ctx.slots.inject('conversation.header.trailing', () => ctx.slots.register({
+    name: 'conversation.header.trailing', id: 'kito-language', order: 20, locale: ACCOUNT_NS,
+    inject: () => ({ ...controls, hideWhenSession: true }),
   }, KitoLanguageDock))
 }

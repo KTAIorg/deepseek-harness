@@ -323,6 +323,7 @@ describe.skipIf(MODE === 'record')('web e2e: bonus notice', () => {
     await openSettings(page, 'zh')
     const settings = page.getByRole('dialog', { name: '设置', exact: true })
     await settings.waitFor()
+    await settings.getByRole('button', { name: '账号与余额', exact: true }).click()
     await expect.poll(() => platform.gets.length, { timeout: 30_000 }).toBe(getsBefore + 1)
     // One open, one read: no control in the panel drives a second one.
     expect(await settings.getByRole('button', { name: '刷新余额', exact: true }).count()).toBe(0)
@@ -420,6 +421,7 @@ describe.skipIf(MODE === 'record')('web e2e: bonus notice', () => {
     await openSettings(page, 'zh')
     const topUpSettings = page.getByRole('dialog', { name: '设置', exact: true })
     await topUpSettings.waitFor()
+    await topUpSettings.getByRole('button', { name: '账号与余额', exact: true }).click()
     await expect.poll(() => platform.gets.length, { timeout: 30_000 }).toBe(topUpGetsBefore + 1)
     await expect.poll(() => platform.summaries.length, { timeout: 30_000 }).toBe(topUpSummariesBefore + 1)
     observations.push(`topup.open gets=${String(platform.gets.length - topUpGetsBefore)} summaries=${String(platform.summaries.length - topUpSummariesBefore)}`)
@@ -531,6 +533,7 @@ describe.skipIf(MODE === 'record')('web e2e: bonus notice', () => {
     await openSettings(page, 'zh')
     const failedSettings = page.getByRole('dialog', { name: '设置', exact: true })
     await failedSettings.waitFor()
+    await failedSettings.getByRole('button', { name: '账号与余额', exact: true }).click()
     const failedLinks = failedSettings.getByRole('link', { name: '前往开放平台查看', exact: true })
     await expect.poll(() => failedLinks.count(), { timeout: 30_000 }).toBe(2)
     await expect.poll(() => platform.summaries.length, { timeout: 30_000 }).toBe(failedSummariesBefore + 1)

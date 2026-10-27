@@ -87,7 +87,11 @@ export async function fetchLiveCatalog(
   return selectChatModels(body)
 }
 
-/** Turn listing rows into the model descriptors this route can call. */
+/**
+ * Turn listing rows into the model descriptors this route can call.
+ * @param input - route identity, endpoint, listed models and compatibility defaults.
+ * @returns model descriptors for the live route.
+ */
 export function materializeLiveModels(input: {
   provider: string
   api: string
