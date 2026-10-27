@@ -175,6 +175,7 @@ const harness = await vi.hoisted(async () => {
     getVersion: () => '1.0.0',
     getAppPath: (): string => 'desktop-test-app',
     setAppLogsPath: vi.fn(),
+    setPath: vi.fn<(name: string, path: string) => void>(),
     getPath: vi.fn<(name: string) => string>(),
     setAboutPanelOptions: vi.fn<(options: Electron.AboutPanelOptionsOptions) => void>(),
     requestSingleInstanceLock: () => true,
@@ -2491,7 +2492,7 @@ describe('desktop main startup', () => {
   })
 })
 
-it.each(['failed', 'expired'] as const)('focuses DSH once when browser authorization becomes %s', async (phase) => {
+it.each(['failed', 'expired'] as const)('ignores DeepSeek authorization when Kito owns sign-in (%s)', async (phase) => {
   await import('../src/main.ts')
   await harness.preparing.promise
   harness.prepared.resolve()
@@ -2506,10 +2507,10 @@ it.each(['failed', 'expired'] as const)('focuses DSH once when browser authoriza
   }
   harness.publishAccount(state)
   harness.publishAccount(state)
-  expect(window.focus).toHaveBeenCalledTimes(1)
+  expect(window.focus).not.toHaveBeenCalled()
 })
 
-it.each([['light', false], ['dark', true]] as const)('opens Platform authorization in the effective %s palette', async (theme, shouldUseDarkColors) => {
+it.each([['light', false], ['dark', true]] as const)('does not open DeepSeek authorization in the effective %s palette', async (_theme, shouldUseDarkColors) => {
   await import('../src/main.ts')
   await harness.preparing.promise
   harness.prepared.resolve()
@@ -2524,7 +2525,7 @@ it.each([['light', false], ['dark', true]] as const)('opens Platform authorizati
   }
   harness.publishAccount(state)
   harness.publishAccount(state)
-  expect(harness.openExternal).toHaveBeenCalledExactlyOnceWith(`https://platform.deepseek.com/dsh/authorize?state=state-1&theme=${theme}`)
+  expect(harness.openExternal).not.toHaveBeenCalled()
 })
 
 it('disables native product events for a disabled Desktop launch', async () => {

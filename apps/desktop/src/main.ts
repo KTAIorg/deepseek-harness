@@ -331,6 +331,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
 }
 
 async function main(): Promise<void> {
+  console.debug('desktop startup: main entered')
   const desktopSettings = readDesktopSettings(app.getPath('userData'))
   void pruneCrashReports(app.getPath('logs'))
   const journalDirectory = process.env.DSH_DESKTOP_UPDATE_JOURNAL_DIR
@@ -485,11 +486,13 @@ async function main(): Promise<void> {
     return {
       start: async () => {
         const ready = await host.start()
+        console.debug('desktop startup: host ready')
         hostCookie = await authenticateWebHost(ready.url)
         hostUrl = ready.url
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
         injections = ready.injections
         welcomeBackend = await connectDesktopWelcome(ready.url, (input, init) => net.fetch(input, init), async () => (await session.defaultSession.cookies.get({ url: ready.url })).map(cookie => `${cookie.name}=${cookie.value}`).join('; '))
+        console.debug('desktop startup: welcome connected')
         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
         // Kito owns sign-in. The DeepSeek account stream must not open its browser
@@ -572,9 +575,15 @@ async function main(): Promise<void> {
   const reconcileBackend = (): Promise<void> => {
     startup ??= (async () => {
       await navigateMain(applicationUrl)
+      console.debug('desktop startup: navigation complete')
       await backend.start(async () => {
-        await Promise.all([manager.applyRelease(), prepareHostEnvironment()])
+        console.debug('desktop startup: preparing profile and environment')
+        await Promise.all([
+          manager.applyRelease().then(() => { console.debug('desktop startup: profile prepared') }),
+          prepareHostEnvironment().then(() => { console.debug('desktop startup: environment prepared') }),
+        ])
       })
+      console.debug('desktop startup: backend ready')
       if (backend.host !== undefined) await openInitialWindow()
       if (backend.host !== undefined) updateJournal?.action('workspace-ready')
       // The existing Web document resumes through the boot IPC response.
