@@ -157,6 +157,7 @@ describe('client build environment', () => {
     const local = resolveClientBuildEnvironment(parent, 'local')
     expect(local).toEqual({
       DSH_CLIENT_BUILD_PROFILE: 'local',
+      DSH_CLIENT_FEEDBACK_URL: 'https://www.ktapi.cc/',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_VERSION: '1.2.3',
       ...(dirty === 'true' ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),
@@ -202,6 +203,7 @@ describe('client build environment', () => {
     })
     expect(kitoClientBuildEnvironment(fixtureRoot)).toEqual({
       DSH_CLIENT_BUILD_PROFILE: 'kito',
+      DSH_CLIENT_FEEDBACK_URL: 'https://www.ktapi.cc/',
       DSH_CLIENT_COMMIT_HASH: commit,
       DSH_CLIENT_TITLE: 'Kito Harness',
       DSH_CLIENT_VERSION: '1.2.3-rc.4',
@@ -213,6 +215,7 @@ describe('client build environment', () => {
       DSH_CLIENT_VERSION: '1.2.3',
     })).toEqual({
       DSH_CLIENT_BUILD_PROFILE: 'kito',
+      DSH_CLIENT_FEEDBACK_URL: 'https://www.ktapi.cc/',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_TITLE: 'Kito Harness',
       DSH_CLIENT_VERSION: '1.2.3',

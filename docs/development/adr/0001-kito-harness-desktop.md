@@ -17,8 +17,8 @@ Kito Harness 是和 Kito（OpenCode）平级的独立桌面，基线为上游发
 - 上游保留 Agent loop、会话格式、工具、沙箱和 Web 客户端。
 - `KTAIorg/deepseek-harness` 只保留部署白名单、`kt/kito-provider`，以及以后的桌面壳（品牌、欢迎页、更新地址、独立 `DSH_HOME`）。
 - KT Identity 登录和 `https://ktapi.cc/v1` 模型路由放在 `kt/kito-provider`。它不加入 pnpm workspace，用 `dsh plugin add ./kt/kito-provider` 装进 profile。
-- 模型密钥经凭证引用 `KITO_NEWAPI_API_KEY` 解析。安装包不内置共享 NewAPI key。
-- 设备登录沿用已注册的 `client_type=kito_desktop`、`client_id=kito-desktop`。Identity 当前只接受 `kt_cli` 与 `kito_desktop`。托管 token 名沿用 `kito`，两个桌面共用同一把账号 key。
+- 模型调用携带凭证引用 `KITO_IDENTITY_TOKEN` 解析出的 Identity Bearer，并通过 `X-Kito-Token-Name` 让 NewAPI 在服务端选择托管 relay token。安装包与本机都不保存明文 NewAPI key。
+- 设备登录沿用已注册的 `client_type=kito_desktop`、`client_id=kito-desktop`。Identity 当前只接受 `kt_cli` 与 `kito_desktop`。Kito 路由使用托管 token 名 `kito`，Claude 路由使用 `kito-harness-claude`；两者都由 NewAPI 服务端持有。
 - 发布走 Kito Release Service 的单独 app id。Tag 用 `kito-harness-v*`，不打上游的 `vX.Y.Z` / `dsh-v*`。
 - ACK Web 继续由 `dsh-auth-gateway` 做入口认证。桌面不经过这个网关。
 
@@ -31,13 +31,13 @@ Harness 的扩展点是插件和 `cordis.patch.yml`，不是改 agent loop。把
 - 不把 Harness 嵌进 Kito 或旧 KT Desktop。
 - 不复制 Kito 的 Zen 100 次软限额。Harness 没有免登录免费模型。
 - 不在本 ADR 里改欢迎页、签名或更新源。那是壳层后续 PR。
-- 不新开一套按 `kt_account_id` 发 NewAPI token 的服务。沿用 Kito 已在用的 `/api/iam/token/ensure`，404 时回落到 `/api/iam/ensure` 会话换票。
+- 不新开一套按 `kt_account_id` 发 NewAPI token 的服务。模型调用复用 NewAPI 现有 IAM 影子用户与托管 token：客户端只发 Identity Bearer，服务端选择托管 relay token（`KTAIorg/new-api#284`）。
 
 ## 约束
 
 - 同步只合上游发行 tag。安全修复立即评估。
 - 定制超出 `docs/development/upstream-sync-policy.md` 白名单时，PR 必须写明现有扩展点为什么不够。
-- Identity Bearer 与 NewAPI key 分开存放。配置文件里只有凭证名。
+- 本机只保存 Identity Bearer 与刷新令牌；托管 NewAPI key 只存在于 NewAPI 服务端。配置文件里只有凭证名。
 - 桌面数据目录与官方 DeepSeek Harness 隔离，避免抢 `profiles/desktop`。
 
 ## 待定问题

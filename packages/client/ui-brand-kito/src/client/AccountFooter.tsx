@@ -1,7 +1,7 @@
 /** Compact sidebar account summary and the detailed Telegram account Settings page. */
 import { useEffect, useRef, useState } from 'react'
 import {
-  IconLoadingOutlineMedium, IconPaperPlaneOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium,
+  IconLoadingOutlineMedium, IconPaperPlaneOutlineMedium, IconUserOutlineMedium,
   IconWarningOutlineMedium, Tooltip, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -38,8 +38,8 @@ export function kitoAccountLabel(
   label: (key: KitoAccountCopyKey) => string = key => zh[key],
 ): string {
   if (view === undefined) return label('loading')
-  if (!view.signedIn && view.keyConfigured !== true) return label('signIn')
-  const name = view.signedIn ? view.displayName?.trim() || 'Kito' : label('keyReady')
+  if (!view.signedIn) return label('signIn')
+  const name = view.displayName?.trim() || 'Kito'
   return typeof view.balance === 'number' ? `${name} · ${formatKitoBalance(view.balance)}` : name
 }
 
@@ -55,7 +55,7 @@ const CONSOLE_LINKS = [
 /**
  * Open Telegram login, or one ktapi.cc console page once the account is known.
  * @param account - latest successfully read account.
- * @param target - console page. Signed-out and key-only clicks start optional Telegram binding.
+ * @param target - console page. Signed-out clicks start Telegram login.
  */
 function openConsole(account: KitoAccountView, target: ConsoleTarget): void {
   const path = account.signedIn ? `dsh-app://app/kito/open?target=${target}` : 'dsh-app://app/kito/sign-in'
@@ -72,7 +72,7 @@ function signOut(): void {
 }
 
 function spendableBalance(account: KitoAccountView | undefined): number | undefined {
-  if (account === undefined || (!account.signedIn && account.keyConfigured !== true)) return undefined
+  if (account === undefined || !account.signedIn) return undefined
   return account.balance
 }
 
@@ -152,20 +152,18 @@ function AccountFacts({ account, label }: { account: KitoAccountView; label: (ke
   )
 }
 
-type FooterAccountState = 'loading' | 'unavailable' | 'signed-in' | 'key-only' | 'signed-out'
+type FooterAccountState = 'loading' | 'unavailable' | 'signed-in' | 'signed-out'
 
 function footerAccountState(resource: ResourceSnapshot<KitoAccountView>): FooterAccountState {
   const account = resource.value
   if (account === undefined) return resource.status === 'failed' ? 'unavailable' : 'loading'
-  if (account.signedIn) return 'signed-in'
-  return account.keyConfigured === true ? 'key-only' : 'signed-out'
+  return account.signedIn ? 'signed-in' : 'signed-out'
 }
 
 function FooterIcon({ state }: { state: FooterAccountState }) {
   if (state === 'loading') return <IconLoadingOutlineMedium size={16} />
   if (state === 'unavailable') return <IconWarningOutlineMedium size={16} />
   if (state === 'signed-in') return <IconUserOutlineMedium size={16} />
-  if (state === 'key-only') return <IconSettingsOutlineMedium size={16} />
   return <IconPaperPlaneOutlineMedium size={16} />
 }
 
@@ -182,25 +180,13 @@ export function KitoAccountFooter({ wide, useResource, ...controls }: PropsRunti
   const state = footerAccountState(resource)
   const title = state === 'unavailable' ? label('accountUnavailable') : kitoAccountLabel(account, label)
   const hint = resource.status === 'failed' && account !== undefined ? `${title} · ${label('accountUnavailable')}` : title
-  if (wide && state === 'key-only' && account !== undefined) return (
-    <div className={css.account} data-wide={wide} data-account-state={state}>
-      <div className={css.accountStatusLine}>
-        <FooterIcon state={state} />
-        <span className={css.accountName}>{title}</span>
-        {resource.status === 'failed' && <IconWarningOutlineMedium size={14} />}
-      </div>
-      <button type="button" className={css.bindButton} onClick={() => { openConsole(account, 'wallet') }}>
-        {label('bindTelegram')}
-      </button>
-    </div>
-  )
   return (
     <div className={css.account} data-wide={wide} data-account-state={state}>
       <Tooltip label={hint} side="right" portal>
         <button
           type="button"
           className={css.accountButton}
-          aria-label={state === 'key-only' && !wide ? label('bindTelegram') : state === 'unavailable' ? label('retry') : title}
+          aria-label={state === 'unavailable' ? label('retry') : title}
           disabled={state === 'loading'}
           onClick={() => {
             if (state === 'unavailable') { refreshKitoAccount(); return }
@@ -227,17 +213,16 @@ export function KitoAccountSection({ useResource, t }: PropsRuntime<'settings.se
   const account = resource.value
   const label = (key: KitoAccountCopyKey): string => t?.(key) ?? zh[key]
   const signedIn = account?.signedIn === true
-  const keyOnly = account !== undefined && !signedIn && account.keyConfigured === true
   const balance = spendableBalance(account)
   const name = account?.displayName?.trim() || 'Kito'
   return (
     <section className={css.panel} aria-label={label('account')}>
       <h2 className={css.panelTitle}>
-        {account === undefined ? label('account') : signedIn ? name : keyOnly ? label('keyReady') : label('signedOut')}
+        {account === undefined ? label('account') : signedIn ? name : label('signedOut')}
       </h2>
       <p className={css.panelStatus} role="status">
         {resource.status === 'failed' ? label('accountUnavailable')
-          : account === undefined ? label('loading') : signedIn ? label('signedIn') : keyOnly ? label('bindTelegram') : label('signInHint')}
+          : account === undefined ? label('loading') : signedIn ? label('signedIn') : label('signInHint')}
       </p>
       {resource.status === 'failed' && (
         <button type="button" className={css.panelButton} onClick={refreshKitoAccount}>{label('retry')}</button>
@@ -256,7 +241,7 @@ export function KitoAccountSection({ useResource, t }: PropsRuntime<'settings.se
           )
           : (
             <button type="button" className={css.panelButton} onClick={() => { openConsole(account, 'wallet') }}>
-              {keyOnly ? label('bindTelegram') : label('signIn')}
+              {label('signIn')}
             </button>
           )
       )}

@@ -31,7 +31,7 @@ describe('live model catalog', () => {
     const profiles = resolveProfiles({
       kito: {
         displayName: 'Kito',
-        apiKeyEnv: 'KITO_NEWAPI_API_KEY',
+        apiKeyEnv: 'KITO_IDENTITY_TOKEN',
         api: 'openai-completions',
         baseURL: 'https://ktapi.cc/v1',
         liveModels: true,

@@ -7,11 +7,12 @@ export const KITO_DEVICE_CLIENT_TYPE = 'kito_desktop'
 export const KITO_DEVICE_CLIENT_ID = 'kito-desktop'
 export const KITO_NEWAPI_BASE_URL = 'https://ktapi.cc'
 export const KITO_NEWAPI_KEY_REF = 'KITO_NEWAPI_API_KEY'
+/** Legacy local Claude relay key removed at sign-out; model calls use the Identity token. */
+export const KITO_CLAUDE_KEY_REF = 'KITO_CLAUDE_API_KEY'
 export const KITO_IDENTITY_TOKEN_REF = 'KITO_IDENTITY_TOKEN'
 /** Device-session refresh token that renews {@link KITO_IDENTITY_TOKEN_REF} without a new Telegram login. */
 export const KITO_IDENTITY_REFRESH_TOKEN_REF = 'KITO_IDENTITY_REFRESH_TOKEN'
 const NEWAPI_QUOTA_PER_USD = 500_000
-export const KITO_MANAGED_TOKEN_NAME = 'kito'
 export const KITO_WALLET_URL = 'https://www.ktapi.cc/wallet'
 
 /** Console pages opened with the same ktapi.cc session as recharge. */
@@ -68,8 +69,6 @@ export interface KitoIdentityRefresh {
 /** Public account row. Balance is the shared NewAPI spendable amount in USD. */
 export interface KitoAccountView {
   readonly signedIn: boolean
-  /** The model key is stored, so models work while the Identity login is missing. */
-  readonly keyConfigured?: boolean
   readonly displayName?: string
   /** KT Identity account number, for example `KT251018…`. */
   readonly accountNo?: string
@@ -91,11 +90,6 @@ function stringField(value: unknown): string | undefined {
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined
-}
-
-/** @param key - relay secret from NewAPI. @returns a key with the `sk-` prefix. */
-export function formatRelayKey(key: string): string {
-  return key.startsWith('sk-') ? key : `sk-${key}`
 }
 
 /**
@@ -242,67 +236,6 @@ export async function refreshKitoIdentity(refreshToken: string, input: FetchInit
 }
 
 /**
- * Exchange an Identity bearer for the shared `kito` NewAPI key.
- * A missing dedicated endpoint falls back to the session token Kito already uses.
- * @param identityToken - KT Identity access token.
- * @param input - optional NewAPI origin.
- * @returns the relay key stored as `KITO_NEWAPI_API_KEY`.
- */
-export async function ensureKitoApiKey(identityToken: string, input: FetchInit = {}): Promise<string> {
-  const fetchImpl = input.fetchImpl ?? kitoFetch
-  const baseUrl = input.baseUrl ?? newapiBaseUrl()
-  const dedicated = await fetchImpl(`${baseUrl}/api/iam/token/ensure`, {
-    method: 'POST',
-    headers: jsonHeaders({ authorization: `Bearer ${identityToken}` }),
-    body: JSON.stringify({ name: KITO_MANAGED_TOKEN_NAME }),
-    signal: withTimeout(input.signal),
-  })
-  if (dedicated.status !== 404) {
-    const payload = await readJson(dedicated)
-    if (!dedicated.ok) throw new Error(errorMessage(payload, `NewAPI token ensure failed (${dedicated.status})`))
-    const key = stringField(asRecord(payload)?.key) ?? stringField(asRecord(asRecord(payload)?.data)?.key)
-    if (!key) throw new Error('NewAPI token ensure returned no key')
-    return formatRelayKey(key)
-  }
-  return ensureViaSession(identityToken, baseUrl, fetchImpl, input.signal)
-}
-
-async function ensureViaSession(
-  identityToken: string,
-  baseUrl: string,
-  fetchImpl: typeof fetch,
-  signal: AbortSignal | undefined,
-): Promise<string> {
-  const ensured = await fetchImpl(`${baseUrl}/api/iam/ensure`, {
-    method: 'POST',
-    headers: jsonHeaders({ authorization: `Bearer ${identityToken}` }),
-    body: '{}',
-    signal: withTimeout(signal),
-  })
-  const payload = await readJson(ensured)
-  if (!ensured.ok) throw new Error(errorMessage(payload, `NewAPI ensure failed (${ensured.status})`))
-  const cookie = cookieHeader(ensured)
-  const data = asRecord(asRecord(payload)?.data) ?? asRecord(payload)
-  const id = data?.id ?? asRecord(data?.user)?.id
-  const userId = typeof id === 'number' || typeof id === 'string' ? String(id) : ''
-  if (!cookie || userId === '') throw new Error('NewAPI ensure did not return a session')
-  const headers = { ...jsonHeaders(), cookie, 'New-Api-User': userId }
-  const listed = await fetchImpl(`${baseUrl}/api/token/?p=1&size=100`, { method: 'GET', headers, signal: withTimeout(signal) })
-  const listPayload = await readJson(listed)
-  if (!listed.ok) throw new Error(errorMessage(listPayload, `NewAPI token list failed (${listed.status})`))
-  const listedRows = asRecord(listPayload)?.data
-  const rows = Array.isArray(listedRows) ? listedRows : []
-  const row = rows.map(asRecord).find(item => typeof item?.name === 'string' && item.name.trim().toLowerCase() === KITO_MANAGED_TOKEN_NAME)
-  const tokenId = typeof row?.id === 'number' ? row.id : Number(row?.id)
-  if (!Number.isFinite(tokenId)) throw new Error('NewAPI managed token id was missing')
-  const keyResult = await fetchImpl(`${baseUrl}/api/token/${tokenId}/key`, { method: 'POST', headers, signal: withTimeout(signal) })
-  const keyPayload = await readJson(keyResult)
-  const key = stringField(asRecord(keyPayload)?.key)
-  if (!keyResult.ok || !key) throw new Error(errorMessage(keyPayload, `NewAPI token key failed (${keyResult.status})`))
-  return formatRelayKey(key)
-}
-
-/**
  * Read the Telegram display name and the shared NewAPI balance.
  * A missing balance stays absent so the UI does not show a fake zero.
  * @param identityToken - KT Identity access token.
@@ -403,22 +336,6 @@ export function spendableFromEnsure(payload: unknown): number | undefined {
 }
 
 /**
- * Read the user wallet from the relay key. This does not open a website session.
- * @param baseUrl - NewAPI origin.
- * @param apiKey - stored `KITO_NEWAPI_API_KEY`.
- * @returns the request. The key stays in the header.
- */
-export function accountUsageRequest(baseUrl: string, apiKey: string): { readonly url: string; readonly init: RequestInit } {
-  return {
-    url: `${baseUrl.replace(/\/+$/u, '')}/api/usage/account/`,
-    init: {
-      method: 'GET',
-      headers: jsonHeaders({ authorization: `Bearer ${apiKey}` }),
-    },
-  }
-}
-
-/**
  * How long to wait after a critical-route 429. Login, session refresh, and the
  * balance read share one 20-request window, so a rejected read must not be retried immediately.
  * @param retryAfterHeader - `Retry-After` seconds from the gateway.
@@ -428,20 +345,6 @@ export function criticalRetryDelayMs(retryAfterHeader: string | null): number {
   const seconds = Number(retryAfterHeader)
   if (!Number.isFinite(seconds) || seconds <= 0) return 60_000
   return Math.min(seconds, 20 * 60) * 1000
-}
-
-/** @param payload - `GET /api/usage/account/` body. @returns USD cents, including a negative balance. */
-export function usdFromAccountUsage(payload: unknown): number | undefined {
-  const data = asRecord(asRecord(payload)?.data) ?? asRecord(payload)
-  const usd = data?.remaining_usd
-  if (typeof usd !== 'number' || !Number.isFinite(usd)) return undefined
-  return Math.round(usd * 100) / 100
-}
-
-function cookieHeader(response: Response): string | undefined {
-  const cookies = typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : []
-  const pairs = cookies.map(entry => entry.split(';')[0]?.trim()).filter((entry): entry is string => Boolean(entry))
-  return pairs.length > 0 ? pairs.join('; ') : undefined
 }
 
 function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {

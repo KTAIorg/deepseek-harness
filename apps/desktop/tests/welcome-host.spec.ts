@@ -1,5 +1,5 @@
 /** Native onboarding reuses authenticated Web RPC and never reads credential values. */
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { connectDesktopWelcome } from '../src/welcome-backend.ts'
 
 function transport(preference?: string) {
@@ -31,7 +31,17 @@ function transport(preference?: string) {
 
 const url = 'http://127.0.0.1:19387/?token=fixture'
 
+afterEach(() => { vi.unstubAllEnvs() })
+
 describe('desktop welcome Web operations', () => {
+  it.each(['kito', 'local'])('uses the independent Kito account instead of DeepSeek state: %s', async (profile) => {
+    vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', profile)
+    const host = transport()
+    const backend = await connectDesktopWelcome(url, host.send)
+    expect(await backend.read()).toMatchObject({ loggedIn: false, hasApiKey: false, writable: false })
+    expect(host.send.mock.calls.every(([, init]) => !(init?.body as string | undefined)?.includes('account/getState'))).toBe(true)
+  })
+
   it('authenticates through Web and stores only through the configured credential reference', async () => {
     const host = transport()
     const backend = await connectDesktopWelcome(url, host.send)
@@ -90,7 +100,22 @@ describe('desktop welcome Web operations', () => {
     host.send.mockRejectedValueOnce(new Error('private credential sk-must-not-leak'))
     expect(await backend.save('sk-example')).toEqual({ ok: false })
     host.send.mockResolvedValueOnce(Response.json({ type: 'server-response', rpcId: 'other', result: { ok: true } }))
-    await expect(backend.read()).rejects.toThrow('Web RPC failed')
+    await expect(backend.read()).rejects.toThrow('desktop welcome: settings/describe returned an invalid RPC envelope')
+  })
+
+  it('reports the failed method and remote code without provider diagnostics', async () => {
+    const host = transport()
+    const backend = await connectDesktopWelcome(url, host.send)
+    host.send.mockImplementationOnce(async (_input, init) => {
+      const { rpcId } = JSON.parse(init?.body as string) as { rpcId: string }
+      return Response.json({
+        type: 'server-response', rpcId,
+        result: { ok: false, error: { code: 'settings/unavailable', message: 'private credential sk-must-not-leak' } },
+      })
+    })
+    const failure = backend.read()
+    await expect(failure).rejects.toThrow('desktop welcome: settings/describe failed (settings/unavailable)')
+    await expect(failure).rejects.not.toThrow('sk-must-not-leak')
   })
 
 

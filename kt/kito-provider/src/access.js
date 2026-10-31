@@ -1,18 +1,16 @@
 import { passwordLogin, pollDeviceLogin, startDeviceLogin } from './identity.js'
-import { ensureManagedToken } from './newapi.js'
 
-export const KITO_NEWAPI_KEY_REF = 'KITO_NEWAPI_API_KEY'
+export const KITO_IDENTITY_TOKEN_REF = 'KITO_IDENTITY_TOKEN'
 
 /**
- * Sign in with KT Identity and exchange the bearer for the shared `kito` NewAPI key.
- * The bearer stays in the authorization grant. The relay key is stored under {@link KITO_NEWAPI_KEY_REF}.
+ * Sign in with KT Identity. The bearer is the only relay credential stored locally;
+ * NewAPI resolves the managed relay token server-side on each model call.
  *
  * @param {{
  *   method: 'password' | 'telegram',
  *   loginName?: string,
  *   password?: string,
  *   baseUrl?: string,
- *   newapiBaseUrl?: string,
  *   signal?: AbortSignal,
  *   notify?: (notice: { message: string, url?: string, code?: string }) => void,
  *   fetchImpl?: typeof fetch,
@@ -28,13 +26,8 @@ export async function establishKitoAccess(input) {
         signal: input.signal,
       }, fetchImpl)
     : await telegramLogin(input, fetchImpl)
-  const managed = await ensureManagedToken(identity.token, {
-    baseUrl: input.newapiBaseUrl,
-    fetchImpl,
-    signal: input.signal,
-  })
   return {
-    apiKey: managed.key,
+    identityToken: identity.token,
     grant: {
       accountId: identity.account.id,
       accountNo: identity.account.accountNo,

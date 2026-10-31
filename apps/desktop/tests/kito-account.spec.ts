@@ -5,13 +5,11 @@ import { describe, expect, it } from 'vitest'
 import { handleKitoAppRoute } from '../src/kito-account-route.ts'
 import { readStoredCredential } from '../src/kito-credentials.ts'
 import {
-  accountUsageRequest,
   criticalRetryDelayMs,
   fetchKitoAccount,
   KITO_CONSOLE_PAGES,
   newapiQuotaToUsd,
   refreshKitoIdentity,
-  usdFromAccountUsage,
 } from '../src/kito-identity.ts'
 import { consoleLogoutRequest, consoleRefreshRequest, establishKitoConsoleSession, parseSetCookie } from '../src/kito-wallet.ts'
 
@@ -153,14 +151,7 @@ describe('Kito account summary', () => {
     expect(opened).toEqual(['stored-token'])
   })
 
-  it('reads the wallet balance from the relay-key usage endpoint, including a negative amount', () => {
-    const request = accountUsageRequest('https://ktapi.cc/', 'sk-secret')
-    expect(request.url).toBe('https://ktapi.cc/api/usage/account/')
-    expect(request.url).not.toContain('sk-secret')
-    expect(new Headers(request.init.headers).get('authorization')).toBe('Bearer sk-secret')
-    expect(usdFromAccountUsage({ success: true, data: { remaining_usd: 9.934818 } })).toBe(9.93)
-    expect(usdFromAccountUsage({ data: { remaining_usd: -0.0651 } })).toBe(-0.07)
-    expect(usdFromAccountUsage({ data: {} })).toBeUndefined()
+  it('bounds critical-route retries and keeps the console page map stable', () => {
     expect(criticalRetryDelayMs('522')).toBe(522_000)
     expect(criticalRetryDelayMs(null)).toBe(60_000)
     expect(criticalRetryDelayMs('9999')).toBe(20 * 60 * 1000)
@@ -209,15 +200,16 @@ describe('Kito account summary', () => {
     expect(signedOut).toBe(true)
   })
 
-  it('removes the stored login on sign-out so a refresh cannot sign the person back in', async () => {
+  it('removes local model keys and the stored login on sign-out', async () => {
     const steps: string[] = []
     await handleKitoAppRoute(new Request('dsh-app://app/kito/sign-out', { method: 'POST' }), {
       showWelcome: () => undefined,
       openWallet: async () => undefined,
       signOutConsole: async () => { steps.push('console') },
+      forgetModelKeys: async () => { steps.push('model-keys') },
       forgetIdentity: async () => { steps.push('identity') },
     })
-    expect(steps).toEqual(['console', 'identity'])
+    expect(steps).toEqual(['console', 'model-keys', 'identity'])
   })
 
   it('renews an expired login once from the refresh token', async () => {
@@ -233,24 +225,18 @@ describe('Kito account summary', () => {
     expect(refreshes).toBe(1)
   })
 
-  it('reports a stored model key and its balance when there is no login', async () => {
-    const options = {
+  it('reports signed out and removes legacy model keys when no login can be renewed', async () => {
+    let removedModelKeys = false
+    const response = await handleKitoAppRoute(new Request('dsh-app://app/kito/account'), {
       showWelcome: () => undefined,
       openWallet: async () => undefined,
       readToken: async () => undefined,
       refreshIdentity: async () => undefined,
       readBalance: async () => 499.95,
-    }
-    const withKey = await handleKitoAppRoute(new Request('dsh-app://app/kito/account'), { ...options, hasModelKey: async () => true })
-    await expect(withKey?.json()).resolves.toEqual({ signedIn: false, keyConfigured: true, balance: 499.95 })
-    const unreadable = await handleKitoAppRoute(new Request('dsh-app://app/kito/account'), {
-      ...options,
-      hasModelKey: async () => true,
-      readBalance: async () => { throw new Error('offline') },
+      forgetModelKeys: async () => { removedModelKeys = true },
     })
-    await expect(unreadable?.json()).resolves.toEqual({ signedIn: false, keyConfigured: true })
-    const withoutKey = await handleKitoAppRoute(new Request('dsh-app://app/kito/account'), { ...options, hasModelKey: async () => false })
-    await expect(withoutKey?.json()).resolves.toEqual({ signedIn: false })
+    await expect(response?.json()).resolves.toEqual({ signedIn: false })
+    expect(removedModelKeys).toBe(true)
   })
 
   it('renews the Identity token through the device refresh endpoint', async () => {

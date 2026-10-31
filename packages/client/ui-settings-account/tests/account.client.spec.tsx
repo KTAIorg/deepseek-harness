@@ -208,20 +208,28 @@ it.each([en, zh])('offers settings, contact and sign-in from the signed-out acco
   expect(operations.contactUs).toHaveBeenCalledOnce()
 })
 
-it('keeps the Kito More menu free of a second login from the first frame', async () => {
+it('keeps direct Kito launcher actions free of a second login from the first frame', async () => {
   const fetchAccount = vi.fn()
   vi.stubGlobal('fetch', fetchAccount)
   vi.stubGlobal('dshDesktop', {})
   const operations = operationsOf({ status: 'signed-out', attempt: null })
+  const openSettings = vi.fn()
   const { AccountMenu } = await import('../src/client/AccountMenu.tsx')
   render(<AccountMenu {...withoutResources} {...operations} settingsOpen={false}
     useResource={() => ({ status: 'loading', value: undefined, failure: undefined })}
     useAccount={selector => selector(operations.hooks.account.getSnapshot())}
-    useTheme={selector => selector(operations.hooks.theme.getSnapshot())} wide openOnboarding={() => {}} openSettings={() => {}}
+    useTheme={selector => selector(operations.hooks.theme.getSnapshot())} wide openOnboarding={() => {}} openSettings={openSettings}
+    settingsShortcut={{ keys: ['⌘', ','], aria: 'Meta+,' }}
     t={key => key in zh ? zh[key as AccountKey] : key} />)
-  fireEvent.click(screen.getByRole('button', { name: zh.menu }))
-  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([zh.settings, zh.contactUs])
-  expect(screen.queryByRole('menuitem', { name: zh.signIn })).toBeNull()
+  expect(screen.queryByRole('button', { name: zh.menu })).toBeNull()
+  expect(screen.queryByRole('menu')).toBeNull()
+  const settings = screen.getByRole('button', { name: zh.settings })
+  expect(settings.getAttribute('aria-keyshortcuts')).toBe('Meta+,')
+  fireEvent.click(settings)
+  expect(openSettings).toHaveBeenCalledOnce()
+  fireEvent.click(screen.getByRole('button', { name: zh.contactUs }))
+  expect(operations.contactUs).toHaveBeenCalledOnce()
+  expect(screen.queryByRole('button', { name: zh.signIn })).toBeNull()
   expect(fetchAccount).not.toHaveBeenCalled()
 })
 
@@ -236,16 +244,16 @@ it('separates Kito launcher actions from official account notices', async () => 
   const { AccountMenu } = await import('../src/client/AccountMenu.tsx')
   render(<AccountMenu {...withoutResources} {...operations} settingsOpen={false}
     useAccount={selector => selector(snapshot)}
-    useTheme={selector => selector(operations.hooks.theme.getSnapshot())} wide openOnboarding={() => {}} openSettings={() => {}}
+    useTheme={selector => selector(operations.hooks.theme.getSnapshot())} wide={false} openOnboarding={() => {}} openSettings={() => {}}
     t={key => key in zh ? zh[key as AccountKey] : key} />)
   await vi.waitFor(() => { expect(screen.getByRole('status').textContent).toBe(`${zh.bonusNoticeTitle}Official award`) })
-  const trigger = screen.getByRole('button', { name: zh.menu })
-  expect(trigger.textContent).toBe(zh.more)
-  expect(trigger.textContent).not.toContain('Official account')
-  fireEvent.click(trigger)
-  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([zh.settings, zh.contactUs])
-  expect(screen.queryByRole('menuitem', { name: zh.signIn })).toBeNull()
-  expect(screen.queryByRole('menuitem', { name: zh.signOut })).toBeNull()
+  expect(screen.queryByRole('button', { name: zh.menu })).toBeNull()
+  expect(screen.getByRole('button', { name: zh.settings }).textContent).toBe('')
+  expect(screen.getByRole('button', { name: zh.contactUs }).textContent).toBe('')
+  expect(document.body.textContent).not.toContain('Official account')
+  expect(screen.queryByRole('menu')).toBeNull()
+  expect(screen.queryByRole('button', { name: zh.signIn })).toBeNull()
+  expect(screen.queryByRole('button', { name: zh.signOut })).toBeNull()
 })
 
 it('reports a failed start in the login dialog, not as a sidebar alert', async () => {

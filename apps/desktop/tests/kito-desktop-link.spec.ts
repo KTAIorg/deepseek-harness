@@ -21,7 +21,6 @@ describe('Kito desktop link', () => {
       {
         currentAccountId: async () => 'acct-old',
         saveIdentity: async () => ({ ok: true }),
-        saveKey: async () => ({ ok: true }),
         onSuccess: () => undefined,
       },
     )
@@ -43,7 +42,6 @@ describe('Kito desktop link', () => {
         fetchImpl,
         currentAccountId: async () => 'acct',
         saveIdentity: async () => ({ ok: true }),
-        saveKey: async () => ({ ok: true }),
         onSuccess: () => undefined,
       },
     )
@@ -65,7 +63,6 @@ describe('Kito desktop link', () => {
         fetchImpl,
         currentAccountId: async () => { throw new Error('account unreadable') },
         saveIdentity: async () => ({ ok: true }),
-        saveKey: async () => ({ ok: true }),
         onSuccess: () => undefined,
       },
     )).rejects.toThrow(/unreadable/)
@@ -76,7 +73,6 @@ describe('Kito desktop link', () => {
     await expect(runKitoDesktopLink('https://example.com/desktop-login', {
       currentAccountId: async () => undefined,
       saveIdentity: async () => ({ ok: true }),
-      saveKey: async () => ({ ok: true }),
       onSuccess: () => undefined,
     })).rejects.toThrow(/rejected/)
     expect(vi).toBeDefined()

@@ -148,12 +148,12 @@ describe('Kito browser-brand plugin', () => {
     expect(view.container.textContent).toBe('Kito Harness')
   })
 
-  it('labels signed-in, key-only, signed-out and loading accounts without inventing a balance', () => {
+  it('labels signed-in, signed-out and loading accounts without inventing a balance', () => {
     expect(kitoAccountLabel({ signedIn: true, displayName: 'Ada', balance: 2 })).toBe('Ada · $2')
     expect(kitoAccountLabel({ signedIn: true, displayName: 'Ada', balance: 2.5 })).toBe('Ada · $2.50')
     expect(kitoAccountLabel({ signedIn: true, displayName: '  A customer with a long name  ' })).toBe('A customer with a long name')
     expect(kitoAccountLabel({ signedIn: true, displayName: '   ' })).toBe('Kito')
-    expect(kitoAccountLabel({ signedIn: false, keyConfigured: true, balance: 499.95 })).toBe('模型可用 · $499.95')
+    expect(kitoAccountLabel({ signedIn: false, balance: 499.95 })).toBe(zh.signIn)
     expect(kitoAccountLabel({ signedIn: false })).toBe(zh.signIn)
     expect(kitoAccountLabel(undefined)).toBe(zh.loading)
   })
@@ -186,18 +186,16 @@ describe('Kito browser-brand plugin', () => {
     expect(clipboard.writeClipboard).toHaveBeenCalledWith('KT-DEMO-001')
   })
 
-  it('shows a usable balance and optional Telegram binding when only the model key is stored', () => {
-    const globals = accountGlobals(accountResource({ signedIn: false, keyConfigured: true, balance: 499.95 }))
+  it('shows only Telegram sign-in when a signed-out payload still carries legacy balance data', () => {
+    const globals = accountGlobals(accountResource({ signedIn: false, balance: 499.95 }))
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true })))
     vi.stubGlobal('fetch', fetchMock)
     const view = render(<KitoAccountFooter {...globals} wide t={key => zh[key]} />)
-    expect(view.getByText('模型可用 · $499.95')).toBeTruthy()
-    expect(view.queryByRole('button', { name: zh.signIn })).toBeNull()
-    fireEvent.click(view.getByRole('button', { name: zh.bindTelegram }))
+    expect(view.getByRole('button', { name: zh.signIn })).toBeTruthy()
+    expect(view.queryByText(/余额/)).toBeNull()
+    expect(view.getAllByRole('button')).toHaveLength(1)
+    fireEvent.click(view.getByRole('button', { name: zh.signIn }))
     expect(fetchMock).toHaveBeenCalledWith('dsh-app://app/kito/sign-in', { method: 'POST' })
-    cleanup()
-    const narrow = render(<KitoAccountFooter {...globals} wide={false} t={key => zh[key]} />)
-    expect(narrow.getByRole('button', { name: zh.bindTelegram })).toBeTruthy()
   })
 
   it('hides the account row when macOS collapses the whole sidebar', () => {
@@ -249,14 +247,14 @@ describe('Kito browser-brand plugin', () => {
     expect(refreshed).toHaveBeenCalledTimes(2)
   })
 
-  it('uses optional binding and the spendable balance on key-only Settings', () => {
+  it('shows only Telegram sign-in in Settings when legacy signed-out balance data arrives', () => {
     const view = render(<KitoAccountSection
-      {...accountGlobals(accountResource({ signedIn: false, keyConfigured: true, balance: 1.5 }))}
+      {...accountGlobals(accountResource({ signedIn: false, balance: 1.5 }))}
       close={() => {}} t={key => zh[key]} />)
-    expect(view.getByText('余额 (USD) $1.50')).toBeTruthy()
-    expect(view.getByRole('heading', { name: zh.keyReady })).toBeTruthy()
-    expect(view.getByRole('button', { name: zh.bindTelegram })).toBeTruthy()
-    expect(view.queryByRole('button', { name: zh.signIn })).toBeNull()
+    expect(view.queryByText(/余额/)).toBeNull()
+    expect(view.getByRole('heading', { name: zh.signedOut })).toBeTruthy()
+    expect(view.getByRole('button', { name: zh.signIn })).toBeTruthy()
+    expect(view.getAllByRole('button')).toHaveLength(1)
   })
 
   it('refreshes the shared account after signing out', async () => {
@@ -396,28 +394,23 @@ describe('Kito account and language presentation', () => {
     expect(refreshed).not.toHaveBeenCalled()
   })
 
-  it('keeps a failed key-only account visible with a warning', () => {
+  it('keeps a failed signed-out account visible with a warning', () => {
     const view = render(<KitoAccountFooter
-      {...accountGlobals(accountResource({ signedIn: false, keyConfigured: true, balance: 2 }, true))}
+      {...accountGlobals(accountResource({ signedIn: false, balance: 2 }, true))}
       wide t={key => zh[key]} />)
-    expect(view.getByText('模型可用 · $2')).toBeTruthy()
-    expect(view.getByRole('button', { name: zh.bindTelegram })).toBeTruthy()
+    expect(view.getByRole('button', { name: zh.signIn })).toBeTruthy()
+    expect(view.queryByText(/余额/)).toBeNull()
+    expect(view.getAllByRole('button')).toHaveLength(1)
   })
 
-  it('uses optional binding and Telegram sign-in from Settings', () => {
+  it('uses Telegram sign-in from Settings', () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true })))
     vi.stubGlobal('fetch', fetchMock)
-    const keyOnly = render(<KitoAccountSection
-      {...accountGlobals(accountResource({ signedIn: false, keyConfigured: true }))}
-      close={() => {}} t={key => zh[key]} />)
-    fireEvent.click(keyOnly.getByRole('button', { name: zh.bindTelegram }))
-    cleanup()
     const signedOut = render(<KitoAccountSection
       {...accountGlobals(accountResource({ signedIn: false }))} close={() => {}} t={key => zh[key]} />)
     fireEvent.click(signedOut.getByRole('button', { name: zh.signIn }))
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(fetchMock).toHaveBeenNthCalledWith(1, 'dsh-app://app/kito/sign-in', { method: 'POST' })
-    expect(fetchMock).toHaveBeenNthCalledWith(2, 'dsh-app://app/kito/sign-in', { method: 'POST' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith('dsh-app://app/kito/sign-in', { method: 'POST' })
   })
 
   it('clears copy feedback after success and ignores rejected clipboard writes', async () => {
@@ -455,11 +448,11 @@ describe('Kito account and language presentation', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('uses the locale fallback and does not invent a key-only balance', () => {
-    expect(kitoAccountLabel({ signedIn: false, keyConfigured: true })).toBe('模型可用')
+  it('uses the locale fallback and does not invent a signed-out balance', () => {
+    expect(kitoAccountLabel({ signedIn: false, balance: 2 })).toBe(zh.signIn)
     const view = render(<KitoAccountFooter
-      {...accountGlobals(accountResource({ signedIn: false, keyConfigured: true }))} wide />)
-    expect(view.getByText('模型可用')).toBeTruthy()
+      {...accountGlobals(accountResource({ signedIn: false, balance: 2 }))} wide />)
+    expect(view.getByText(zh.signIn)).toBeTruthy()
     expect(view.queryByText(/\$/)).toBeNull()
   })
 
@@ -552,11 +545,11 @@ describe('Kito account and language presentation', () => {
 describe('Kito account resource', () => {
   it('validates optional account facts independently', () => {
     expect(parseKitoAccount({
-      signedIn: false, keyConfigured: false, displayName: '', accountNo: 'KT-DEMO-001', telegramUsername: 'ada_t', balance: 0,
+      signedIn: false, displayName: '', accountNo: 'KT-DEMO-001', telegramUsername: 'ada_t', balance: 0,
     })).toEqual({
-      signedIn: false, keyConfigured: false, displayName: '', accountNo: 'KT-DEMO-001', telegramUsername: 'ada_t', balance: 0,
+      signedIn: false, displayName: '', accountNo: 'KT-DEMO-001', telegramUsername: 'ada_t', balance: 0,
     })
-    for (const payload of [null, {}, { signedIn: 'true' }, { signedIn: false, keyConfigured: 1 },
+    for (const payload of [null, {}, { signedIn: 'true' },
       { signedIn: true, displayName: 3 }, { signedIn: true, accountNo: null },
       { signedIn: true, telegramUsername: false }, { signedIn: true, balance: '2' }, { signedIn: true, balance: Number.NaN }]) {
       expect(() => parseKitoAccount(payload)).toThrow('Invalid Kito account response.')

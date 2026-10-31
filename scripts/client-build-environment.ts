@@ -26,6 +26,7 @@ const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
 const KITO_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_BUILD_PROFILE: 'kito',
   DSH_CLIENT_TITLE: 'Kito Harness',
+  DSH_CLIENT_FEEDBACK_URL: 'https://www.ktapi.cc/',
 } as const
 
 /** Public variable carrying the source commit embedded in client artifacts. */
@@ -229,6 +230,7 @@ export function resolveClientBuildEnvironment(
       DSH_CLIENT_VERSION: version,
       ...(profile === 'official' ? OFFICIAL_CLIENT_BUILD_ENVIRONMENT : profile === 'kito' ? KITO_CLIENT_BUILD_ENVIRONMENT : {
         DSH_CLIENT_BUILD_PROFILE: 'local',
+        DSH_CLIENT_FEEDBACK_URL: KITO_CLIENT_BUILD_ENVIRONMENT.DSH_CLIENT_FEEDBACK_URL,
         ...(environment.DSH_CLIENT_GIT_DIRTY === 'true' ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),
       }),
     }

@@ -66,31 +66,42 @@ export function AccountMenu({
       notices={account.notices}
       anchor={anchor} title={t('bonusNoticeTitle')} closeLabel={t('close')}
       onShown={bonusNoticeShown} onDismiss={bonusNoticeDismissed} />}
-    <Menu open={open} side="top" portal autoFocus className={css.anchor} listClassName={signedIn ? undefined : css.signedOutMenu}
-      anchor={<button ref={trigger} type="button" className={css.trigger} data-collapsed={!wide} data-signed-out={!signedIn} aria-label={t('menu')}
-        aria-haspopup="menu" aria-expanded={open} onClick={() => { setOpen(value => !value) }}>
-        {signedIn
-          ? <span className={css.avatar} data-avatar-status={account.avatar?.status}>
-            <AccountAvatar avatar={account.avatar} avatarFailed={avatarFailed} />
-          </span>
-          : <IconEllipsisOutlineMedium size={14} />}
-        {wide && <span className={css.label}>{signedIn ? label : t('more')}</span>}
-      </button>}
-      items={[
-        { id: 'settings', label: t('settings'), icon: <IconSettingsOutlineMedium size={16} />,
-          ...(settingsShortcut === undefined ? {} : { shortcut: settingsShortcut }) },
-        { id: 'contact', label: t('contactUs'), icon: <IconPaperPlaneOutlineMedium size={16} /> },
-        ...(signedIn ? [{ id: 'signout', label: t('signOut'), icon: <LogoutIcon />, disabled: busy }]
-          : kitoOwnsLauncher ? []
+    {kitoOwnsLauncher
+      ? <div className={css.actions} data-collapsed={!wide}>
+        <button type="button" className={css.action} data-collapsed={!wide} aria-label={t('settings')}
+          aria-keyshortcuts={settingsShortcut?.aria} onClick={openSettings}>
+          <IconSettingsOutlineMedium size={14} />
+          {wide && <span className={css.label}>{t('settings')}</span>}
+        </button>
+        <button type="button" className={css.action} data-collapsed={!wide} aria-label={t('contactUs')} onClick={contactUs}>
+          <IconPaperPlaneOutlineMedium size={14} />
+          {wide && <span className={css.label}>{t('contactUs')}</span>}
+        </button>
+      </div>
+      : <Menu open={open} side="top" portal autoFocus className={css.anchor} listClassName={signedIn ? undefined : css.signedOutMenu}
+        anchor={<button ref={trigger} type="button" className={css.trigger} data-collapsed={!wide} data-signed-out={!signedIn} aria-label={t('menu')}
+          aria-haspopup="menu" aria-expanded={open} onClick={() => { setOpen(value => !value) }}>
+          {signedIn
+            ? <span className={css.avatar} data-avatar-status={account.avatar?.status}>
+              <AccountAvatar avatar={account.avatar} avatarFailed={avatarFailed} />
+            </span>
+            : <IconEllipsisOutlineMedium size={14} />}
+          {wide && <span className={css.label}>{signedIn ? label : t('more')}</span>}
+        </button>}
+        items={[
+          { id: 'settings', label: t('settings'), icon: <IconSettingsOutlineMedium size={16} />,
+            ...(settingsShortcut === undefined ? {} : { shortcut: settingsShortcut }) },
+          { id: 'contact', label: t('contactUs'), icon: <IconPaperPlaneOutlineMedium size={16} /> },
+          ...(signedIn ? [{ id: 'signout', label: t('signOut'), icon: <LogoutIcon />, disabled: busy }]
             : [{ id: 'signin', label: t('signIn'), icon: <IconUserOutlineMedium size={16} /> }]),
-      ]}
-      onClose={() => { setOpen(false) }}
-      onSelect={(id) => {
-        if (id === 'settings') { setOpen(false); trigger.current?.focus(); openSettings() }
-        else if (id === 'contact') { setOpen(false); contactUs() }
-        else if (id === 'signin') beginSignIn()
-        else void requestSignOut()
-      }} />
+        ]}
+        onClose={() => { setOpen(false) }}
+        onSelect={(id) => {
+          if (id === 'settings') { setOpen(false); trigger.current?.focus(); openSettings() }
+          else if (id === 'contact') { setOpen(false); contactUs() }
+          else if (id === 'signin') beginSignIn()
+          else void requestSignOut()
+        }} />}
     {account.loginVisible && !account.onboarding && <SignInDialog account={account} colorScheme={colorScheme}
       start={start} cancel={cancel} t={t}
       close={() => { showLogin(false) }} useApiKey={() => { showLogin(false); openOnboarding('deepseek-official') }} />}

@@ -67,7 +67,7 @@ import { DesktopBackgroundNotice } from './background-notice.ts'
 import { handleKitoAppRoute } from './kito-account-route.ts'
 import { openKitoConsole, readKitoAccountBalance, signOutKitoConsole } from './kito-wallet-window.ts'
 import { shouldDismissNewWelcome } from './kito-welcome-policy.ts'
-import { identityBaseUrl, KITO_IDENTITY_REFRESH_TOKEN_REF, KITO_IDENTITY_TOKEN_REF, refreshKitoIdentity } from './kito-identity.ts'
+import { identityBaseUrl, KITO_CLAUDE_KEY_REF, KITO_IDENTITY_REFRESH_TOKEN_REF, KITO_IDENTITY_TOKEN_REF, KITO_NEWAPI_KEY_REF, refreshKitoIdentity } from './kito-identity.ts'
 import { createKitoIdentityRefresher } from './kito-identity-refresh.ts'
 import { createKitoSignIn, type KitoSignIn } from './kito-sign-in.ts'
 import { readStoredCredential } from './kito-credentials.ts'
@@ -665,7 +665,6 @@ async function main(): Promise<void> {
     // A confirmation on a hidden window would go unseen, so it waits for the next show; the mandatory
     // flow keeps its own taskbar and Dock attention instead.
     if (!isMandatory()) await windowShown()
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- A quit can begin while the show is awaited.
     if (quitting) return state
     return updates.install(version)
   }
@@ -694,12 +693,18 @@ async function main(): Promise<void> {
         openWallet: token => openKitoConsole(token, 'wallet'),
         openConsole: (token, page) => openKitoConsole(token, page),
         signOutConsole: () => signOutKitoConsole(),
-        readBalance: () => readKitoAccountBalance(),
+        readBalance: token => readKitoAccountBalance(token),
         refreshIdentity: () => refreshKitoIdentityToken(),
         forgetIdentity: async () => {
           for (const ref of [KITO_IDENTITY_TOKEN_REF, KITO_IDENTITY_REFRESH_TOKEN_REF]) {
             const removed = await welcomeBackend?.removeNamed(ref)
             if (removed?.ok !== true) console.error('kito sign-out could not remove a stored login credential')
+          }
+        },
+        forgetModelKeys: async () => {
+          for (const ref of [KITO_NEWAPI_KEY_REF, KITO_CLAUDE_KEY_REF]) {
+            const removed = await welcomeBackend?.removeNamed(ref)
+            if (removed?.ok !== true) throw new Error(`kito sign-out could not remove ${ref}`)
           }
         },
       })
@@ -1203,7 +1208,6 @@ async function main(): Promise<void> {
             publish: (state) => {
               if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
             },
-            saveKey: async key => welcomeBackend?.save(key) ?? { ok: false },
             saveIdentity: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false },
             saveRefreshToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false },
             onSuccess: () => {
@@ -1322,10 +1326,6 @@ async function main(): Promise<void> {
       saveRefreshToken: async (token) => {
         await waitForWelcomeBackend()
         return welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false }
-      },
-      saveKey: async (key) => {
-        await waitForWelcomeBackend()
-        return welcomeBackend?.save(key) ?? { ok: false }
       },
       onSuccess: () => {
         void enterWorkspace({ activate: true }).then(() => { publishKitoAccount() }).catch(() => undefined)

@@ -201,6 +201,11 @@ export function apply(ctx: Context): void {
     ...nativePlatform === undefined ? {} : { openPlatformPage: platformPageOpener(refreshAccount) },
     refreshAccount,
     contactUs() {
+      const feedbackUrl = process.env.DSH_CLIENT_FEEDBACK_URL
+      if (feedbackUrl !== undefined && feedbackUrl !== '') {
+        window.open(feedbackUrl, '_blank', 'noopener,noreferrer')
+        return
+      }
       // Sample the account, build and environment before awaiting native information, so
       // a profile the read outlasts cannot replace the UID this click reported.
       const profile = snapshot.details?.profile

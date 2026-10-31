@@ -5,8 +5,6 @@ import type { ResourceProvider } from '@deepseek-ai/dsh-client-resources/client'
 /** Public account facts; credentials remain inside the Desktop main process. */
 export interface KitoAccountView {
   readonly signedIn: boolean
-  /** No Identity login, but the model key is stored and models keep working. */
-  readonly keyConfigured?: boolean
   readonly displayName?: string
   readonly accountNo?: string
   readonly telegramUsername?: string
@@ -52,12 +50,6 @@ type MutableKitoAccount = { -readonly [Key in keyof KitoAccountView]: KitoAccoun
 export function parseKitoAccount(payload: unknown): KitoAccountView {
   if (typeof payload !== 'object' || payload === null || !('signedIn' in payload) || typeof payload.signedIn !== 'boolean') invalidAccount()
   const account: MutableKitoAccount = { signedIn: payload.signedIn }
-  for (const key of ['keyConfigured'] as const) {
-    if (!Object.hasOwn(payload, key)) continue
-    const value: unknown = Object.getOwnPropertyDescriptor(payload, key)?.value
-    if (typeof value !== 'boolean') invalidAccount()
-    account[key] = value
-  }
   for (const key of ['displayName', 'accountNo', 'telegramUsername'] as const) {
     if (!Object.hasOwn(payload, key)) continue
     const value: unknown = Object.getOwnPropertyDescriptor(payload, key)?.value

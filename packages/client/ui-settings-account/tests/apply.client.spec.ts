@@ -163,6 +163,17 @@ it('shares account actions across seats, publishes dialog ownership, and opens c
   expect(c.ctx.slots.entries('settings.launcher')).toHaveLength(0)
 }, 60_000)
 
+it('opens the configured product website directly for feedback', async ({ start }) => {
+  vi.stubEnv('DSH_CLIENT_FEEDBACK_URL', 'https://www.ktapi.cc/')
+  const open = vi.spyOn(window, 'open').mockReturnValue(null)
+  const deviceInfo = vi.fn(async () => 'unused')
+  vi.stubGlobal('dshDesktop', { deviceInfo })
+  const c = await start()
+  operations(c).contactUs()
+  expect(open).toHaveBeenCalledWith('https://www.ktapi.cc/', '_blank', 'noopener,noreferrer')
+  expect(deviceInfo).not.toHaveBeenCalled()
+}, 60_000)
+
 it('prefills the native device description from the Desktop bridge on every click', async ({ start }) => {
   const open = vi.spyOn(window, 'open').mockReturnValue(null)
   const deviceInfo = vi.fn(async () => 'platform=darwin; os=15.0; app_arch=arm64; cpu=Apple M3; memory_gib=16.0')

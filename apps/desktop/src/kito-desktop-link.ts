@@ -4,7 +4,6 @@
  */
 
 import {
-  ensureKitoApiKey,
   finishKitoDeviceLogin,
   startKitoDeviceLogin,
 } from './kito-identity.ts'
@@ -21,7 +20,6 @@ export interface DesktopLoginDeps {
   saveIdentity: (token: string) => Promise<{ ok: boolean }>
   /** Persists `KITO_IDENTITY_REFRESH_TOKEN`; a failure leaves the login valid until the access token expires. */
   saveRefreshToken?: (token: string) => Promise<{ ok: boolean }>
-  saveKey: (key: string) => Promise<{ ok: boolean }>
   onSuccess: () => void
 }
 
@@ -114,10 +112,8 @@ async function finishDesktopLink(
     opaqueCode: challenge.opaqueCode,
   })
   if (session.accountId !== source.accountId) throw new Error('kito desktop login account mismatch')
-  const key = await ensureKitoApiKey(session.token, { fetchImpl })
   const savedIdentity = await deps.saveIdentity(session.token)
-  const savedKey = await deps.saveKey(key)
-  if (!savedIdentity.ok || !savedKey.ok) throw new Error('kito desktop login save failed')
+  if (!savedIdentity.ok) throw new Error('kito desktop login save failed')
   if (session.refreshToken !== undefined) await deps.saveRefreshToken?.(session.refreshToken)
   const commit = await post(fetchImpl, callbackUrl(target.port, target.request, '/commit'), {
     accountId: source.accountId,

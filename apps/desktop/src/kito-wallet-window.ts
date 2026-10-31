@@ -1,9 +1,8 @@
 /** Open the ktapi.cc wallet with the console session ktapi.cc already uses. */
 
 import { BrowserWindow, session, type Session } from 'electron'
-import { readStoredCredential } from './kito-credentials.ts'
 import { failureDetail, kitoFetch, readJson } from './kito-http.ts'
-import { accountUsageRequest, criticalRetryDelayMs, KITO_CONSOLE_PAGES, KITO_NEWAPI_KEY_REF, KITO_WALLET_URL, newapiBaseUrl, spendableFromEnsure, usdFromAccountUsage, type KitoConsolePage } from './kito-identity.ts'
+import { criticalRetryDelayMs, KITO_CONSOLE_PAGES, KITO_WALLET_URL, spendableFromEnsure, type KitoConsolePage } from './kito-identity.ts'
 import { consoleCookiesFrom, consoleLogoutRequest, consoleRefreshRequest, establishKitoConsoleSession, KITO_CONSOLE_REFRESH_COOKIE, type ConsoleCookie } from './kito-wallet.ts'
 
 const CONSOLE_TITLES: Record<KitoConsolePage, string> = {
@@ -86,44 +85,39 @@ export function openKitoWallet(identityToken: string): Promise<void> {
 }
 
 /**
- * Read the spendable USD amount from the stored relay key.
- * The website session is only a fallback, so the sidebar balance does not wait for the recharge window.
- * @returns the balance, or undefined when neither source reports one.
+ * Read the spendable USD amount through the Identity login.
+ * A stored website session is reused; without one, the Identity token establishes that session once.
+ * @param identityToken - KT Identity access token.
+ * @returns the balance, or undefined when no source reports one.
  */
-export async function readKitoAccountBalance(): Promise<number | undefined> {
+export async function readKitoAccountBalance(identityToken: string): Promise<number | undefined> {
   const now = Date.now()
   if (cachedBalance !== undefined && now - cachedBalance.at < BALANCE_TTL_MS) return cachedBalance.balance
   if (now < balanceBlockedUntil) return cachedBalance?.balance
-  const fromKey = await readBalanceFromApiKey()
-  if (fromKey?.limited === true) {
-    balanceBlockedUntil = Date.now() + fromKey.retryAfterMs
-    return cachedBalance?.balance
-  }
-  if (fromKey?.balance !== undefined) {
-    cachedBalance = { at: Date.now(), balance: fromKey.balance }
-    return fromKey.balance
+  const fromIdentity = await readBalanceFromIdentity(identityToken)
+  if (fromIdentity?.balance !== undefined) {
+    cachedBalance = { at: Date.now(), balance: fromIdentity.balance }
+    return fromIdentity.balance
   }
   return readKitoConsoleBalance()
 }
 
-interface ApiKeyBalance { readonly balance?: number; readonly limited?: boolean; readonly retryAfterMs: number }
+interface IdentityBalance { readonly balance?: number }
 
-async function readBalanceFromApiKey(): Promise<ApiKeyBalance | undefined> {
-  const apiKey = await readStoredCredential(KITO_NEWAPI_KEY_REF)
-  if (apiKey === undefined) return undefined
+async function readBalanceFromIdentity(identityToken: string): Promise<IdentityBalance | undefined> {
+  if (identityToken.length === 0) return undefined
+  const browser = session.fromPartition(WALLET_PARTITION)
+  const origin = new URL(KITO_WALLET_URL).origin
+  if (await hasRefreshCookie(browser, origin)) return undefined
   try {
-    const request = accountUsageRequest(newapiBaseUrl(), apiKey)
-    const response = await kitoFetch(request.url, request.init)
-    if (response.status === 429) {
-      await response.body?.cancel()
-      return { limited: true, retryAfterMs: criticalRetryDelayMs(response.headers.get('retry-after')) }
-    }
-    const payload = await readJson(response)
-    if (!response.ok) return undefined
-    const balance = usdFromAccountUsage(payload)
-    return balance === undefined ? undefined : { balance, retryAfterMs: 0 }
+    const established = await establishKitoConsoleSession(identityToken)
+    await storeConsoleCookies(browser, origin, established.cookies)
+    const balance = spendableFromEnsure(established.payload)
+    return balance === undefined ? undefined : { balance }
   } catch (error) {
-    console.error('kito balance read failed', failureDetail(error))
+    consoleRetryAt = Date.now() + 15 * 60 * 1000
+    balanceBlockedUntil = Date.now() + 60_000
+    console.error('kito balance login failed', failureDetail(error))
     return undefined
   }
 }
