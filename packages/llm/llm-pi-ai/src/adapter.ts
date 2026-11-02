@@ -402,7 +402,7 @@ export class PiAiAdapter extends LlmAdapter {
     }
     if (apiKey === undefined || apiKey.length === 0) return
     try {
-      const listed = await fetchLiveCatalog(profile.baseURL, apiKey)
+      const listed = await fetchLiveCatalog(profile.baseURL, apiKey, { headers: requestHeaders(profile.headers) })
       const models = materializeLiveModels({
         provider: profile.provider,
         api: profile.api,

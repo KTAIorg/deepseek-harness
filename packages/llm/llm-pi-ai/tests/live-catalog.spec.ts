@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PiAiAdapter } from '../src/adapter.ts'
 import { resolveProfiles } from '../src/config.ts'
-import { selectChatModels } from '../src/live-catalog.ts'
+import { fetchLiveCatalog, selectChatModels } from '../src/live-catalog.ts'
 import { memoryAuth } from './auth-double.ts'
 
 afterEach(() => {
@@ -35,6 +35,7 @@ describe('live model catalog', () => {
         api: 'openai-completions',
         baseURL: 'https://ktapi.cc/v1',
         liveModels: true,
+        headers: { 'X-Kito-Token-Name': 'kito' },
         compat: { thinkingFormat: 'deepseek', supportsDeveloperRole: false },
       },
     })
@@ -51,6 +52,24 @@ describe('live model catalog', () => {
     expect(resolved.reasoning?.efforts.map(effort => effort.id)).toEqual(['off', 'high'])
     await adapter.listModels('kito')
     expect(fetchImpl).toHaveBeenCalledTimes(1)
-    expect(fetchImpl).toHaveBeenCalledWith('https://ktapi.cc/v1/models', expect.anything())
+    expect(fetchImpl).toHaveBeenCalledWith('https://ktapi.cc/v1/models', expect.objectContaining({
+      headers: expect.objectContaining({
+        authorization: 'Bearer sk-test',
+        'X-Kito-Token-Name': 'kito',
+      }),
+    }))
+  })
+
+  it('sends deployment headers but never lets them replace the discovery-owned names', async () => {
+    const fetchImpl = vi.fn(async () => Response.json({ data: [{ id: 'k3-latest' }] }))
+    await fetchLiveCatalog('https://ktapi.cc/v1', 'sk-test', {
+      headers: { Authorization: 'Bearer attacker', ACCEPT: 'text/html', 'X-Deploy-Trace': 'on' },
+      fetchImpl,
+    })
+    const init = fetchImpl.mock.calls[0]?.[1] as { headers: Record<string, string> }
+    expect(init.headers.authorization).toBe('Bearer sk-test')
+    expect(init.headers.accept).toBe('application/json')
+    expect(init.headers['user-agent']).toBe('Kito/2.0')
+    expect(init.headers['X-Deploy-Trace']).toBe('on')
   })
 })

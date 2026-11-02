@@ -12,6 +12,9 @@ import { DEFAULT_CONTEXT_WINDOW, DEFAULT_INPUT, DEFAULT_MAX_TOKENS } from './con
 /** How long a successful listing may be reused before the next catalog read. */
 export const LIVE_CATALOG_TTL_MS = 60_000
 
+/** Discovery request header names this module owns; deployment headers never override them. */
+const RESERVED_DISCOVERY_HEADERS = new Set(['accept', 'authorization', 'user-agent'])
+
 /** One chat-capable row from an OpenAI-style model listing. */
 export interface LiveCatalogModel {
   readonly id: string
@@ -53,15 +56,25 @@ function chatCapable(value: unknown): boolean {
  * Read the account's model list.
  * @param baseURL - provider origin, with or without a trailing slash.
  * @param apiKey - relay key. It is sent as a bearer token and is not logged.
- * @param fetchImpl - HTTP implementation, tests pass a stub.
+ * @param options - deployment headers and an HTTP implementation for tests.
+ * @param options.headers - provider deployment headers; the discovery-owned
+ * `accept`, `authorization`, and `user-agent` names are never overridden, so a
+ * deployment cannot silently replace the resolved credential.
+ * @param options.fetchImpl - HTTP implementation, tests pass a stub.
  * @returns chat-capable models in endpoint order.
  */
 export async function fetchLiveCatalog(
   baseURL: string,
   apiKey: string,
-  fetchImpl: typeof fetch = fetch,
+  options: {
+    headers?: Readonly<Record<string, string>>
+    fetchImpl?: typeof fetch
+  } = {},
 ): Promise<LiveCatalogModel[]> {
+  const fetchImpl = options.fetchImpl ?? fetch
   const url = `${baseURL.replace(/\/+$/, '')}/models`
+  const deployment = Object.fromEntries(Object.entries(options.headers ?? {})
+    .filter(([name]) => !RESERVED_DISCOVERY_HEADERS.has(name.toLowerCase())))
   let response: Response
   try {
     response = await fetchImpl(url, {
@@ -70,6 +83,7 @@ export async function fetchLiveCatalog(
         accept: 'application/json',
         authorization: `Bearer ${apiKey}`,
         'user-agent': 'Kito/2.0',
+        ...deployment,
       },
     })
   } catch (error: unknown) {
