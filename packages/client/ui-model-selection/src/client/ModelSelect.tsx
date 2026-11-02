@@ -43,6 +43,7 @@ import {
   buildModelSections, choiceMatches, modelChoices,
   type ModelChoice, type ModelSection,
 } from './model-sections.ts'
+import { VendorIcon } from './VendorIcon.tsx'
 import { loadModelUsage, modelUsageKey, rememberModelUse, type ModelUsage } from './model-usage.ts'
 import { orderModelProviders } from './provider-order.ts'
 
@@ -537,7 +538,10 @@ export function ModelSelect(
             >
               {sections.map(section => (
                 <section className={css.section} key={section.id} aria-label={sectionLabel(section)}>
-                  <h3 className={css.sectionTitle}>{sectionLabel(section)}</h3>
+                  <h3 className={css.sectionTitle}>
+                    {section.vendor !== undefined && <VendorIcon vendor={section.vendor} />}
+                    {sectionLabel(section)}
+                  </h3>
                   {section.kind === 'recent' || section.kind === 'frequent'
                     ? <div className={css.chipRow}>{section.choices.map(choice => renderChoice(choice, true))}</div>
                     : <div className={css.grid}>{section.choices.map(choice => renderChoice(choice, false))}</div>}

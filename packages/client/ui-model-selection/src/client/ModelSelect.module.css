@@ -469,10 +469,13 @@
 }
 
 .sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 11px;
-  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
   line-height: 16px;
 }
 

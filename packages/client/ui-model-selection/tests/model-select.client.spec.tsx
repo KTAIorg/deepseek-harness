@@ -663,17 +663,25 @@ describe('ModelSelect keyboard walk', () => {
     const { select } = mountOpen({ groups: searchGroups() })
     const search = searchBox()
     const rows = modelRows()
-    // The checked model is the last row of the grouped panel.
-    expect(rows.at(-1)!.textContent).toBe('DeepSeek-V4-Flash')
-    expect(highlightedRow()).toBe(rows.at(-1))
+    // Sections order by vendor name, so the checked DeepSeek row sits in the
+    // middle of the panel: Anthropic (2), DeepSeek (1), Google (1), OpenAI (1).
+    expect(rows.map(row => row.textContent))
+      .toEqual(['Claude Opus 5', 'Claude Opus 4.8', 'DeepSeek-V4-Flash', 'Gemini Flash', 'GPT-5.4'])
+    expect(highlightedRow()).toBe(rows[2])
     expect(rows.every(row => row.tabIndex === -1)).toBe(true)
 
+    // Walking past the last row wraps to the first section.
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
+    expect(highlightedRow()).toBe(rows[3])
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
+    expect(highlightedRow()).toBe(rows.at(-1))
     expect(fireEvent.keyDown(search, { key: 'ArrowDown' })).toBe(false)
     expect(document.activeElement).toBe(search)
     expect(highlightedRow()).toBe(rows[0])
     expect(highlightedRow()!.textContent).toBe('Claude Opus 5')
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
 
+    // Walking back up from the first row wraps to the last.
     fireEvent.keyDown(search, { key: 'ArrowUp' })
     expect(highlightedRow()).toBe(rows.at(-1))
     fireEvent.keyDown(search, { key: 'ArrowUp' })
@@ -701,19 +709,20 @@ describe('ModelSelect keyboard walk', () => {
   it('a step from the trigger moves the highlight and hands the keyboard to search', () => {
     const { trigger } = mountOpen({ groups: searchGroups() })
     const rows = modelRows()
-    // The trigger holds focus while the panel opens on desktop; the checked row
-    // is the opening highlight, so a forward step wraps to the first section.
+    // The trigger holds focus while the panel opens on desktop; the checked
+    // DeepSeek row is the opening highlight, so a forward step lands on the
+    // next row and a backward step on the row before it.
     trigger.focus()
     fireEvent.keyDown(trigger, { key: 'ArrowDown' })
     expect(document.activeElement).toBe(searchBox())
-    expect(highlightedRow()).toBe(rows[0])
+    expect(highlightedRow()).toBe(rows[3])
     fireEvent.keyDown(searchBox(), { key: 'Escape' })
     fireEvent.click(trigger)
     const reopenedRows = modelRows()
     trigger.focus()
     fireEvent.keyDown(trigger, { key: 'ArrowUp' })
     expect(document.activeElement).toBe(searchBox())
-    expect(highlightedRow()).toBe(reopenedRows[3])
+    expect(highlightedRow()).toBe(reopenedRows[1])
   })
 
   it('focuses the checked effort level and walks the list with arrows', () => {
@@ -997,7 +1006,7 @@ describe('ModelSelect search', () => {
     expect(screen.queryByRole('region', { name: 'Empty Provider' })).toBeNull()
     const sections = screen.getAllByRole('region')
     expect(sections).toHaveLength(1)
-    expect(sections[0]!.textContent).toContain('Other')
+    expect(sections[0]!.textContent).toContain('DeepSeek')
     act(() => { directory.set(state({ groups: [] })) })
     expect(screen.getByRole('status').textContent).toBe(zh['empty.models'])
     expect(screen.getByRole('status').closest('[role="group"]')).toBeNull()
@@ -1035,8 +1044,13 @@ describe('ModelSelect search', () => {
     const search = searchBox()
     expect(search).toBeInstanceOf(HTMLInputElement)
     const rows = modelRows()
+    expect(highlightedRow()).toBe(rows[2])
+    // Walk past the last row to wrap into the first section.
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
+    expect(highlightedRow()).toBe(rows[3])
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
     expect(highlightedRow()).toBe(rows.at(-1))
-    fireEvent.keyDown(search, { key: 'ArrowDown' }) // wraps to the first section
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
     expect(highlightedRow()).toBe(rows[0])
     fireEvent.keyDown(search, { key: 'ArrowDown' })
     expect(highlightedRow()).toBe(rows[1])
@@ -1212,7 +1226,7 @@ describe('ModelSelect vendor grouping', () => {
 
   it('labels sections with vendor brands and folds alias ids into one badged row', () => {
     mountOpen({ groups, current: null })
-    for (const label of ['Anthropic', 'OpenAI', 'xAI', 'Google', 'Moonshot', 'Qwen', 'Z.ai', 'Composer', 'Other']) {
+    for (const label of ['Anthropic', 'OpenAI', 'xAI', 'Google', 'Moonshot', 'Qwen', 'Z.ai', 'Composer', 'DeepSeek']) {
       expect(screen.getByRole('region', { name: label })).toBeTruthy()
     }
     const openai = screen.getByRole('region', { name: 'OpenAI' })

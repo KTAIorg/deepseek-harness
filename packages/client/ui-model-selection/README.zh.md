@@ -11,7 +11,7 @@ kind: "package-reference"
 
 ## 概述
 
-Web GUI 允许用户通过 `/model` 弹窗或 composer 模型控件切换既有会话使用的模型与推理（reasoning）强度。两个界面呈现同一份目录：composer 按厂商分组，弹窗按提供方分组；所选模型决定可用的推理强度名称与默认值。完整选择从下一次请求开始生效；运行中的步骤保留其启动时的模型与推理强度。
+Web GUI 允许用户通过 `/model` 弹窗或 composer 模型控件切换既有会话使用的模型与推理（reasoning）强度。两个界面呈现同一份目录，且分组口径一致：按厂商分组，每组带品牌标识；所选模型决定可用的推理强度名称与默认值。完整选择从下一次请求开始生效；运行中的步骤保留其启动时的模型与推理强度。
 
 ## 目录
 
@@ -41,7 +41,7 @@ composer 面板始终显示搜索框，因为其行按厂商而非提供方分�
 
 composer 菜单中的模型名称和推理等级均使用 400（regular）字重，包括选中项。搜索框沿用 command 弹窗的紧凑样式，在浅／深色主题下均保持背景和边框透明，不显示前置图标，占位文字使用 caption 色。搜索内容非空时显示清除按钮；点击后恢复完整列表，并将焦点留在搜索框。
 
-composer 弹窗在固定的最近使用与常用胶囊分区之后按厂商分组——Anthropic、OpenAI、xAI、Google、Moonshot、Qwen、Z.ai、Composer 与其他；最近使用过的厂商排在其后各组之前。`/model` 弹窗仍按提供方分组，DeepSeek 账号排第一，DeepSeek 排第二，第三方提供方保持目录原有顺序，并继续采用 [ui-primitives](../ui-primitives/README.zh.md#understand-the-implementation) 异步观察的共享吸顶标题：原位透明，仅吸顶时使用主题的 94% 不透明填充，macOS 桌面端以外使用 `md` 圆角。composer 弹窗把每个厂商呈现为标题加响应式卡片网格，只显示模型与推理强度名称。导航箭头使用 `--dsw-alias-menu-icon` 文本色。`/model` 弹窗以提供方名称作为分组标题、模型名称作为选项行，不在每行重复提供方，也不显示目录说明。搜索占位文字、无匹配提示和空目录提示与 composer 弹窗共用同一组本地化文案。弹窗应用所选模型的默认推理强度；composer 随后可以选择任一已公布的推理强度。适配器没有推理元数据时不显示 Effort 行；不存在任意推理强度输入。
+两个界面均按厂商分组——DeepSeek、Anthropic、OpenAI、xAI、Google、Moonshot、Qwen、Z.ai、Composer 与其他——并在厂商名称旁显示品牌标识（见[品牌标识](#brand-marks)）。composer 弹窗把最近使用与常用胶囊分区固定在最前，最近使用过的厂商排在其后各组之前；`/model` 弹窗继续采用 [ui-primitives](../ui-primitives/README.zh.md#understand-the-implementation) 异步观察的共享吸顶标题：原位透明，仅吸顶时使用主题的 94% 不透明填充，macOS 桌面端以外使用 `md` 圆角，而 composer 弹窗改用普通分区标题加响应式卡片网格。导航箭头使用 `--dsw-alias-menu-icon` 文本色。两个界面都以派生显示名作为行标签，不显示目录说明；指向同一模型的多个 id 折叠为一行并提交规范 id。搜索占位文字、无匹配提示和空目录提示与 composer 弹窗共用同一组本地化文案。弹窗应用所选模型的默认推理强度；composer 随后可以选择任一已公布的推理强度。适配器没有推理元数据时不显示 Effort 行；不存在任意推理强度输入。
 
 展开的控件无法排在同一行时，composer 将模型与推理强度文字替换为模型图标；空间足够后恢复文字。触发器的无障碍名称、提示和菜单仍提供完整选择。
 
@@ -52,6 +52,14 @@ composer 弹窗在固定的最近使用与常用胶囊分区之后按厂商分�
 扩展必须渲染非交互的内联内容，例如带颜色的名称或徽标。选择器负责点击、搜索、焦点、禁用状态、勾选标记、推理强度和触发按钮的无障碍文字。没有扩展（包括插件卸载后）时显示目录名称。触发按钮仅在所选模型存在于显示目录中时调用 slot，否则保留内置占位文字。刷新期间保留的目录条目仍调用 slot。菜单打开时会跟随名称内容的尺寸变化调整位置，保持在视口内。`/model` 命令行使用命令弹窗独立的渲染 API。
 
 以 type-only 方式导入本包的 `/client` 声明，再通过 `ctx.slots.inject('conversation.input.model.label', () => ctx.slots.register({ name: 'conversation.input.model.label' }, ModelLabel))` 注册。`ModelLabel` 的 props 从 `PropsRuntime<'conversation.input.model.label'>` 派生；用提供方 ID 选择 CSS Module 类，并保留 `model.name` 作为文字。注册随声明和贡献插件的生命周期清理。不替换组件时，样式也可以在两个显示位置通过名称外层的 `data-provider-id` 和 `data-model-id` 属性定位。
+
+### 品牌标识
+
+厂商分区标题把品牌名词与厂商标识放在一起。标识放在 [`src/client/assets/vendors`](src/client/assets/vendors/NOTICE.md)：来源为 [lobehub/lobe-icons](https://github.com/lobehub/lobe-icons) 的 `packages/static-svg`，MIT 许可，Copyright (c) 2023 LobeHub——除本地文件名外均按上游原样复制，[`NOTICE.md`](src/client/assets/vendors/NOTICE.md) 记录了每个本地文件与上游文件的对应关系。这些标识归各厂商所有，仅用于标识该分组路由到的提供方。
+
+彩色标识（DeepSeek、Anthropic、Google/Gemini、Qwen）以 `<img>` 渲染，保留品牌配色；单色标识（OpenAI、xAI、Moonshot、Z.ai、Composer/Cursor）通过 `mask` 配合 `background: currentColor` 渲染，因此跟随主题的标题颜色，而不是画出 SVG 自带的黑色。`VendorIcon` 负责这一区分；composer 弹窗和 `/model` 弹窗渲染同一个组件，命令弹窗通过 `SelectOptionGroup.icon` 把它送进共享的 `MenuGroup` 标题。
+
+MIT 许可原文：Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 
 ### 不可路由的会话
 

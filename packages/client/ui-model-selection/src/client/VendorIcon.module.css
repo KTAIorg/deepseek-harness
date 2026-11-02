@@ -1,0 +1,18 @@
+/** A vendor brand mark: colored marks keep their asset, monochrome ones follow the theme. */
+.icon {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+/**
+ * Monochrome marks render through a mask so `currentColor` (and therefore the
+ * theme's label color) reaches them; an `<img>` would paint the SVG's own black.
+ */
+.glyph {
+  background: currentColor;
+  mask: var(--vendor-glyph) center / contain no-repeat;
+  -webkit-mask: var(--vendor-glyph) center / contain no-repeat;
+}

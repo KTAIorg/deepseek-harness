@@ -1,5 +1,9 @@
-- menu "模型与推理等级":
-  - menuitemradio "Default" [checked]
-  - menuitemradio "Off"
-  - menuitemradio "High"
-  - menuitemradio "Max"
+- dialog "模型与推理等级":
+  - heading "模型与推理等级" [level=2]
+  - button "关闭模型选择器"
+  - group "推理等级":
+    - button "模型"
+    - button "Default" [pressed]
+    - button "Off"
+    - button "High"
+    - button "Max"

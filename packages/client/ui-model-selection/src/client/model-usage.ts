@@ -19,21 +19,30 @@ export interface ModelUsage {
 const EMPTY_USAGE: ModelUsage = { recents: [], counts: {} }
 
 /**
+ * Build the stable local-history key for a provider and exact catalog model id.
  * @param provider - catalog provider id.
  * @param model - exact catalog model id, which may itself contain `/`.
- * @returns one stable usage key for that row.
+ * @returns the joined key that {@link providerOfUsageKey} and {@link modelOfUsageKey} split again.
  */
 export function modelUsageKey(provider: string, model: string): string {
   // NUL cannot appear in either catalog id, so the two parts stay unambiguous.
   return `${provider}\u0000${model}`
 }
 
-/** @param key - usage key from {@link modelUsageKey}. @returns its provider part. */
+/**
+ * Read the provider part back out of a usage key.
+ * @param key - usage key from {@link modelUsageKey}.
+ * @returns the catalog provider id the key was built from.
+ */
 export function providerOfUsageKey(key: string): string {
   return key.slice(0, key.indexOf('\u0000'))
 }
 
-/** @param key - usage key from {@link modelUsageKey}. @returns its model part. */
+/**
+ * Read the catalog model id back out of a usage key.
+ * @param key - usage key from {@link modelUsageKey}.
+ * @returns the exact model id the key was built from, including any `/` it contains.
+ */
 export function modelOfUsageKey(key: string): string {
   return key.slice(key.indexOf('\u0000') + 1)
 }

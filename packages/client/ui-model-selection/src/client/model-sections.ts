@@ -5,10 +5,11 @@ import type { ModelUsage } from './model-usage.ts'
 import { modelOfUsageKey, modelUsageKey, providerOfUsageKey } from './model-usage.ts'
 
 /** Vendor families the picker groups by; `other` catches ids no rule recognizes. */
-export type ModelVendorKey = 'anthropic' | 'openai' | 'xai' | 'google' | 'moonshot' | 'qwen' | 'zai' | 'composer' | 'other'
+export type ModelVendorKey = 'deepseek' | 'anthropic' | 'openai' | 'xai' | 'google' | 'moonshot' | 'qwen' | 'zai' | 'composer' | 'other'
 
 /** Brand nouns shown as section headings; the same text in every UI language. */
 export const MODEL_VENDOR_NAMES: Readonly<Record<ModelVendorKey, string>> = {
+  deepseek: 'DeepSeek',
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   xai: 'xAI',
@@ -86,15 +87,27 @@ export interface ModelSection {
   readonly id: string
   /** Vendor heading text for `vendor` sections. */
   readonly label?: string
+  /** Vendor family of a `vendor` section; drives its brand mark. */
+  readonly vendor?: ModelVendorKey
   readonly choices: readonly ModelChoice[]
 }
 
-/** @param provider - catalog provider id. @param model - catalog model id. @returns the usage key. */
+/**
+ * Build the usage-history key for one provider and catalog model id.
+ * @param provider - catalog provider id.
+ * @param model - catalog model id.
+ * @returns the key {@link modelUsageKey} builds for the same pair.
+ */
 export function choiceKey(provider: string, model: string): string {
   return modelUsageKey(provider, model)
 }
 
-/** @param model - catalog model id. @returns the id without its vendor or mirror prefix. */
+/**
+ * Strip the vendor or upstream-mirror prefix from a catalog id, so
+ * `openai/gpt-5.6` and `sub2api-gpt-5.6` fold into the same `gpt-5.6` row.
+ * @param model - catalog model id.
+ * @returns the id without its prefix; the id itself when it carries none.
+ */
 export function normalizedModelId(model: string): string {
   let id = model
   for (const prefix of VENDOR_PREFIXES) {
@@ -107,11 +120,13 @@ export function normalizedModelId(model: string): string {
 }
 
 /**
+ * Classify a catalog model id into the vendor family the picker groups it under.
  * @param model - catalog model id.
- * @returns the vendor family that id belongs to, judged by prefix and family name.
+ * @returns the family its prefix names, or `other` when no rule recognizes the id.
  */
 export function vendorKeyOf(model: string): ModelVendorKey {
   const id = normalizedModelId(model).toLowerCase()
+  if (id.startsWith('deepseek')) return 'deepseek'
   if (id.startsWith('claude')) return 'anthropic'
   if (id.startsWith('gpt') || /^o[1-4](-|$)/.test(id)) return 'openai'
   if (id.startsWith('grok')) return 'xai'
@@ -123,7 +138,11 @@ export function vendorKeyOf(model: string): ModelVendorKey {
   return 'other'
 }
 
-/** @param model - catalog model id. @returns whether the row can serve a chat conversation. */
+/**
+ * Whether a catalog model id can serve the composer's chat conversation.
+ * @param model - catalog model id.
+ * @returns false for image, embedding, and speech ids; true otherwise.
+ */
 export function isChatModel(model: string): boolean {
   return !NON_CHAT_ID.test(normalizedModelId(model))
 }
@@ -139,7 +158,15 @@ function compareToken(left: string, right: string): number {
   return left.localeCompare(right)
 }
 
-/** @param left - model id. @param right - model id. @returns positive when `left` is the newer version. */
+/**
+ * Compare two model ids as version sequences: numeric segments compare by value
+ * and sort after word segments, `latest` outranks every segment, and a shorter
+ * id is the base model that sorts before its variants.
+ * @param left - model id to place.
+ * @param right - model id to compare against.
+ * @returns positive when `left` is the newer version, negative when it is older,
+ *   and zero when both ids name the same version.
+ */
 export function compareModelVersions(left: string, right: string): number {
   const leftTokens = normalizedModelId(left).toLowerCase().split(/[-._/]+/)
   const rightTokens = normalizedModelId(right).toLowerCase().split(/[-._/]+/)
@@ -195,14 +222,22 @@ export function modelChoices(groups: readonly ModelProviderGroup[]): ModelChoice
   return groups.flatMap(group => foldProvider(group))
 }
 
-/** @param choice - one row. @param usage - local history. @returns its usage key. */
+/**
+ * Convert one picker row into its local usage-history key.
+ * @param choice - one folded row.
+ * @returns the key the row's selections are recorded under.
+ */
 export function usageKeyOf(choice: ModelChoice): string {
   return modelUsageKey(choice.provider, choice.model.id)
 }
 
 /**
- * @param choice - one row. @param provider - saved selection provider. @param model - saved model id.
- * @returns whether the saved selection names this row, including through an alias id.
+ * Whether a saved selection names this row, through the row's own catalog id or
+ * one of its folded aliases.
+ * @param choice - one folded row.
+ * @param provider - saved selection provider.
+ * @param model - saved model id, which may be an alias of the row's id.
+ * @returns whether both the provider and the model name this row.
  */
 export function choiceMatches(choice: ModelChoice, provider: string, model: string): boolean {
   return choice.provider === provider && (choice.model.id === model || choice.aliases.includes(model))
@@ -318,6 +353,7 @@ export function buildModelSections(
       kind: 'vendor',
       id: `vendor:${vendor}`,
       label: MODEL_VENDOR_NAMES[vendor],
+      vendor,
       choices: sortChoices(bucket),
     })
   }

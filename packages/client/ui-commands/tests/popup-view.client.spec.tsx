@@ -93,6 +93,8 @@ describe('PopupSelectView', () => {
     const { search } = await mountOpen({ searchMode: 'fuzzy-label', options: () => Promise.resolve(options), onSelect })
     expect(screen.getAllByRole('group').map(group => group.querySelector('[data-menu-group-heading]')?.textContent))
       .toEqual(['Alpha provider', 'Beta provider', 'Other provider'])
+    // No icon: no leading slot, so the heading keeps its exact text node.
+    expect(screen.getAllByRole('group').some(group => group.querySelector('[data-menu-group-leading]') !== null)).toBe(false)
     expect(rowLabels()).toEqual(['DeepSeek Flash', 'Flash Lite', 'Flash Beta', 'Unmatched'])
     fireEvent.change(search, { target: { value: 'flash' } })
     expect(rowLabels()).toEqual(['Flash Lite', 'DeepSeek Flash', 'Flash Beta'])
@@ -102,6 +104,17 @@ describe('PopupSelectView', () => {
     expect(screen.getByRole('option', { name: 'Flash Beta' }).getAttribute('aria-selected')).toBe('true')
     await act(async () => { fireEvent.keyDown(search, { key: 'Enter' }); await Promise.resolve() })
     expect(onSelect).toHaveBeenCalledWith(options[1], 'ctx-A')
+  })
+
+  it('renders a group icon as the sticky heading leading mark', async () => {
+    const group = { name: 'vendor:openai', label: 'OpenAI', icon: <img alt="" data-testid="vendor-mark" /> }
+    await mountOpen({ options: () => Promise.resolve([{ id: 'gpt', label: 'GPT-5.6', group }]) })
+    const heading = screen.getByRole('group', { name: 'OpenAI' }).querySelector('[data-menu-group-heading]')!
+    // The mark rides a leading slot inside the heading, ahead of the label, and adds no name.
+    const leading = heading.querySelector(':scope > [data-menu-group-leading]')!
+    expect(leading.contains(screen.getByTestId('vendor-mark'))).toBe(true)
+    expect(leading.nextSibling?.textContent).toBe('OpenAI')
+    expect(heading.textContent).toBe('OpenAI')
   })
 
   it('uses command-owned search copy and resets to generic copy for the next popup', async () => {
