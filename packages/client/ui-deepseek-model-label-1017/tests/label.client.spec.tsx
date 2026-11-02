@@ -26,7 +26,7 @@ async function runtime() {
   return { host, session }
 }
 
-const placements = ['trigger', 'menu', 'option'] as const
+const placements = ['trigger', 'option'] as const
 const targets = ['deepseek-official', 'deepseek-account'].flatMap(provider => placements.map(placement => ({ provider, placement })))
 it.each(targets)('shows the badge for $provider at $placement without rewriting its catalog entry', async ({ provider, placement }) => {
   const { host, session } = await runtime()
