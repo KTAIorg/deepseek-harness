@@ -18,6 +18,8 @@ let current: BrowserWindow | undefined
 let consoleRetryAt = 0
 let cachedBalance: { readonly at: number; readonly balance: number } | undefined
 let balanceBlockedUntil = 0
+/** One diagnosis per blocked window: a refused console login must not repeat in every poll. */
+let balanceFailureLogged = false
 const BALANCE_TTL_MS = 3 * 60 * 1000
 
 /**
@@ -109,15 +111,22 @@ async function readBalanceFromIdentity(identityToken: string): Promise<IdentityB
   const browser = session.fromPartition(WALLET_PARTITION)
   const origin = new URL(KITO_WALLET_URL).origin
   if (await hasRefreshCookie(browser, origin)) return undefined
+  // Each successful ensure spends one of the account's active console sessions, so a
+  // refused login waits out its cooldown instead of retrying on the next account poll.
+  if (Date.now() < consoleRetryAt) return undefined
   try {
     const established = await establishKitoConsoleSession(identityToken)
     await storeConsoleCookies(browser, origin, established.cookies)
     const balance = spendableFromEnsure(established.payload)
+    balanceFailureLogged = false
     return balance === undefined ? undefined : { balance }
   } catch (error) {
     consoleRetryAt = Date.now() + 15 * 60 * 1000
     balanceBlockedUntil = Date.now() + 60_000
-    console.error('kito balance login failed', failureDetail(error))
+    if (!balanceFailureLogged) {
+      balanceFailureLogged = true
+      console.error('kito balance login failed', failureDetail(error))
+    }
     return undefined
   }
 }
@@ -172,6 +181,7 @@ export async function signOutKitoConsole(): Promise<void> {
     await browser.cookies.remove(new URL(cookie.path || '/', origin).href, cookie.name)
   }
   consoleRetryAt = 0
+  balanceFailureLogged = false
   cachedBalance = undefined
   if (current !== undefined && !current.isDestroyed()) current.close()
 }
