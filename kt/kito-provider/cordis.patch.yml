@@ -1,7 +1,6 @@
-# Kito routes. The client sends the KT Identity token; NewAPI validates it and
-# selects the matching managed relay token server-side. The model list comes from
-# https://ktapi.cc/v1/models. A later profile patch replaces this whole
-# llm-pi-ai config, so keep both providers when editing Models settings.
+# Kito route. The client sends the KT Identity token; NewAPI validates it and
+# selects the matching managed relay token server-side. Claude models are listed
+# by the same live /v1/models catalog, so this file declares one provider.
 - id: kito-provider
   name: '@kito/dsh-kito-provider'
 - id: llm-pi-ai
@@ -20,31 +19,3 @@
         compat:
           thinkingFormat: deepseek
           supportsDeveloperRole: false
-      kito-claude:
-        displayName: Claude
-        apiKeyEnv: KITO_IDENTITY_TOKEN
-        api: anthropic-messages
-        baseURL: https://ktapi.cc
-        headers:
-          X-Kito-Token-Name: kito-harness-claude
-        compat:
-          forceAdaptiveThinking: true
-        models:
-          - id: claude-opus-5-5
-            name: Claude Opus 5.5
-            contextWindow: 1000000
-            maxTokens: 128000
-            input: [text, image]
-            reasoningEfforts: { low: low, medium: medium, high: high, xhigh: xhigh, max: max }
-          - id: claude-sonnet-5-5
-            name: Claude Sonnet 5.5
-            contextWindow: 1000000
-            maxTokens: 128000
-            input: [text, image]
-            reasoningEfforts: { low: low, medium: medium, high: high, xhigh: xhigh, max: max }
-          - id: claude-haiku-5-5
-            name: Claude Haiku 5.5
-            contextWindow: 1000000
-            maxTokens: 128000
-            input: [text, image]
-            reasoningEfforts: { low: low, medium: medium, high: high, xhigh: xhigh, max: max }
