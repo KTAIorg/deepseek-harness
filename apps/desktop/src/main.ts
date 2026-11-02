@@ -69,6 +69,7 @@ import { openKitoConsole, readKitoAccountBalance, signOutKitoConsole } from './k
 import { shouldDismissNewWelcome } from './kito-welcome-policy.ts'
 import { identityBaseUrl, KITO_CLAUDE_KEY_REF, KITO_IDENTITY_REFRESH_TOKEN_REF, KITO_IDENTITY_TOKEN_REF, KITO_NEWAPI_KEY_REF, refreshKitoIdentity } from './kito-identity.ts'
 import { createKitoIdentityRefresher } from './kito-identity-refresh.ts'
+import { createKitoIdentityKeepalive } from './kito-identity-keepalive.ts'
 import { createKitoSignIn, type KitoSignIn } from './kito-sign-in.ts'
 import { readStoredCredential } from './kito-credentials.ts'
 import { runKitoDesktopLink } from './kito-desktop-link.ts'
@@ -681,6 +682,11 @@ async function main(): Promise<void> {
     saveToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false },
     saveRefreshToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false },
   })
+  const kitoIdentityKeepalive = createKitoIdentityKeepalive({
+    refresh: () => refreshKitoIdentityToken(),
+    onRenewed: () => { publishKitoAccount() },
+  })
+  app.on('will-quit', () => { kitoIdentityKeepalive.stop() })
 
   protocol.handle(SCHEME, async (request) => {
     const url = new URL(request.url)
@@ -963,9 +969,12 @@ async function main(): Promise<void> {
     if (!quitting) void updateSchedule.check().catch((error: unknown) => { console.error(error) })
   }
   powerMonitor.on('resume', automaticCheck)
+  const pokeKitoIdentity = (): void => { kitoIdentityKeepalive.poke() }
+  powerMonitor.on('resume', pokeKitoIdentity)
   app.on('will-quit', () => {
     updateSchedule.dispose()
     powerMonitor.off('resume', automaticCheck)
+    powerMonitor.off('resume', pokeKitoIdentity)
     updates.dispose()
   })
 
@@ -1115,6 +1124,7 @@ async function main(): Promise<void> {
     browserGuests.bind(window, (guest, name) => shortcuts.attachGuest(window, guest, name))
     shortcuts.attach(window)
     window.on('focus', automaticCheck)
+    window.on('focus', () => { kitoIdentityKeepalive.poke() })
     // Closing hides: the page and the Host keep running, and the next show resumes the same document.
     window.on('close', (event) => {
       if (quitting || shellInstallerOwnsQuit || sessionEnding) return
@@ -1178,6 +1188,7 @@ async function main(): Promise<void> {
     if (activate && development && process.env.DSH_DESKTOP_OPEN_DEVTOOLS !== '0') {
       window.webContents.openDevTools({ mode: 'detach' })
     }
+    kitoIdentityKeepalive.start()
   }
   let openingWelcome: Promise<void> | undefined
   /** Ask the open workspace to read the account again. The token stays in this process. */
