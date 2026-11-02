@@ -1,0 +1,8 @@
+Anthropic
+Claude Opus 5
+Claude Opus 4.8
+OpenAI
+GPT-5.6
+GPT-5.4
+xAI
+Grok 4.6

@@ -9,10 +9,10 @@ import type { ModelDirectoryState } from './directory.ts'
 export interface ModelLabelOwner {
   /** Provider identity and localized display name; contains no connection configuration. */
   provider: Pick<ModelProviderGroup, 'id' | 'name'>
-  /** The exact provider's model catalog entry. */
+  /** The provider's model entry; `name` is the label the picker shows and `id` stays exact. */
   model: ModelCatalogModel
-  /** Trigger caption, root-menu current value, or selectable model row. */
-  placement: 'trigger' | 'menu' | 'option'
+  /** Trigger caption or one selectable model row. */
+  placement: 'trigger' | 'option'
   /** Whether this provider/model pair is the current selection. */
   selected: boolean
 }

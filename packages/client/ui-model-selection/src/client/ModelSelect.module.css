@@ -98,8 +98,8 @@
   /* Let the visible pane's rows set the card width, but keep pathological ids
      and narrow screens inside a bounded card where ellipsis remains. */
   width: max-content;
-  min-width: min(240px, calc(100vw - 32px));
-  max-width: min(420px, calc(100vw - 32px));
+  min-width: min(320px, calc(100vw - 32px));
+  max-width: min(460px, calc(100vw - 32px));
   max-height: min(360px, calc(100vh - 96px));
   overflow: hidden;
   padding: 4px;
@@ -293,6 +293,18 @@
 .check svg {
   width: 14px;
   height: 14px;
+}
+
+/* Folded alias ids behind one model row, e.g. `gpt-5.6` + `openai/gpt-5.6`. */
+.aliasBadge {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
 }
 
 /* Two-level root cells use the same compact rhythm as the model rows. */
