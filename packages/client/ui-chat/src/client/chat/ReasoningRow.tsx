@@ -72,7 +72,7 @@ export const ReasoningRow = memo(function ReasoningRow({
   ), [running, summary])
   const content = useMemo(() => expanded ? (
     <div className={css.thinkBody} data-text-interaction-source={textInteractionSource && !running ? '' : undefined}>
-      {renderSlot('conversation.chat.reasoning.body', { text, running })}
+      {renderSlot('conversation.chat.reasoning.body', { rawText: text, text, running })}
     </div>
   ) : undefined, [expanded, renderSlot, running, text, textInteractionSource])
 
