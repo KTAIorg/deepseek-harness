@@ -19,7 +19,7 @@
     "node": "^22.19.0 || >=24"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-authorization": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-credentials": "0.2.1-rc.3"
+    "@deepseek-ai/dsh-authorization": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-credentials": "0.2.1-rc.5"
   }
 }
