@@ -17,5 +17,5 @@
         headers:
           X-Kito-Token-Name: kito
         compat:
-          thinkingFormat: deepseek
           supportsDeveloperRole: false
+          supportsReasoningEffort: true
