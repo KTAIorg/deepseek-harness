@@ -988,6 +988,13 @@ async function main(): Promise<void> {
     copyright: '',
     iconPath: applicationIconPath,
   })
+  // The development bundle is a copy of Electron's; show the product mark in the
+  // Dock even when a cold Launch Services registration has not refreshed yet.
+  // Packaged builds take the icon from their signed bundle instead.
+  if (development && process.platform === 'darwin') {
+    const dockIcon = nativeImage.createFromPath(join(app.getAppPath(), 'resources', 'icon-macos.png'))
+    if (!dockIcon.isEmpty()) app.dock?.setIcon(dockIcon)
+  }
   // A custom application menu replaces Electron's default menu, so macOS needs
   // its standard menus and application hide commands declared explicitly.
   // Keep app.name stable: Electron derives its default userData directory from it.
