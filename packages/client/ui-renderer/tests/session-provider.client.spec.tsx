@@ -265,10 +265,12 @@ describe('SessionProvider', () => {
     expect(render(<>{createSlotRenderer().renderRoot(h.host, {})}</>).container.textContent).toBe('optional')
   })
 
-  it('fails loud when the Session adapter omits its area renderer', () => {
+  it('shows the recovery face when the Session adapter omits its area renderer', () => {
     const h = makeHost(() => null, { installRenderArea: false })
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(() => render(<>{createSlotRenderer().renderRoot(h.host, {})}</>))
-      .toThrow(/does not provide its area renderer/)
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const view = render(<>{createSlotRenderer().renderRoot(h.host, {})}</>)
+    expect(view.container.querySelector('[data-renderer-recovery]')).not.toBeNull()
+    expect(spy.mock.calls.flat().some(value => String(value).includes('does not provide its area renderer'))).toBe(true)
+    spy.mockRestore()
   })
 })

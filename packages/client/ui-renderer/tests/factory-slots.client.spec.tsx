@@ -396,7 +396,7 @@ describe('Factory rendering', () => {
     await runtime.dispose()
   })
 
-  it('fails loud when a strict local Component has no current scope binding', async () => {
+  it('shows the recovery face when a strict local Component has no current scope binding', async () => {
     const runtime = await SlotTestRuntime.create()
     runtime.slots.registerFactory({
       name: 'renderer.scoped-local-factory',
@@ -411,7 +411,9 @@ describe('Factory rendering', () => {
     ))
 
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(() => runtime.renderRoot()).toThrow(/strict session local slot 'view'/)
+    const view = runtime.renderRoot()
+    expect(view.container.querySelector('[data-renderer-recovery]')).not.toBeNull()
+    expect(spy.mock.calls.flat().some(value => String(value).includes("strict session local slot 'view'"))).toBe(true)
     spy.mockRestore()
     await runtime.dispose()
   })
@@ -686,7 +688,9 @@ describe('Factory rendering', () => {
       <>{renderFactorySlot('renderer.factory', { label: 'A', actions: 'caller' } as never)}</>
     ))
     const collisionSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(() => collisionRuntime.renderRoot()).toThrow(/duplicate prop 'actions'/)
+    const collisionView = collisionRuntime.renderRoot()
+    expect(collisionView.container.querySelector('[data-renderer-recovery]')).not.toBeNull()
+    expect(collisionSpy.mock.calls.flat().some(value => String(value).includes("duplicate prop 'actions'"))).toBe(true)
     collisionSpy.mockRestore()
     await collisionRuntime.dispose()
   })

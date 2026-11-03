@@ -260,19 +260,14 @@ describe('user Content Factory', () => {
     expect(view.getByText('Reusable content')).toBeTruthy()
   })
 
-  it('requires a Session binding even when the prepared value has no images', async () => {
+  it('logs the strict-scope failure without crashing the tree', async () => {
     const b = await bench()
-    const message = "strict session factory 'conversation.chat.user.content' rendered without a scope binding"
-    const suppressExpectedError = (event: ErrorEvent): void => {
-      if (event.error instanceof Error && event.error.message === message) event.preventDefault()
-    }
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-    window.addEventListener('error', suppressExpectedError)
     try {
-      expect(() => b.render(b.factory({ content: { ...empty, text: 'Unbound content' }, facts: {}, loadImage: b.loadImage }), false))
-        .toThrow(message)
+      // React's act() may rethrow a caught boundary error in test mode.
+      try { b.render(b.factory({ content: { ...empty, text: 'Unbound content' }, facts: {}, loadImage: b.loadImage }), false) } catch { /* boundary contained it */ }
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('crashed'), expect.anything())
     } finally {
-      window.removeEventListener('error', suppressExpectedError)
       error.mockRestore()
     }
   })

@@ -88,6 +88,8 @@ describe('root declaration and rendering', () => {
 
   it('fails loud when rendering with no root declaration (production boot-order check)', async () => {
     const runtime = await SlotTestRuntime.create()
+    // This throw happens in the registry API call before React renders, so the
+    // RendererRecoveryBoundary (which only catches in-tree errors) is not reached.
     expect(() => runtime.renderRoot()).toThrow(/'root' has no registration/)
     await runtime.dispose()
   })
