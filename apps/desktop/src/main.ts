@@ -361,6 +361,8 @@ async function main(): Promise<void> {
   let startup: Promise<void> | undefined
   let workspaceRecovery: Promise<void> | undefined
   let mainWindow: BrowserWindow | undefined
+  /** Consecutive renderer crash timestamps inside a one-minute window. */
+  let rendererCrashTimes: number[] = []
   let welcomeWindow: BrowserWindow | undefined
   const installFileDrag = (): (() => Promise<void>) => installDesktopFileDrag(
     event => assertProductSender(event),
@@ -1168,9 +1170,27 @@ async function main(): Promise<void> {
     })
     window.webContents.on('render-process-gone', (_event, details) => {
       navigation = undefined
-      if (!quitting && !window.isDestroyed() && details.reason !== 'clean-exit') {
-        reportFatal(new Error(`Desktop renderer exited: ${details.reason}`), 'renderer')
+      if (quitting || window.isDestroyed() || details.reason === 'clean-exit') return
+      const error = new Error(`Desktop renderer exited: ${details.reason}`)
+      // A GPU or OOM crash kills the renderer but not the app: reload the
+      // window instead of surfacing a fatal dialog. Three consecutive
+      // crashes inside one minute give up and fall back to recovery.
+      const now = Date.now()
+      rendererCrashTimes = rendererCrashTimes.filter(time => now - time < 60_000)
+      rendererCrashTimes.push(now)
+      if (rendererCrashTimes.length >= 3) {
+        rendererCrashTimes = []
+        reportFatal(error, 'renderer')
+        return
       }
+      console.warn(`[desktop] renderer crashed (${details.reason}), reloading (attempt ${rendererCrashTimes.length}/3)`)
+      void captureKitoFailure(error, { source: 'renderer', phase: 'running' })
+      if (window.isDestroyed()) return
+      try { window.webContents.forcefullyCrashRenderer() } catch { /* already gone */ }
+      setTimeout(() => {
+        if (quitting || window.isDestroyed()) return
+        void navigateMain(applicationUrl)
+      }, 500)
     })
     return window
   }

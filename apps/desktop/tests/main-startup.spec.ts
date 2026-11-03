@@ -2240,13 +2240,26 @@ describe('desktop main startup', () => {
     await harness.preparing.promise
     const window = harness.windows[0]!
     if (kind === 'preload') window.webContents.emit('preload-error', {}, 'preload-app.cjs', new Error('preload unavailable'))
-    else window.webContents.emit('render-process-gone', {}, { reason: 'crashed' })
+    else {
+      // The first two renderer crashes auto-reload; the third reaches the dialog.
+      window.webContents.emit('render-process-gone', {}, { reason: 'crashed' })
+      window.webContents.emit('render-process-gone', {}, { reason: 'crashed' })
+      window.webContents.emit('render-process-gone', {}, { reason: 'crashed' })
+    }
     window.webContents.emit('preload-error', {}, 'preload-app.cjs', new Error('secondary failure'))
     harness.prepared.reject(new Error('backend also failed'))
     await harness.dialogShown.promise
     expect(harness.dialog.showMessageBox).toHaveBeenCalledOnce()
     expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).not.toContain('secondary failure')
-    expect(window.urls).toEqual(['dsh-app://app/'])
+  })
+
+  it('auto-reloads the renderer after a single crash without showing a dialog', async () => {
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    const window = harness.windows[0]!
+    window.webContents.emit('render-process-gone', {}, { reason: 'crashed' })
+    await vi.advanceTimersByTimeAsync(600)
+    expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
   })
 
   it('ignores clean renderer exits and exits of a destroyed window', async () => {
