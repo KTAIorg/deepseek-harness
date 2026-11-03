@@ -5,7 +5,8 @@
  * the catalog spreads across the window instead of scrolling a small card:
  * search is always present and focused on desktop, recent selections and
  * frequently used models stay pinned on top as chips, and the rest of the
- * catalog is grouped by vendor family into a responsive card grid.
+ * catalog is grouped by vendor family into a responsive card grid whose rows
+ * keep a long model name readable over up to two lines.
  * Vendor-prefixed and mirror ids (`openai/gpt-5.6`, `sub2api-grok-4.5`) fold
  * into one row that submits the canonical id and carries an alias-count badge;
  * ids that cannot serve a chat conversation are never offered. The effort chip
@@ -373,6 +374,13 @@ export function ModelSelect(
     const index = choiceIndex++
     const selected = state.current !== null && choiceMatches(choice, state.current.provider, state.current.model)
     const pendingChoice = pending !== null && choiceMatches(choice, pending.provider, pending.model)
+    const label = renderModelLabel(
+      { id: choice.provider, name: choice.providerName },
+      { ...choice.model, name: choice.displayName },
+      'option',
+      selected,
+      choice.displayName,
+    )
     return (
       <button
         ref={itemRef()}
@@ -393,18 +401,12 @@ export function ModelSelect(
         disabled={busy}
         onClick={() => { choose(choice) }}
       >
-        <span className={css.modelName}>
-          {renderModelLabel(
-            { id: choice.provider, name: choice.providerName },
-            { ...choice.model, name: choice.displayName },
-            'option',
-            selected,
-            choice.displayName,
+        <span className={css.choiceText}>
+          <span className={css.modelName}>{label}</span>
+          {choice.aliases.length > 0 && (
+            <span className={css.aliasBadge}>{t('option.aliases', { count: choice.aliases.length })}</span>
           )}
         </span>
-        {choice.aliases.length > 0 && (
-          <span className={css.aliasBadge}>{t('option.aliases', { count: choice.aliases.length })}</span>
-        )}
         <span className={css.check}>
           {pendingChoice
             ? <StateDot state="ongoing" />
@@ -473,6 +475,7 @@ export function ModelSelect(
         closeLabel={t('menu.close')}
         className={css.dialog ?? ''}
         contentClassName={css.dialogBody ?? ''}
+        bodyClassName={css.dialogBodyInner ?? ''}
       >
         {pane === 'model' && (
           <div className={css.modelPane}>

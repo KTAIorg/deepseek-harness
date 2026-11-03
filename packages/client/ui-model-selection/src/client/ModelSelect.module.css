@@ -364,17 +364,26 @@
 /* ── Page-sized model dialog ─────────────────────────────────────────────
    The mask, blur, focus layer and Escape handling come from ui-primitives'
    Modal; these rules only size its card and lay the catalog out across the
-   window, so the picker needs almost no scrolling on a desktop viewport. */
+   window. The Modal root already reserves the viewport padding, so the card
+   fills that box rather than recomputing its own viewport insets. */
 
 .dialog {
-  width: min(1620px, 96vw);
-  height: min(980px, 96vh);
-  max-height: 96vh;
+  container-type: inline-size;
+  width: min(100%, 2400px);
+  height: 100%;
+  max-height: 100%;
   gap: 0;
   padding-bottom: 0;
 }
 
 .dialogBody {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The primitive body defaults to natural height; joining it to the card's flex
+   column is what lets the catalog fill the dialog and scroll on its own. */
+.dialogBodyInner {
   flex: 1;
   min-height: 0;
 }
@@ -487,8 +496,28 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+/* Wider cards at wider windows keep the fixed slot cost (check, gaps) from
+   eating the name at every size. */
+@container (min-width: 1200px) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+}
+
+@container (min-width: 1600px) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+}
+
+@container (min-width: 2000px) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
 }
 
 .chip,
@@ -533,7 +562,45 @@
 
 .chip .modelName,
 .card .modelName {
+  min-width: 0;
+}
+
+/* The name and its alias badge share one column, so the badge moves under the
+   name instead of taking width from it. Chips keep the inline single-line
+   layout because they already live on one pill. */
+.choiceText {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chip .choiceText {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip .modelName {
+  flex: 0 1 auto;
+}
+
+.card .modelName {
+  display: -webkit-box;
+  width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.card {
+  min-height: 38px;
+  padding: 5px 10px;
 }
 
 .effortPane {

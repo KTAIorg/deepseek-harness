@@ -104,6 +104,61 @@ async function readSections(dialog: Locator): Promise<{ label: string; mark: str
 }
 
 /**
+ * Read the open dialog's filled box, its card grid, and whether any catalog
+ * name is clipped by its row.
+ * @param dialog - the open model dialog.
+ * @returns the dialog box, the available modal area, and the card-grid metrics.
+ */
+async function readDialogLayout(dialog: Locator): Promise<{
+  width: number
+  height: number
+  availableWidth: number
+  availableHeight: number
+  columns: number
+  cardWidth: number
+  clippedNames: string[]
+  nameLineClamp: string
+  nameWhiteSpace: string
+}> {
+  return await dialog.evaluate((node) => {
+    const root = node.parentElement
+    if (root === null) throw new Error('modal root missing')
+    const rootStyle = getComputedStyle(root)
+    const availableWidth = root.clientWidth - parseFloat(rootStyle.paddingLeft) - parseFloat(rootStyle.paddingRight)
+    const availableHeight = root.clientHeight - parseFloat(rootStyle.paddingTop) - parseFloat(rootStyle.paddingBottom)
+    const rect = node.getBoundingClientRect()
+    const groups = node.querySelector('[role="group"][aria-label="模型"]')
+    if (groups === null) throw new Error('model sections missing')
+    // Chip rows have their own wrapper; the card grid is the remaining row parent.
+    const cards = [...groups.querySelectorAll<HTMLElement>('button[aria-pressed]')]
+      .filter(button => (button.parentElement?.className ?? '').includes('grid'))
+    const grid = cards[0]?.parentElement
+    if (grid === null || grid === undefined) throw new Error('model grid missing')
+    const columns = getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length
+    const names = cards.map((card) => {
+      const name = card.querySelector<HTMLElement>('span[class*="modelName"]')
+      if (name === null) throw new Error('model name missing')
+      return { name, text: name.textContent ?? '' }
+    })
+    const clippedNames = names
+      .filter(({ name }) => name.scrollWidth > name.clientWidth + 1 || name.scrollHeight > name.clientHeight + 2)
+      .map(({ text }) => text)
+    const firstStyle = getComputedStyle(names[0]!.name)
+    return {
+      width: rect.width,
+      height: rect.height,
+      availableWidth,
+      availableHeight,
+      columns,
+      cardWidth: cards[0]!.getBoundingClientRect().width,
+      clippedNames,
+      nameLineClamp: firstStyle.getPropertyValue('-webkit-line-clamp').trim(),
+      nameWhiteSpace: firstStyle.whiteSpace,
+    }
+  })
+}
+
+/**
  * Read the popup's sticky groups, the mark in their heading's leading slot, and rows.
  * @param popup - the open /model popup.
  * @returns one entry per group in render order.
@@ -345,6 +400,40 @@ describe.skipIf(webSnapshotMode() === 'record').each([
     await page.keyboard.press('Escape')
     await page.keyboard.press('Escape')
     await composer.fill('')
+    expect(tripwire.pageErrors).toEqual([])
+  }, 120_000)
+
+  it('fills the viewport and keeps catalog names readable across desktop sizes', async () => {
+    onTestFailed(() => saveFailureShot(page, `web-e2e-model-layout-${engine.name()}`))
+    const trigger = page.getByRole('button', { name: /^选择模型/ })
+    const dialog = modelsDialog(page)
+    const viewports = [
+      { width: 1280, height: 800 },
+      { width: 1440, height: 900 },
+      { width: 1920, height: 1080 },
+      { width: 2560, height: 1440 },
+    ]
+    const columns: number[] = []
+    for (const viewport of viewports) {
+      const at = `${String(viewport.width)}x${String(viewport.height)}`
+      await page.setViewportSize(viewport)
+      await trigger.click()
+      await dialog.waitFor()
+      await expect.poll(() => dialog.locator('[role="group"][aria-label="模型"] section').count()).toBeGreaterThan(0)
+      const layout = await readDialogLayout(dialog)
+      expect(Math.abs(layout.width - Math.min(layout.availableWidth, 2400)), `dialog width at ${at}`)
+        .toBeLessThanOrEqual(2)
+      expect(Math.abs(layout.height - layout.availableHeight), `dialog height at ${at}`)
+        .toBeLessThanOrEqual(2)
+      expect(layout.cardWidth, `card width at ${at}`).toBeGreaterThanOrEqual(250)
+      expect(layout.clippedNames, `clipped model names at ${at}`).toEqual([])
+      expect(layout.nameWhiteSpace, `name wrapping at ${at}`).toBe('normal')
+      expect(layout.nameLineClamp, `name clamp at ${at}`).toBe('2')
+      columns.push(layout.columns)
+      await page.keyboard.press('Escape')
+      await expect.poll(() => dialog.count()).toBe(0)
+    }
+    expect(columns).toEqual([4, 5, 6, 7])
     expect(tripwire.pageErrors).toEqual([])
   }, 120_000)
 })

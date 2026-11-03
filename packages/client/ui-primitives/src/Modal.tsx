@@ -15,6 +15,7 @@ interface ModalBaseProps {
   footer?: ReactNode
   className?: string
   contentClassName?: string
+  bodyClassName?: string
   shortcutModal?: string
   onKeyDownCapture?: KeyboardEventHandler<HTMLDivElement>
   backdropBlur?: boolean
@@ -37,6 +38,8 @@ type ModalProps = ModalBaseProps & (
  * data-modal-autofocus instead of React autoFocus to preserve return focus.
  * @param props.footer - action row (Cancel / Create).
  * @param props.contentClassName - optional class for a scrollable content region.
+ * @param props.bodyClassName - optional class for the body that carries the children, so a
+ * full-height consumer can let that body participate in the modal's flex column.
  * @param props.backdropBlur - disable when the caller already blurs the page; defaults to true.
  * @param props.shortcutModal - command scope allowed by shortcut owners; unnamed
  * dialogs block application commands unless their owner allows the "other" scope.
@@ -46,7 +49,7 @@ type ModalProps = ModalBaseProps & (
  * @returns null when closed; otherwise the overlay tree.
  */
 export function Modal({
-  open, onClose, title, closeLabel, description, children, footer, className, contentClassName,
+  open, onClose, title, closeLabel, description, children, footer, className, contentClassName, bodyClassName,
   onKeyDownCapture, headless = false, backdropBlur = true, shortcutModal,
 }: ModalProps) {
   const dialog = useRef<HTMLDivElement>(null)
@@ -80,7 +83,7 @@ export function Modal({
                 {description !== undefined && description !== '' && (
                   <p className={css.description}>{description}</p>
                 )}
-                {children !== undefined && <div className={css.body}>{children}</div>}
+                {children !== undefined && <div className={clsx(css.body, bodyClassName)}>{children}</div>}
               </div>
               {footer !== undefined && <div className={css.footer}>{footer}</div>}
             </>
