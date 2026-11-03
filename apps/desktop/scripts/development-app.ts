@@ -45,8 +45,8 @@ export function prepareDevelopmentApp(options: DevelopmentAppOptions): string {
     const plist = join(bundle, 'Contents', 'Info.plist')
     const values = {
       CFBundleIdentifier: `com.deepseek.harness.dev.${createHash('sha256').update(options.appRoot).digest('hex').slice(0, 12)}`,
-      CFBundleName: 'Harness Dev',
-      CFBundleDisplayName: 'Harness Dev',
+      CFBundleName: 'Kito Harness Dev',
+      CFBundleDisplayName: 'Kito Harness Dev',
       CFBundleExecutable: 'HarnessDev',
       ...(iconBytes === undefined ? {} : { CFBundleIconFile: 'dsh-dev.icns' }),
       CFBundleURLTypes: [{ CFBundleURLName: 'Kito Harness', CFBundleURLSchemes: ['dsh', 'kito-harness'], CFBundleTypeRole: 'Viewer' }],

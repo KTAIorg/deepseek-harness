@@ -19,12 +19,18 @@ describe('live model catalog', () => {
     }).map(model => model.id)).toEqual(['deepseek-v4.1-flash', 'k3-latest'])
   })
 
-  it('loads the account model list from the provider endpoint', async () => {
+  it('loads the account model list and maps each row\'s declared reasoning levels', async () => {
     const fetchImpl = vi.fn(async () => Response.json({
       data: [
-        { id: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', supported_endpoint_types: ['openai'] },
+        {
+          id: 'deepseek-v4.1-flash',
+          name: 'DeepSeek V4.1 Flash',
+          supported_endpoint_types: ['openai'],
+          reasoning: { efforts: ['off', 'low', 'high', 'max'], default: 'high' },
+        },
         { id: 'claude-only', supported_endpoint_types: ['anthropic'] },
         { id: 'k3-latest' },
+        { id: 'plain-no-reasoning', reasoning: { efforts: [] } },
       ],
     }))
     vi.stubGlobal('fetch', fetchImpl)
@@ -45,11 +51,17 @@ describe('live model catalog', () => {
       auth: memoryAuth(),
     })
     const models = await adapter.listModels('kito')
-    expect(models.map(model => model.id)).toEqual(['deepseek-v4.1-flash', 'k3-latest'])
+    expect(models.map(model => model.id)).toEqual(['deepseek-v4.1-flash', 'k3-latest', 'plain-no-reasoning'])
     expect(models[0]?.name).toBe('DeepSeek V4.1 Flash')
     const resolved = await adapter.resolveModel('kito', 'deepseek-v4.1-flash')
     expect(resolved.id).toBe('deepseek-v4.1-flash')
-    expect(resolved.reasoning?.efforts.map(effort => effort.id)).toEqual(['off', 'high'])
+    expect(resolved.reasoning?.efforts.map(effort => effort.id)).toEqual(['off', 'low', 'high', 'max'])
+    // A row without a reasoning object, and a row with an empty efforts list,
+    // both materialize as non-reasoning: no fabricated effort selector.
+    const unlisted = await adapter.resolveModel('kito', 'k3-latest')
+    expect(unlisted.reasoning).toBeUndefined()
+    const nonReasoning = await adapter.resolveModel('kito', 'plain-no-reasoning')
+    expect(nonReasoning.reasoning).toBeUndefined()
     await adapter.listModels('kito')
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     expect(fetchImpl).toHaveBeenCalledWith('https://ktapi.cc/v1/models', expect.objectContaining({
