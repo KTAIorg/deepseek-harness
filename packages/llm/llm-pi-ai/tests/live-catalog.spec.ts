@@ -78,10 +78,13 @@ describe('live model catalog', () => {
       headers: { Authorization: 'Bearer attacker', ACCEPT: 'text/html', 'X-Deploy-Trace': 'on' },
       fetchImpl,
     })
-    const init = fetchImpl.mock.calls[0]?.[1] as { headers: Record<string, string> }
-    expect(init.headers.authorization).toBe('Bearer sk-test')
-    expect(init.headers.accept).toBe('application/json')
-    expect(init.headers['user-agent']).toBe('Kito/2.0')
-    expect(init.headers['X-Deploy-Trace']).toBe('on')
+    expect(fetchImpl).toHaveBeenCalledWith('https://ktapi.cc/v1/models', expect.objectContaining({
+      headers: expect.objectContaining({
+        authorization: 'Bearer sk-test',
+        accept: 'application/json',
+        'user-agent': 'Kito/2.0',
+        'X-Deploy-Trace': 'on',
+      }),
+    }))
   })
 })
