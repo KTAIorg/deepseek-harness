@@ -1,6 +1,6 @@
 # Copies one existing GHCR tag onto oci.ktyun.cc.
 # imagetools copies the manifest only: no rebuild, no GitOps newTag change, no Deployment edit.
-# Login matches KTAIorg/kt-workflows image-build.yml mirror-zot (2026-10-12):
+# Credentials are self-contained; no shared workflow template is used (2026-10-12):
 # GHCR uses this repository's GITHUB_TOKEN; Zot uses GitHub OIDC audience zot as user zot.
 # No third-party actions. The GitHub-hosted runner's docker buildx performs the copy.
 # Each registry call is its own step. A failed call is followed by a step whose name is the
