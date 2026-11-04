@@ -38,6 +38,9 @@ export interface DesktopElectronBuilderConfig {
     readonly sign: boolean
     readonly writeUpdateInfo: boolean
   }
+  readonly pkg: {
+    readonly identity: string | null | undefined
+  }
   readonly win: {
     readonly forceCodeSigning: boolean
     readonly signtoolOptions: {
