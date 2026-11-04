@@ -17,7 +17,9 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { ConnectionStateSource } from '@deepseek-ai/dsh-client-connection/client'
-import type { MarkdownFileMentions, MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { FileDragActions, MarkdownFileMentions, MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { ContextMenuTriggerProps } from '@deepseek-ai/dsh-client-ui-context-menu/client'
+import type { ChatKey } from '../locale.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only: the Session-scope access Hook (`useAccess`) the Chat entries read.
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -142,9 +144,12 @@ export interface ChatFileMentions {
    * Resolve prose links for one closing Turn.
    * @param owner - closing-Turn identity and file opener.
    * @param sessionId - viewed Session, including when history is inherited from a fork.
+   * @param getFileTriggerProps - ordinary gesture binding for a resolved file path.
    * @returns link resolver when available.
    */
-  forClosing(owner: TurnTailOwnerProps, sessionId: SessionId): MarkdownFileMentions | undefined
+  forClosing(
+    owner: TurnTailOwnerProps, sessionId: SessionId, getFileTriggerProps?: (path: string) => ContextMenuTriggerProps,
+  ): MarkdownFileMentions | undefined
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -215,6 +220,20 @@ export interface ChatNodeInjected {
   }
 }
 
+/**
+ * Owner currency of the message-source decoration above one user message bubble.
+ *
+ * Entry selectors receive the durable message `source` and row kind. A
+ * non-null selection elects the component and reaches it as `matched`.
+ * Entries own their markup and copy; Chat does not interpret the source.
+ */
+export interface UserBeforeOwnerProps {
+  /** Durable message source; Chat does not interpret it. */
+  readonly source: unknown
+  /** Chat row kind that owns the decoration site. */
+  readonly kind: 'user' | 'steering'
+}
+
 /** Stable owner currency delivered to a keyed Chat renderer. */
 export interface ChatNodeOwnerProps {
   /** Renderer-owned Node portion selected by the grouping Definition. */
@@ -225,7 +244,6 @@ export interface ChatNodeOwnerProps {
   forkAt: (seq: number) => void
   /** Session-authorized image loader supplied by the Chat view. */
   loadImage: MessageImageLoader
-  fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
   /** Turn-process state when this Node belongs to a projected Turn. */
   turnProcess?: TurnProcessOwnerProps | undefined
 }
@@ -305,7 +323,9 @@ export interface PerformanceUsageInjected {
 /** Business callbacks injected into the Chat view. */
 export interface ChatViewInjected {
   /** File preparation and failure callbacks owned by the file-drag plugin. */
-  readonly fileDrag: import('@deepseek-ai/dsh-client-ui-primitives').FileDragActions
+  readonly fileDrag: FileDragActions
+  /** Resolve the reference against this Session and its current path base when the gesture begins. */
+  resolveFilePath: (path: string) => string
   /** Dispatch one gesture to the Conversation plugin registry. */
   dispatchInteraction: (gesture: TextInteractionGesture) => string | null
   hooks: {
@@ -336,7 +356,6 @@ export interface ChatViewInjected {
     read: () => ChatScrollPosition | null
   }
   forkAt: (seq: number) => void
-  fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
 }
 
 /** Session-owned node sources shared with the view, plus the flow's connection state. */
@@ -349,7 +368,7 @@ export type ChatFlowDataInjected = Pick<ChatViewInjected, 'keyedHooks'> & {
 
 /** Ordered rows and reconciled local echoes rendered inside one Chat viewport. */
 export interface ChatFlowOwnerProps extends Pick<ChatNodeOwnerProps,
-  'cwd' | 'openFile' | 'inspectCall' | 'forkAt' | 'loadImage' | 'fileMentions'> {
+  'cwd' | 'openFile' | 'inspectCall' | 'forkAt' | 'loadImage'> {
   readonly entries: readonly RenderEntry[]
   readonly pendingInputs: readonly (PendingSubmission | InboxState['next-step'][number])[]
   readonly lastInputTurn: number | undefined
@@ -385,7 +404,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
   interface LocaleNamespaceMap {
     /** Chat target, transcript node, statistics, and details copy. */
-    chat: import('../locale.ts').ChatKey
+    chat: ChatKey
   }
 
   interface SlotFactoryMap {
@@ -428,6 +447,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       keyProps: { [Kind in ChatNodeKind]: { node: ChatNode<Kind> } }
       hookContext: ChatNodeHookContext
       inject: ChatNodeInjected
+    }
+    /**
+     * Message-source decoration owned and rendered by the user Node entry.
+     * Selectors elect one component from the durable source and row kind.
+     * No match renders no visible content; steering and pending rows do not
+     * render this slot.
+     */
+    'conversation.chat.user.before': {
+      kind: 'chain'
+      scope: 'session'
+      owner: UserBeforeOwnerProps
     }
     /**
      * Renderer for one consecutive group of durable message images. The owner

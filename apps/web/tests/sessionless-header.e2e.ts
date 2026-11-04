@@ -19,7 +19,9 @@ afterAll(async () => {
 })
 
 describe('navigation without a selected Session', () => {
-  it.each(['web', 'win32', 'linux', 'darwin'] as const)('%s preserves its language control and sidebar access', async (platform) => {
+  // The resident header keeps the blank-Session row height on every platform,
+  // so the Hero centers below the same header before and after a Workspace is bound.
+  it.each(['web', 'win32', 'linux', 'darwin'] as const)('%s preserves its language control, header height and sidebar access', async (platform) => {
     const page = await newEnglishPage(browser)
     try {
       if (platform !== 'web') {
@@ -43,7 +45,7 @@ describe('navigation without a selected Session', () => {
       const header = page.locator('[data-slot="conversation.header"] > header')
       const language = header.getByRole('button', { name: 'English', exact: true })
       await language.waitFor({ state: 'visible' })
-      expect(await header.evaluate(element => element.getBoundingClientRect().height)).toBe(platform === 'darwin' ? 40 : 28)
+      expect(await header.evaluate(element => element.getBoundingClientRect().height)).toBe(40)
       await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click()
       const reopen = platform === 'darwin'
         ? page.locator('[data-shell-leading]').getByRole('button', { name: 'Open sidebar', exact: true })
@@ -51,7 +53,7 @@ describe('navigation without a selected Session', () => {
       await reopen.waitFor({ state: 'visible' })
       expect(await sessionHeader.count()).toBe(0)
       expect(await language.isVisible()).toBe(true)
-      expect(await header.evaluate(element => element.getBoundingClientRect().height)).toBe(platform === 'darwin' ? 40 : 28)
+      expect(await header.evaluate(element => element.getBoundingClientRect().height)).toBe(40)
       if (platform === 'darwin') {
         expect(await page.locator('[data-shell-leading]').getByRole('button', { name: 'New session', exact: true }).isVisible()).toBe(true)
       }

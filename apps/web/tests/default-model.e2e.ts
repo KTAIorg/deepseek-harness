@@ -415,6 +415,7 @@ describe('web e2e: the composer model switch is the default for later sessions',
       const initial = await rows.evaluateAll(nodes => nodes.findIndex(row => row.hasAttribute('data-highlighted')))
       expect(initial).toBeGreaterThanOrEqual(0)
       await devicePage.keyboard.press('ArrowDown')
+      expect(await search.evaluate(input => getComputedStyle(input).fontSize)).toBe('16px')
       await expect.poll(() => search.evaluate(element => document.activeElement === element)).toBe(true)
       await expect.poll(() => rows.evaluateAll(nodes =>
         nodes.findIndex(row => row.hasAttribute('data-highlighted')))).toBe((initial + 1) % 5)
@@ -633,7 +634,6 @@ describe('web e2e: the composer model switch is the default for later sessions',
     await search.press('ArrowUp')
     expect(await rows.evaluateAll(nodes =>
       nodes.findIndex(row => row.hasAttribute('data-highlighted')))).toBe(initialHighlight)
-
     await search.fill('zzzz')
     await page.getByText('没有匹配的模型。', { exact: true }).waitFor()
     await dialog.getByRole('button', { name: '清除搜索', exact: true }).click()

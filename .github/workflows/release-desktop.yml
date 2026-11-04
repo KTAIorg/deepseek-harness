@@ -1,0 +1,70 @@
+# Action 基线：2026-08-30，checkout/setup-node/upload-artifact 使用 Node24 稳定主版本。
+name: Release · Desktop
+
+run-name: Desktop release | ${{ github.ref_name }} | ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-macos:
+    name: Build macOS Apple Silicon
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      DSH_BUILD_CLIENT_PROFILE: kito
+      DSH_TELEMETRY_DISABLED: '1'
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - run: pnpm install --frozen-lockfile
+      - name: Build unsigned DMG and PKG
+        run: pnpm run package:desktop:mac:arm64:unsigned
+      - name: Upload macOS installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: kito-harness-macos-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/desktop/.desktop-build/targets/mac-arm64/unsigned-artifacts/*.{dmg,pkg}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      DSH_BUILD_CLIENT_PROFILE: kito
+      DSH_TELEMETRY_DISABLED: '1'
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - run: pnpm install --frozen-lockfile
+      - name: Select unsigned local Windows settings
+        shell: pwsh
+        run: Copy-Item apps/desktop/.env.windows.example apps/desktop/.env.windows
+      - name: Build unsigned Windows installer
+        run: pnpm run package:desktop:win:x64:unsigned
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: kito-harness-windows-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe*
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

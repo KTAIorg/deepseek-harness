@@ -27,7 +27,7 @@
  * one in place of its check mark.
  **/
 import {
-  Input, isMobileDevice, Modal, StateDot, Toast,
+  Input, isMobileDevice, Modal, StateDot, Tag, Toast,
   IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconCloseFillRegular,
   IconDataOutlineRegular, IconWarningOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -65,7 +65,7 @@ interface EffortChoice {
  * @returns the trigger and, while open, the two-level menu.
  */
 export function ModelSelect(
-  { locked, available, directory, load, select, t, renderSlot }:
+  { locked, available, directory, load, select, resolveText, t, renderSlot }:
   ModelSelectInjected & Pick<PropsRuntime<'conversation.input.model'>, 'locked'> & PropsLocale<'model'>
     & Omit<PropsRenderSlots<'conversation.input.model.label'>, 'SessionProvider'>,
 ) {
@@ -360,7 +360,15 @@ export function ModelSelect(
     <span data-provider-id={provider.id} data-model-id={model.id}>
       {renderSlot('conversation.input.model.label', {
         provider, model, placement, selected,
-      }, { fallback: displayName })}
+      }, {
+        fallback: model.badge === undefined ? displayName : (
+          <span className={css.badgedName}>
+            {placement === 'trigger' ? <><Tag className={css.badge} tone={model.badge.tone}>{resolveText(model.badge.text)}</Tag>{' '}</> : null}
+            <span className={css.badgedNameText}>{displayName}</span>
+            {placement === 'trigger' ? null : <>{' '}<Tag className={css.badge} tone={model.badge.tone}>{resolveText(model.badge.text)}</Tag></>}
+          </span>
+        ),
+      })}
     </span>
   )
   let itemIndex = 0

@@ -26,7 +26,9 @@ const PROVIDERS = [
     id: 'origin-gateway',
     name: 'Origin Gateway',
     models: [
-      { id: 'origin-large', name: 'Origin Large' },
+      { id: 'origin-large', name: 'Origin Large', reasoningEfforts: {
+        off: null, minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max',
+      } },
       ...Array.from({ length: 6 }, (_, index) => ({
         id: `claude-opus-${String(6 - index)}`, name: `Claude Opus ${String(6 - index)}`,
       })),
@@ -52,8 +54,7 @@ const PROVIDERS = [
     models: Array.from({ length: 7 }, (_, index) => ({
       id: `gemini-3.${String(7 - index)}`, name: `Gemini 3.${String(7 - index)}`,
     })),
-  },
-]
+  }]
 
 /**
  * Expected vendor sections and their rows. Rows are ordered by version
@@ -435,5 +436,4 @@ describe.skipIf(webSnapshotMode() === 'record').each([
     }
     expect(columns).toEqual([4, 5, 6, 7])
     expect(tripwire.pageErrors).toEqual([])
-  }, 120_000)
-})
+  }, 120_000)})

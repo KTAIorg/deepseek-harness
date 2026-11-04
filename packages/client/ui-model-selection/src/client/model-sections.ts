@@ -287,8 +287,13 @@ export function searchChoices(choices: readonly ModelChoice[], query: string): M
 }
 
 function sortChoices(choices: ModelChoice[]): ModelChoice[] {
+  const providerRank = (choice: ModelChoice): number => choice.provider === 'deepseek-account'
+    ? 0
+    : choice.provider === 'deepseek-official' ? 1 : 2
   return choices.toSorted((left, right) =>
-    compareModelVersions(right.model.id, left.model.id) || left.displayName.localeCompare(right.displayName))
+    providerRank(left) - providerRank(right)
+    || compareModelVersions(right.model.id, left.model.id)
+    || left.displayName.localeCompare(right.displayName))
 }
 
 function entryFor(choices: readonly ModelChoice[], key: string): ModelChoice | undefined {
