@@ -177,7 +177,11 @@ export function createElectronBuilderConfig(
       // Prepared runtime files retain their signatures; PAK resources are sealed by their enclosing bundle.
       signIgnore: ['/Contents/Resources/app\\.asar\\.unpacked/dsh(?:/|$)', '/Contents/Resources/runtime/primary-runtime(?:/|$)', '\\.pak$'],
       notarize: !unsigned && !skipNotarization,
-      target: unsigned ? ['dmg'] : ['dmg', 'zip'],
+      target: unsigned ? ['dmg', 'pkg'] : ['dmg', 'zip'],
+    },
+    pkg: {
+      // 本地未签名分发只禁止 PKG 签名；应用本体仍按 unsigned 规则 ad-hoc 签名。
+      identity: unsigned ? null : undefined,
     },
     dmg: {
       format: 'ULMO',
