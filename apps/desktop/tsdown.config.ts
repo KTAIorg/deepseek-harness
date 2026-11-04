@@ -3,7 +3,7 @@ import { build } from 'vite'
 import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { repositoryClientBuildEnvironment, resolveClientBuildEnvironment } from '../../scripts/client-build-environment.ts'
+import { clientBuildValueDefines, repositoryClientBuildEnvironment, resolveClientBuildEnvironment } from '../../scripts/client-build-environment.ts'
 import { packagedImportsPlugin } from './scripts/desktop-bundle-imports.mjs'
 
 // This config runs after the workspace tsdown pass, not inside it: the main bundle inlines
@@ -29,10 +29,16 @@ const clientEnvironment = resolveClientBuildEnvironment(process.env.DSH_CLIENT_V
 const clientVersion = clientEnvironment.DSH_CLIENT_VERSION
 if (clientVersion === undefined) throw new Error('desktop build: the client environment carries no DSH_CLIENT_VERSION')
 
-/** Inline the one public build value the Node entry reads; every other variable stays a runtime lookup. */
-const clientVersionDefine = { 'process.env.DSH_CLIENT_VERSION': JSON.stringify(clientVersion) }
+/** Inline the public build values the Node entry reads; every other variable stays a runtime lookup. */
+const clientValueDefines = clientBuildValueDefines(clientEnvironment)
 
 export default defineConfig([
+  {
+    entry: ['lib/types/operation-report-worker.js'],
+    plugins: [packagedImportsPlugin({ packages: new Set(), nodeBuiltins: true })],
+    outDir: 'lib', format: ['esm'], platform: 'node', target: 'es2024',
+    fixedExtension: false, dts: false, clean: false, codeSplitting: false,
+  },
   {
     entry: ['lib/types/command-manager-entry.js'],
     plugins: [packagedImportsPlugin({ packages: new Set(), nodeBuiltins: true })],
@@ -49,14 +55,14 @@ export default defineConfig([
   {
     entry: ['lib/types/main.js'],
     plugins: [packagedImportsPlugin(mainProcessImports)],
-    define: clientVersionDefine,
+    define: clientValueDefines,
     onSuccess: async () => {
       await build({
         configFile: false,
         plugins: [{
-          name: 'desktop-brand-font',
+          name: 'desktop-shell-assets',
           async generateBundle() {
-            for (const name of ['brand-font.css', 'montserrat-regular.woff2', 'montserrat-light.woff2', 'montserrat-medium.woff2', 'Montserrat-OFL.txt']) {
+            for (const name of ['design-platform.css', 'brand-font.css', 'montserrat-regular.woff2', 'montserrat-light.woff2', 'montserrat-medium.woff2', 'Montserrat-OFL.txt']) {
               this.emitFile({
                 type: 'asset',
                 fileName: name,

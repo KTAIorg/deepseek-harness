@@ -302,7 +302,7 @@ function mountChainRoot(
 }
 
 describe('root outlet', () => {
-  it('renders the root registration and fails loud when root is unregistered (boot order)', () => {
+  it('renders the root registration and shows the recovery face when root is unregistered (boot order)', () => {
     const h = makeHost()
     h.add('root', { component: () => <b>shell</b> })
     const renderer = createSlotRenderer()
@@ -311,8 +311,9 @@ describe('root outlet', () => {
 
     const empty = makeHost()
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(() => render(<>{createSlotRenderer().renderRoot(empty.host, {})}</>))
-      .toThrow(/boot order/)
+    const emptyView = render(<>{createSlotRenderer().renderRoot(empty.host, {})}</>)
+    expect(emptyView.container.querySelector('[data-renderer-recovery]')).not.toBeNull()
+    expect(spy.mock.calls.flat().some(value => String(value).includes('boot order'))).toBe(true)
     spy.mockRestore()
   })
 
@@ -853,14 +854,17 @@ describe('standard-kit synthesis', () => {
     expect(seen2.at(-1)!['SessionProvider']).toBeUndefined()
   })
 
-  it('fails loud for a strict session slot while no session is current', () => {
+  it('shows the recovery face for a strict session slot while no session is current', () => {
     const h = makeHost()
     h.declare('k.session', SINGLE_SESSION)
     h.add('k.session', { component: () => <b>x</b> })
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(() => mountRoot(h, { 'k.session': SINGLE_SESSION },
-      renderSlot => renderSlot('k.session', {})))
-      .toThrow("strict session slot 'k.session' rendered without a scope binding")
+    const { view } = mountRoot(h, { 'k.session': SINGLE_SESSION },
+      renderSlot => renderSlot('k.session', {}))
+    expect(view.container.querySelector('[data-renderer-recovery]')).not.toBeNull()
+    expect(spy.mock.calls.flat().some(
+      value => String(value).includes("strict session slot 'k.session' rendered without a scope binding"),
+    )).toBe(true)
     spy.mockRestore()
   })
 

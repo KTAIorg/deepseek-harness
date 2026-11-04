@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { establishKitoAccess } from '../src/access.js'
 import { passwordLogin, pollDeviceLogin, startDeviceLogin } from '../src/identity.js'
 
 const account = {
@@ -82,4 +83,32 @@ test('device start sends kito_desktop', async () => {
   assert.equal(JSON.parse(String(init?.body)).client_type, 'kito_desktop')
   assert.equal(challenge.userCode, 'ABCD')
   assert.equal(challenge.interval, 2)
+})
+
+test('Kito access stores only the Identity token and never contacts NewAPI', async () => {
+  const access = await establishKitoAccess({
+    method: 'telegram',
+    baseUrl: 'https://identity.test',
+    fetchImpl: async url => {
+      const target = String(url)
+      assert.equal(target.includes('ktapi.cc'), false)
+      if (target.endsWith('/identity/v1/device/sessions')) {
+        return new Response(JSON.stringify({
+          session_id: 'sess', user_code: 'ABCD', opaque_code: 'opaque',
+          login_url: 'https://login.test/go', expires_at: '2099-01-01T00:00:00Z', interval: 1,
+        }), { status: 200 })
+      }
+      if (target.endsWith('/identity/v1/device/sessions/sess')) {
+        return new Response(JSON.stringify({ status: 'approved' }), { status: 200 })
+      }
+      if (target.endsWith('/token')) {
+        return new Response(JSON.stringify({
+          access_token: 'identity-token', subject: 'acc-1', username: '10001', refresh_token: 'refresh',
+        }), { status: 200 })
+      }
+      return new Response('unexpected', { status: 500 })
+    },
+  })
+  assert.equal(access.identityToken, 'identity-token')
+  assert.equal(access.grant.refreshToken, 'refresh')
 })

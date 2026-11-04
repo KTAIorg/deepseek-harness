@@ -40,8 +40,10 @@ export function mapUsage(usage: PiUsage): TokenUsage {
 // If pi-ai ever forwards the original Error (or a fetch/dispatcher hook that lets
 // us capture the cause ourselves), classify on `code`/`cause` instead of text.
 function classifyPiAiError(message: string): string {
-  if (/\b(?:401|403)\b/.test(message)) return 'AUTH'
+  // Relay gateways such as NewAPI answer an exhausted balance with 403, so the
+  // quota wording decides before the status does.
   if (isQuotaExceededError(message)) return QUOTA_EXCEEDED_CODE
+  if (/\b(?:401|403)\b/.test(message)) return 'AUTH'
   if (/\b429\b|rate.?limit/i.test(message)) return 'RATE_LIMIT'
   // A rejected request body (gateway or provider size cap): resending the
   // same request cannot succeed, so it is invalid, not transient.
@@ -137,7 +139,9 @@ export function mapStopReason(message: AssistantMessage, contextWindow?: number)
  *   in-band terminal error an aborted finish.
  * @param requestedModel - request model identity recorded for durable replay.
  * @returns the harness chunks, ending with `usage` then `finish`; throws
- *   `LlmError` (`STREAM_CLOSED`) if the source ends without a terminal event.
+ *   `LlmError` (`STREAM_CLOSED`) if the source ends without a terminal event, or
+ *   `MALFORMED_RESPONSE` when completed tool arguments are invalid. Length-limited
+ *   output retains its terminal reason so the assembler can discard incomplete calls.
  */
 export async function* toStreamChunks(
   events: AsyncIterable<AssistantMessageEvent>,
@@ -148,6 +152,7 @@ export async function* toStreamChunks(
   // pi-ai contentIndex ↔ our block index map 1:1 (both count blocks from 0
   // in stream order), but we track ids per index for tool calls.
   const toolIds = new Map<number, { id: string; name: string }>()
+  let argumentsError: string | undefined
 
   for await (const event of events) {
     switch (event.type) {
@@ -192,6 +197,10 @@ export async function* toStreamChunks(
         break
       }
       case 'toolcall_end':
+        if (event.toolCall.argumentsError !== undefined) {
+          argumentsError ??= `Tool call "${event.toolCall.name}": ${event.toolCall.argumentsError}`
+          break
+        }
         yield {
           type: 'block-end',
           index: event.contentIndex,
@@ -207,6 +216,9 @@ export async function* toStreamChunks(
         break
       case 'done':
         yield { type: 'usage', usage: mapUsage(event.message.usage) }
+        if (argumentsError !== undefined && event.message.stopReason !== 'length') {
+          throw new LlmError(argumentsError, 'MALFORMED_RESPONSE')
+        }
         yield {
           type: 'finish',
           reason: mapStopReason(event.message, contextWindow),

@@ -66,6 +66,8 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           push: true
+          build-args: |
+            DSH_CLIENT_COMMIT_HASH=${{ github.sha }}
           tags: |
             ${{ env.IMAGE_REF }}
           cache-from: type=gha,scope=deepseek-harness-ack
@@ -90,6 +92,7 @@ jobs:
           docker buildx build \
             --file Dockerfile \
             --platform linux/amd64 \
+            --build-arg "DSH_CLIENT_COMMIT_HASH=${GITHUB_SHA}" \
             --provenance=false \
             --sbom=false \
             --output type=registry,oci-mediatypes=true \

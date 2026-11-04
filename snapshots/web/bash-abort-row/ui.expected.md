@@ -1,10 +1,12 @@
 - banner:
   - navigation "Session hierarchy": "Run two shell commands: wait"
+  - button "English"
   - button "More actions"
   - button "Open right sidebar"
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
+  - button "More conversation views"
 - text: "Run two shell commands: wait for cancellation, then write skipped.txt. {{clock}}"
 - button "Copy"
 - status: Stopped

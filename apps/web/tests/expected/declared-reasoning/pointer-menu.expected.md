@@ -1,12 +1,18 @@
-- group "模型与推理等级":
+- dialog "模型与推理等级":
+  - heading "模型与推理等级" [level=2]
+  - button "关闭模型选择器"
   - searchbox "搜索模型…"
-  - menu "模型":
-    - group "DeepSeek":
-      - text: DeepSeek
-      - menuitemradio "DeepSeek-V4-Flash"
-      - menuitemradio "DeepSeek-V4-Flash-Vision-Exp"
-    - group "Acme Gateway":
-      - text: Acme Gateway
-      - menuitemradio "Acme Think"
-      - menuitemradio "Acme Swift" [checked]
-      - menuitemradio "Acme Lite"
+  - button "推理等级 Max"
+  - group "模型":
+    - region "最近使用":
+      - heading "最近使用" [level=3]
+      - button "Acme Swift" [pressed]
+    - region "Other":
+      - heading "Other" [level=3]
+      - button "Acme Think"
+      - button "Acme Swift" [pressed]
+      - button "Acme Lite"
+    - region "DeepSeek":
+      - heading "DeepSeek" [level=3]
+      - button "DeepSeek-V4-Flash-Vision-Exp"
+      - button "DeepSeek-V4-Flash"

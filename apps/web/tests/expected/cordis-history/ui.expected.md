@@ -1,10 +1,12 @@
 - banner:
   - navigation "Session hierarchy": Use only Cordis tools. First
+  - button "English"
   - button "More actions"
   - button "Open right sidebar"
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
+  - button "More conversation views"
 - navigation "Turn navigation":
   - button "Jump to turn 1"
   - button "Jump to turn 2"

@@ -30,6 +30,8 @@ export interface DesktopWelcomeBackend {
   save(apiKey: string): Promise<{ ok: boolean }>
   /** @param ref - credential name. @param value - secret. @returns whether the host stored it. */
   saveNamed(ref: string, value: string): Promise<{ ok: boolean }>
+  /** @param ref - credential name. @returns whether the host removed it. */
+  removeNamed(ref: string): Promise<{ ok: boolean }>
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -62,19 +64,28 @@ export async function connectDesktopWelcome(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'client-request', rpcId, method, payload: { args: request.args } }),
     })
-    if (!response.ok) throw new Error('desktop welcome: Web request failed')
+    if (!response.ok) throw new Error(`desktop welcome: ${method} returned HTTP ${response.status}`)
     const envelope: unknown = await response.json()
     if (!record(envelope) || envelope.type !== 'server-response' || envelope.rpcId !== rpcId
-      || !record(envelope.result) || envelope.result.ok !== true) {
-      throw new Error('desktop welcome: Web RPC failed')
+      || !record(envelope.result)) {
+      throw new Error(`desktop welcome: ${method} returned an invalid RPC envelope`)
+    }
+    if (envelope.result.ok !== true) {
+      const code = record(envelope.result.error) && typeof envelope.result.error.code === 'string'
+        ? envelope.result.error.code : 'unknown'
+      throw new Error(`desktop welcome: ${method} failed (${code})`)
     }
     return envelope.result.value
   }
   const account = desktopAccountBackend(origin, invoke, cookies)
+  const independentAccount = process.env.DSH_CLIENT_BUILD_PROFILE === 'kito' || process.env.DSH_CLIENT_BUILD_PROFILE === 'local'
   const settingsAndReference = async () => {
     const settings = await invoke({ namespace: 'settings', method: 'describe', args: {} })
     if (!record(settings) || !Array.isArray(settings.namespaces)) throw new Error('desktop welcome: missing settings namespaces')
-    return { settings: { namespaces: settings.namespaces }, ref: 'KITO_NEWAPI_API_KEY' }
+    return {
+      settings: { namespaces: settings.namespaces },
+      ref: independentAccount ? 'KITO_IDENTITY_TOKEN' : 'KITO_NEWAPI_API_KEY',
+    }
   }
   const localePreference = (namespaces: unknown[]): string | null => {
     const locale: unknown = namespaces.find((item: unknown) => record(item) && item.ns === 'locale')
@@ -86,21 +97,24 @@ export async function connectDesktopWelcome(
   }
   const read = async (): Promise<WelcomeState> => {
     const { settings, ref } = await settingsAndReference()
-    const providers = await invoke({ namespace: 'llm', method: 'listConfigurableProviders', args: {} })
-    if (!Array.isArray(providers)) throw new Error('desktop welcome: invalid provider directory')
     const namespaces = settings.namespaces
-    const refs = providers.flatMap((provider: unknown) => {
-      if (!record(provider) || typeof provider.settingsNs !== 'string' || !Array.isArray(provider.settingsPath)) {
-        throw new Error('desktop welcome: invalid provider settings address')
-      }
-      const namespace: unknown = namespaces.find((item: unknown) => record(item) && item.ns === provider.settingsNs)
-      let value: unknown = record(namespace) ? namespace.value : undefined
-      for (const key of provider.settingsPath as unknown[]) {
-        if (typeof key !== 'string') throw new Error('desktop welcome: invalid provider settings path')
-        value = record(value) ? value[key] : undefined
-      }
-      return record(value) && typeof value.apiKeyEnv === 'string' ? [value.apiKeyEnv] : []
-    })
+    const refs: string[] = []
+    if (!independentAccount) {
+      const providers = await invoke({ namespace: 'llm', method: 'listConfigurableProviders', args: {} })
+      if (!Array.isArray(providers)) throw new Error('desktop welcome: invalid provider directory')
+      refs.push(...providers.flatMap((provider: unknown) => {
+        if (!record(provider) || typeof provider.settingsNs !== 'string' || !Array.isArray(provider.settingsPath)) {
+          throw new Error('desktop welcome: invalid provider settings address')
+        }
+        const namespace: unknown = namespaces.find((item: unknown) => record(item) && item.ns === provider.settingsNs)
+        let value: unknown = record(namespace) ? namespace.value : undefined
+        for (const key of provider.settingsPath as unknown[]) {
+          if (typeof key !== 'string') throw new Error('desktop welcome: invalid provider settings path')
+          value = record(value) ? value[key] : undefined
+        }
+        return record(value) && typeof value.apiKeyEnv === 'string' ? [value.apiKeyEnv] : []
+      }))
+    }
     const unique = [...new Set([...(ref === undefined ? [] : [ref]), ...refs])]
     const states: Record<string, unknown> = {}
     // credentials.describe accepts at most 64 references per request.
@@ -110,10 +124,19 @@ export async function connectDesktopWelcome(
       Object.assign(states, batch)
     }
     if (ref !== undefined && states[ref] !== undefined && !record(states[ref])) throw new Error('desktop welcome: missing credential metadata')
-    const kitoKey = ref !== undefined && record(states[ref]) && states[ref].configured === true
+    const identityConfigured = ref !== undefined && record(states[ref]) && states[ref].configured === true
+    if (independentAccount) {
+      return {
+        loggedIn: identityConfigured,
+        hasApiKey: identityConfigured,
+        writable: false,
+        localePreference: localePreference(namespaces),
+      }
+    }
+    const accountState = await account.state()
     return {
-      loggedIn: (await account.state()).status === 'credential-stored' || kitoKey,
-      hasApiKey: kitoKey || Object.values(states).some(value => record(value) && value.configured === true),
+      loggedIn: accountState.status === 'credential-stored' || identityConfigured,
+      hasApiKey: identityConfigured || Object.values(states).some(value => record(value) && value.configured === true),
       writable: ref !== undefined && record(states[ref]) && states[ref].writable === true,
       localePreference: localePreference(namespaces),
     }
@@ -133,6 +156,7 @@ export async function connectDesktopWelcome(
       return localePreference(settings.namespaces)
     },
     async save(apiKey) {
+      if (independentAccount) return { ok: false }
       if (!/^[\x21-\x7e]+$/.test(apiKey)) return { ok: false }
       try {
         const { ref } = await settingsAndReference()
@@ -148,6 +172,14 @@ export async function connectDesktopWelcome(
       if (!/^[\x21-\x7e]+$/.test(value)) return { ok: false }
       try {
         await invoke({ namespace: 'credentials', method: 'set', args: { ref, value } })
+        return { ok: true }
+      } catch {
+        return { ok: false }
+      }
+    },
+    async removeNamed(ref) {
+      try {
+        await invoke({ namespace: 'credentials', method: 'unset', args: { ref } })
         return { ok: true }
       } catch {
         return { ok: false }

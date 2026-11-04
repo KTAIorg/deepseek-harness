@@ -12,6 +12,18 @@
       "path": "../../../vendor/cordis"
     },
     {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../typert/protocol"
+    },
+    {
+      "path": "../resources"
+    },
+    {
+      "path": "../ui-conversation/tsconfig.client.json"
+    },
+    {
       "path": "../ui-renderer"
     },
     {

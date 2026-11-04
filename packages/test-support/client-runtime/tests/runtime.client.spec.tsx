@@ -1,3 +1,4 @@
+import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 // @vitest-environment jsdom
 /**
  * SlotTestRuntime behavior: root declaration + rendering, session
@@ -88,6 +89,8 @@ describe('root declaration and rendering', () => {
 
   it('fails loud when rendering with no root declaration (production boot-order check)', async () => {
     const runtime = await SlotTestRuntime.create()
+    // This throw happens in the registry API call before React renders, so the
+    // RendererRecoveryBoundary (which only catches in-tree errors) is not reached.
     expect(() => runtime.renderRoot()).toThrow(/'root' has no registration/)
     await runtime.dispose()
   })
@@ -740,7 +743,9 @@ describe('fixture session face', () => {
     await runtime.sessions.add({ id: 's1' })
     const bare = runtime.sessions.behavior('s1')
     expect(() => bare.prompt()).toThrow(/prompt is not stubbed/)
-    expect(() => bare.readAttachment('att-1' as Parameters<typeof bare.readAttachment>[0])).toThrow(/readAttachment is not stubbed/)
+    expect(() => bare.readAttachment({
+      attachmentId: AttachmentId('att-1'), mediaType: 'image/png', bytes: 1, width: 1, height: 1,
+    })).toThrow(/readAttachment is not stubbed/)
     expect(() => bare.updateQueue()).toThrow(/updateQueue is not stubbed/)
     expect(() => bare.cancel()).toThrow(/cancel is not stubbed/)
     expect(() => bare.command()).toThrow(/command is not stubbed/)

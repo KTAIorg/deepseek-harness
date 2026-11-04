@@ -4,6 +4,7 @@
 - navigation "全局面板":
   - button "插件"
   - button "自动化任务"
+  - button "更多"
 - text: 工作区
 - button "搜索会话"
 - textbox "搜索会话名称"
@@ -18,6 +19,7 @@
 - text: 探索未至之境 预览版
 - button "选择工作区": workspace
 - button "标准模式"
+- button "中文"
 - textbox "描述你想要构建的内容, / 调用指令, @ 文件或对话"
 - button "添加文件或调用指令"
 - button "访问模式，当前：工作区内修改": 工作区内修改

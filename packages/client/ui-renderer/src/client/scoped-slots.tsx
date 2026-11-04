@@ -1310,6 +1310,80 @@ function RootOutlet({ ownerProps }: { ownerProps: object }) {
 }
 
 /**
+ * Top-level recovery net: when a runtime state change (host connection drop,
+ * plugin context disposal) removes a scope adapter or root hook the assembly
+ * throws instead of degrading. That is correct for wiring bugs, but a
+ * connection loss is a normal event the shell must survive. This boundary
+ * catches the blast, shows a reconnect face, and recovers as soon as the
+ * slot registry reports a revision change (adapter reinstalled).
+ */
+class RendererRecoveryBoundary extends Component<
+  { host: SlotRendererHost; children: ReactNode },
+  { failed: boolean; error?: unknown }
+> {
+  override state: { failed: boolean; error?: unknown } = { failed: false }
+
+  private unsubscribe?: () => void
+
+  /** The scope roster revision changed — a plugin reinstalled, retry the tree. */
+  private readonly retry = (): void => {
+    if (this.state.failed) this.setState({ failed: false, error: undefined })
+  }
+
+  override componentDidUpdate(): void {
+    this.watchRevision()
+  }
+
+  override componentDidMount(): void {
+    this.watchRevision()
+  }
+
+  private watchRevision(): void {
+    this.unsubscribe?.()
+    this.unsubscribe = this.props.host.scopeRevision.subscribe(() => { this.retry() })
+  }
+
+  override componentWillUnmount(): void {
+    this.unsubscribe?.()
+  }
+
+  static getDerivedStateFromError(error: unknown): { failed: boolean; error?: unknown } {
+    return { failed: true, error }
+  }
+
+  override componentDidCatch(error: unknown): void {
+    console.error('[ui-renderer] renderer tree crashed, showing recovery face:', error)
+  }
+
+  override render(): ReactNode {
+    if (!this.state.failed) return this.props.children
+    return (
+      <div
+        data-renderer-recovery=""
+        style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          height: '100vh', gap: '12px', fontFamily: 'system-ui, -apple-system, sans-serif',
+          background: 'var(--dsw-alias-bg-layer-1, #17181c)', color: 'var(--dsw-alias-label-primary, #e8eaee)',
+        }}
+      >
+        <div style={{ fontSize: '15px', fontWeight: 600 }}>连接已断开</div>
+        <div style={{ fontSize: '13px', opacity: 0.7 }}>正在等待服务恢复…</div>
+        <button
+          type="button"
+          onClick={() => { this.setState({ failed: false, error: undefined }) }}
+          style={{
+            marginTop: '8px', padding: '6px 16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)',
+            background: 'transparent', color: 'inherit', fontSize: '13px', cursor: 'pointer',
+          }}
+        >
+          立即重试
+        </button>
+      </div>
+    )
+  }
+}
+
+/**
  * Build the renderer installed into the `ui-renderer` SlotRegistry
  * (ctx.slots.install(createSlotRenderer()) at boot; the service owns the
  * install/renderSlot contract and the double-install/not-installed throws).
@@ -1320,11 +1394,13 @@ export function createSlotRenderer(): SlotRenderer {
     renderRoot(host, ownerProps) {
       return (
         <HostContext.Provider value={host}>
-          <RootStandardProvider>
-            <ScopeProvider scope="session-maybe">
-              <RootOutlet ownerProps={ownerProps} />
-            </ScopeProvider>
-          </RootStandardProvider>
+          <RendererRecoveryBoundary host={host}>
+            <RootStandardProvider>
+              <ScopeProvider scope="session-maybe">
+                <RootOutlet ownerProps={ownerProps} />
+              </ScopeProvider>
+            </RootStandardProvider>
+          </RendererRecoveryBoundary>
         </HostContext.Provider>
       )
     },

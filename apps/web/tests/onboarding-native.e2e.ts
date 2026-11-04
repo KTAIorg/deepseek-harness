@@ -65,13 +65,15 @@ describe.skipIf(MODE === 'record').each([false, true])('web e2e: native credenti
       await accountMenu.click()
       const menu = page.getByRole('menu')
       await menu.waitFor()
-      expect(await menu.getByRole('menuitem').count()).toBe(3)
-      for (const name of ['设置', '意见反馈', '登录']) {
+      const menuNames = desktop ? ['设置', '意见反馈'] : ['设置', '意见反馈', '登录']
+      const menuSnapshot = desktop ? join(SNAPSHOT_DIR, 'signed-out-menu-desktop.expected.md') : SIGNED_OUT_MENU_EXPECTED
+      expect(await menu.getByRole('menuitem').count()).toBe(menuNames.length)
+      for (const name of menuNames) {
         expect(await menu.getByRole('menuitem', { name, exact: true }).count()).toBe(1)
       }
       const menuBox = (await menu.boundingBox())!
       expect(Math.abs(menuBox.width - 124)).toBeLessThan(1)
-      expect(Math.abs(menuBox.height - 128)).toBeLessThan(1)
+      expect(Math.abs(menuBox.height - (menuNames.length * 40 + 8))).toBeLessThan(1)
       expect(Math.abs(triggerBox.y - (menuBox.y + menuBox.height) - 4)).toBeLessThan(1)
       for (const row of await menu.getByRole('menuitem').all()) {
         const rowBox = (await row.boundingBox())!
@@ -82,7 +84,7 @@ describe.skipIf(MODE === 'record').each([false, true])('web e2e: native credenti
         expect(Math.abs(glyph.height - 16)).toBeLessThan(1)
       }
       const menuAria = await captureStableAria(page, '[role="menu"]', scaffold.workspaceCwd)
-      await compareOrRefreshGolden(SIGNED_OUT_MENU_EXPECTED, menuAria, MODE)
+      await compareOrRefreshGolden(menuSnapshot, menuAria, MODE)
       await page.keyboard.press('Escape')
       await menu.waitFor({ state: 'detached' })
       expect(await page.getByRole('dialog', { name: '开始使用', exact: true }).count()).toBe(0)
@@ -94,11 +96,11 @@ describe.skipIf(MODE === 'record').each([false, true])('web e2e: native credenti
       expect(await welcome.count()).toBe(0)
       expect(await readFile(credentialPath, 'utf8')).toBe(credentials)
       const aria = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
-      await compareOrRefreshGolden(join(SNAPSHOT_DIR, 'models.expected.md'), aria, MODE)
+      await compareOrRefreshGolden(join(SNAPSHOT_DIR, desktop ? 'models-desktop.expected.md' : 'models.expected.md'), aria, MODE)
       await page.keyboard.press('Escape')
     }
     expect(tripwire.warnings).toEqual([])
     expect(tripwire.pageErrors).toEqual([])
-    await assertFixtureInventory(SNAPSHOT_DIR, ['models.expected.md', 'signed-out-menu.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, ['models.expected.md', 'models-desktop.expected.md', 'signed-out-menu.expected.md', 'signed-out-menu-desktop.expected.md'])
   })
 })

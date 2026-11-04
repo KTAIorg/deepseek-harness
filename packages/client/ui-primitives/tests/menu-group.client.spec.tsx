@@ -132,6 +132,19 @@ describe('MenuGroup', () => {
     expect(group.children).toHaveLength(2)
     expect(group.getAttribute('aria-labelledby')).toBe(within(group).getByText('Empty provider').id)
   })
+
+  it('renders an optional leading mark inside the heading, before the label', () => {
+    render(<MenuGroup label="OpenAI" leading={<img data-testid="brand" alt="" src="openai.svg" />} />)
+    const group = screen.getByRole('group', { name: 'OpenAI' })
+    const heading = directChild(group, 'data-menu-group-heading')
+    const leading = heading.querySelector<HTMLElement>(':scope > [data-menu-group-leading]')
+    expect(leading).not.toBeNull()
+    expect(leading!.contains(screen.getByTestId('brand'))).toBe(true)
+    expect(leading!.nextSibling?.textContent).toBe('OpenAI')
+    // The mark is decoration: it adds nothing to the heading's accessible name.
+    expect(heading.textContent).toBe('OpenAI')
+    expect(group.getAttribute('aria-labelledby')).toBe(heading.id)
+  })
 })
 
 describe('observeStickyMenuGroups', () => {

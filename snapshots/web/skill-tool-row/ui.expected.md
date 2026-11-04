@@ -1,10 +1,12 @@
 - banner:
   - navigation "Session hierarchy": Load the editing-cordis-compositions ski
+  - button "English"
   - button "More actions"
   - button "Open right sidebar"
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
+  - button "More conversation views"
 - text: Load the editing-cordis-compositions skill with the skill tool, then reply DONE. {{date}} {{clock}}
 - button "Copy"
 - status: Completed

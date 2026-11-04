@@ -12,11 +12,11 @@
   en: 7bc8bf30de693222
   zh: e85993d8852b6cab
 /kito-harness-desktop/table-of-contents:
-  en: 05fd227f99ee535a
-  zh: 60d7d62bc0026973
+  en: 127ea90553cb6af7
+  zh: 7b1c5aec8558c684
 /kito-harness-desktop/application-overview:
-  en: e748142e9c86c13b
-  zh: 08c0d606d2bbe205
+  en: 92c9b0f37e71196c
+  zh: 02735847224b3478
 /kito-harness-desktop/terminal-command:
   en: 5f2d25a1d8472647
   zh: 2acb5c5d7d1917e2
@@ -33,20 +33,20 @@
   en: 372297005b57a08b
   zh: 074a635ac17e4362
 /kito-harness-desktop/installation-ownership:
-  en: 22153a298a6662e1
-  zh: 3600803c8c9d0274
+  en: 160b500cdcd6a39a
+  zh: 6c267f1762ec3689
 /kito-harness-desktop/installation-ownership/runtime-and-plugin-activation:
-  en: e5e621fd770d353e
-  zh: 9f3b2a13dfe50947
+  en: 4951cd3ee659eb33
+  zh: 96bdd6358dad587a
 /kito-harness-desktop/installation-ownership/host-environment:
   en: 98cf848762482d48
   zh: 74f9100a39ec8c2f
 /kito-harness-desktop/develop:
-  en: fe6d23e6a3d3bc66
-  zh: d60c8d3a55747916
+  en: 9d6d3be049016e9a
+  zh: 0d3edff7740689ee
 /kito-harness-desktop/develop/startup-onboarding:
-  en: 87806ad443690bc5
-  zh: 786771c8b6152cdb
+  en: ed320f99cfefad5e
+  zh: 1c11bbc04f48eb12
 /kito-harness-desktop/develop/welcome-window-appearance:
   en: 617a89aeb28131b9
   zh: 4d84bd5d86501c86
@@ -54,26 +54,26 @@
   en: ac31ebdd9de54f34
   zh: 921e534d5c4b3a16
 /kito-harness-desktop/windows-installer-interface:
-  en: 405c76181cb10ef9
-  zh: 1e0954a09a098102
+  en: e5a82df7222a28f8
+  zh: 49d4c58eb593b35b
 /kito-harness-desktop/updates:
-  en: 4788b6b60489ef92
-  zh: 6312c5590efa27f1
+  en: 67bf0a18faa7aa76
+  zh: 782e14ce62bb939f
 /kito-harness-desktop/updates/local-desktop-settings:
   en: 2e57457c44c85b5f
   zh: 5b8510a3dc4c6c9d
 /kito-harness-desktop/updates/mandatory-update-policy:
-  en: 54596bef0706d305
-  zh: 48737302dcf3c939
+  en: 182a9c6705213e13
+  zh: 681762f83490f4c6
 /kito-harness-desktop/updates/local-updater-qualification:
-  en: 68ec2f8bd5763ea6
-  zh: 23b932dfe8503602
+  en: db5e898140a73d53
+  zh: 80a9d58c74b4bb24
 /kito-harness-desktop/low-level-development-overrides:
   en: 8264b135871e8978
   zh: 0939aafb1b2961fc
 /kito-harness-desktop/known-limitations:
-  en: 1db828fa4b7e4fd0
-  zh: aedecaf580ea4088
+  en: 50d47079303ac6f2
+  zh: 94769e3a5e840363
 /kito-harness-desktop/dev-note:
   en: 8e26b460ba31f21b
   zh: fbcd0307b3867125

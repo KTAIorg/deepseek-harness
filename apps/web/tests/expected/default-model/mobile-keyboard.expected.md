@@ -1,0 +1,3 @@
+Open: button: 关闭模型选择器
+Highlight models: searchbox: 搜索模型…
+Close: button: 选择模型，当前 Origin Large

@@ -60,8 +60,10 @@ import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attac
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { requestImageTarget, toPiContext } from './context.ts'
+import { fetchLiveCatalog, LIVE_CATALOG_TTL_MS, materializeLiveModels } from './live-catalog.ts'
 import { conversationUpdates, createModels, getSupportedThinkingLevels } from './models.ts'
 import { toStreamChunks } from './stream.ts'
+import type { PiAiRequestHeaderContext } from './types.ts'
 
 /**
  * Initially active declaration added to an Anthropic request whose projected
@@ -104,6 +106,18 @@ export interface PiAiAdapterOptions {
    * every request no matter how often the human signed in.
    */
   auth: PiAiAuthInjection
+  /**
+   * Synchronously prepare this call's headers before SDK dispatch. The input
+   * contains a fresh copy of profile headers; attribution is enforced afterward.
+   * Omission preserves profile headers. Throws fail the call with REQUEST_HEADERS
+   * before inference I/O. Do not retain or mutate headers after returning.
+   * Non-TypeError messages become public diagnostics and must exclude secrets;
+   * TypeError details and non-Error values are replaced with safe guidance.
+   * @param request - immutable routing metadata from the prepared call.
+   * @param headers - request-owned headers initialized from the profile.
+   * @returns headers to pass to pi-ai after applying Harness attribution.
+   */
+  prepareHeaders?: (request: PiAiRequestHeaderContext, headers: Headers) => Headers
   /** Resolve the optional durable attachment service at request time. */
   resolveAttachments?: () => AttachmentStore | undefined
   /** Bridge one attachment reference into the current model-tool execution world. */
@@ -213,13 +227,42 @@ function reasoningInfo(
   }
 }
 
-/** Merge deployment headers while removing case-insensitive attribution collisions. */
-function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
-  const attribution = attributionHeaders()
-  const reserved = new Set(Object.keys(attribution).map(name => name.toLowerCase()))
-  return {
-    ...Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => !reserved.has(name.toLowerCase()))),
-    ...attribution,
+/** Native header TypeErrors can echo credentials; other plugin errors own their public message. */
+function requestHeaderDiagnostic(error: unknown): string {
+  if (error instanceof TypeError) {
+    return 'TypeError during header preparation; check the contributing plugin\'s header names, values, and configuration'
+  }
+  return error instanceof Error
+    ? error.message
+    : 'the contributing plugin threw a non-Error value; throw an Error with a safe diagnostic'
+}
+
+/** Prepare request-owned headers without allowing contributors to replace attribution. */
+function requestHeaders(
+  configured: Readonly<Record<string, string>> | undefined,
+  options: GenerateOptions<string>,
+  baseURL: string,
+  prepare: PiAiAdapterOptions['prepareHeaders'],
+): Record<string, string> {
+  try {
+    const initial = new Headers()
+    // Profile aliases overwrite case-insensitively; the Headers constructor appends them.
+    for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, value)
+    const request: PiAiRequestHeaderContext = Object.freeze({
+      provider: options.provider,
+      model: options.model,
+      baseURL,
+      ...options.sessionId === undefined ? {} : { sessionId: options.sessionId },
+      ...options.purpose === undefined ? {} : { purpose: options.purpose },
+    })
+    const headers = prepare === undefined ? initial : prepare(request, initial)
+    for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
+    return Object.fromEntries(headers)
+  } catch (error) {
+    throw new LlmError(
+      `pi-ai request header preparation failed for provider "${options.provider}": ${requestHeaderDiagnostic(error)}`,
+      'REQUEST_HEADERS', { cause: error },
+    )
   }
 }
 
@@ -302,6 +345,7 @@ export class PiAiAdapter extends LlmAdapter {
         if (error instanceof LlmError && error.code === 'MISSING_CREDENTIAL') return []
         throw error
       }
+      await this.refreshLiveModels(profile)
       return snapshot.models.getModels(provider).map(model => ({
         provider,
         id: model.id,
@@ -316,8 +360,9 @@ export class PiAiAdapter extends LlmAdapter {
     model: string,
     _signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
-    return Promise.resolve().then(() => {
+    return Promise.resolve().then(async () => {
       const snapshot = this.current()
+      await this.refreshLiveModels(this.profileOf(snapshot, provider))
       return this.modelInfo(snapshot, provider, model)
     })
   }
@@ -342,15 +387,82 @@ export class PiAiAdapter extends LlmAdapter {
   }
 
   override prepareCall(provider: string, model: string, _signal?: AbortSignal): Promise<PreparedAdapterCall> {
-    const snapshot = this.current()
-    return Promise.resolve({
-      model: this.modelInfo(snapshot, provider, model),
-      stream: options => this.streamWithSnapshot(options, snapshot),
+    return Promise.resolve().then(async () => {
+      const snapshot = this.current()
+      await this.refreshLiveModels(this.profileOf(snapshot, provider))
+      return {
+        model: this.modelInfo(snapshot, provider, model),
+        stream: (options: GenerateOptions) => this.streamWithSnapshot(options, snapshot),
+      }
     })
   }
 
   stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-    return this.streamWithSnapshot(options, this.current())
+    const snapshot = this.current()
+    return this.streamAfterLiveCatalog(options, snapshot)
+  }
+
+  private async * streamAfterLiveCatalog(
+    options: GenerateOptions,
+    snapshot: PiAiSnapshot,
+  ): AsyncIterable<StreamChunk> {
+    await this.refreshLiveModels(this.profileOf(snapshot, options.provider))
+    yield * this.streamWithSnapshot(options, snapshot)
+  }
+
+  /**
+   * Fill a live route from its model endpoint. A fresh listing is reused; a
+   * failed refresh keeps the previous listing when one exists.
+   */
+  private async refreshLiveModels(profile: ResolvedPiAiProviderProfile): Promise<void> {
+    if (profile.liveModels !== true || profile.liveModelBucket === undefined) return
+    const fetchedAt = profile.liveCatalogFetchedAt
+    if (profile.liveModelBucket.length > 0 && fetchedAt !== undefined
+      && Date.now() - fetchedAt < LIVE_CATALOG_TTL_MS) return
+    if (profile.liveCatalogPending !== undefined) {
+      await profile.liveCatalogPending
+      return
+    }
+    const pending = this.loadLiveModels(profile)
+    profile.liveCatalogPending = pending
+    try {
+      await pending
+    } finally {
+      profile.liveCatalogPending = undefined
+    }
+  }
+
+  private async loadLiveModels(profile: ResolvedPiAiProviderProfile): Promise<void> {
+    const bucket = profile.liveModelBucket
+    if (bucket === undefined || profile.api === undefined || profile.baseURL === undefined) return
+    let apiKey: string | undefined
+    try {
+      apiKey = await this.config.resolveApiKey(profile.provider, profile)
+    } catch (error) {
+      if (bucket.length > 0) return
+      throw error
+    }
+    if (apiKey === undefined || apiKey.length === 0) return
+    try {
+      const listed = await fetchLiveCatalog(profile.baseURL, apiKey, {
+        ...profile.headers === undefined ? {} : { headers: profile.headers },
+      })
+      const models = materializeLiveModels({
+        provider: profile.provider,
+        api: profile.api,
+        baseURL: profile.baseURL,
+        models: listed,
+        ...profile.compat === undefined ? {} : { compat: profile.compat },
+        ...profile.defaultContextWindow === undefined ? {} : { defaultContextWindow: profile.defaultContextWindow },
+        ...profile.defaultMaxTokens === undefined ? {} : { defaultMaxTokens: profile.defaultMaxTokens },
+        ...profile.defaultInput === undefined ? {} : { defaultInput: profile.defaultInput },
+      })
+      bucket.splice(0, bucket.length, ...models)
+      profile.liveCatalogFetchedAt = Date.now()
+    } catch (error) {
+      if (bucket.length > 0) return
+      throw error
+    }
   }
 
   private async * streamWithSnapshot(
@@ -403,25 +515,25 @@ export class PiAiAdapter extends LlmAdapter {
         this.config.onReplayDegrade?.({ provider: options.provider, model: options.model, reason })
       }
       const context = attachments === undefined
-        ? toPiContext(request, undefined, onReplayDegrade)
+        ? toPiContext(request, undefined, onReplayDegrade, updates.systemPromptUpdate === 'in-history')
         : await toPiContext({ ...request, signal: watchdog.signal }, {
           attachments,
           resolveImageAccess: ref => this.config.resolveImageAccess?.(attachments, ref),
           maxRequestImageBytes: profile.maxRequestImageBytes,
+          maxRequestImages: profile.maxRequestImages,
+          imageOffloadCountQuantum: profile.imageOffloadCountQuantum,
           requestImagePolicy: {
             maxPixels: profile.requestImagePixelBudget,
             maxBytes: profile.requestImageMaxBytes,
           },
-        }, onReplayDegrade)
+        }, onReplayDegrade, updates.systemPromptUpdate === 'in-history')
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
         signal: watchdog.signal,
-        // Profile headers are deployment-owned; attribution names are
-        // Harness-owned and therefore win collisions.
-        headers: requestHeaders(profile.headers),
+        headers: requestHeaders(profile.headers, options, model.baseUrl, this.config.prepareHeaders),
       })
       const iterator = toStreamChunks(events, model.contextWindow, options.signal, model.id)[Symbol.asyncIterator]()
       let exhausted = false

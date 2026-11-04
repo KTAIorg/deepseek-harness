@@ -1,11 +1,13 @@
 - banner:
   - navigation "Session hierarchy": Stream one TypeScript fence for
   - text: Standard mode
+  - button "English"
   - button "More actions"
   - button "Open right sidebar"
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
+  - button "More conversation views"
 - text: Stream one TypeScript fence for the highlighting snapshot. {{clock}}
 - button "Copy"
 - text: ts

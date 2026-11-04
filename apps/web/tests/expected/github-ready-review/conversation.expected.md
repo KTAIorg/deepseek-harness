@@ -11,11 +11,13 @@
 - banner:
   - navigation "Session hierarchy": Review deepseek-ai/deepseek-harness#314
   - text: Standard mode
+  - button "English"
   - button "More actions"
   - button "Open right sidebar"
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
+  - button "More conversation views"
 - button "GitHub event received {{clock}}":
   - text: GitHub event received
   - time: {{clock}}

@@ -1,7 +1,7 @@
 # Modal layers
 
 {
-  "settingsInitialFocus": "General",
+  "settingsInitialFocus": "Account",
   "settingsAfterEnter": {
     "focused": "Settings",
     "foreground": "Settings"

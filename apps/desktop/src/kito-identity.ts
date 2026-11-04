@@ -7,10 +7,28 @@ export const KITO_DEVICE_CLIENT_TYPE = 'kito_desktop'
 export const KITO_DEVICE_CLIENT_ID = 'kito-desktop'
 export const KITO_NEWAPI_BASE_URL = 'https://ktapi.cc'
 export const KITO_NEWAPI_KEY_REF = 'KITO_NEWAPI_API_KEY'
+/** Legacy local Claude relay key removed at sign-out; model calls use the Identity token. */
+export const KITO_CLAUDE_KEY_REF = 'KITO_CLAUDE_API_KEY'
 export const KITO_IDENTITY_TOKEN_REF = 'KITO_IDENTITY_TOKEN'
+/** Device-session refresh token that renews {@link KITO_IDENTITY_TOKEN_REF} without a new Telegram login. */
+export const KITO_IDENTITY_REFRESH_TOKEN_REF = 'KITO_IDENTITY_REFRESH_TOKEN'
 const NEWAPI_QUOTA_PER_USD = 500_000
-export const KITO_MANAGED_TOKEN_NAME = 'kito'
 export const KITO_WALLET_URL = 'https://www.ktapi.cc/wallet'
+
+/** Console pages opened with the same ktapi.cc session as recharge. */
+export const KITO_CONSOLE_PAGES = {
+  wallet: KITO_WALLET_URL,
+  topups: `${KITO_WALLET_URL}?show_history=true`,
+  usage: 'https://www.ktapi.cc/usage-logs/common',
+  keys: 'https://www.ktapi.cc/keys',
+} as const
+
+export type KitoConsolePage = keyof typeof KITO_CONSOLE_PAGES
+
+/** @param value - renderer target. @returns whether it is one of the console pages. */
+export function isKitoConsolePage(value: string | null): value is KitoConsolePage {
+  return value === 'wallet' || value === 'topups' || value === 'usage' || value === 'keys'
+}
 
 /** @param env - process environment. @returns identity origin without a trailing slash. */
 export function identityBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
@@ -37,12 +55,25 @@ export interface KitoDeviceChallenge {
 export interface KitoIdentitySession {
   readonly accountId: string
   readonly token: string
+  /** Present when KT Identity issued a device refresh token with the access token. */
+  readonly refreshToken?: string
+}
+
+/** Result of renewing the Identity access token. */
+export interface KitoIdentityRefresh {
+  readonly token: string
+  /** Present only when KT Identity rotated the refresh token. */
+  readonly refreshToken?: string
 }
 
 /** Public account row. Balance is the shared NewAPI spendable amount in USD. */
 export interface KitoAccountView {
   readonly signedIn: boolean
   readonly displayName?: string
+  /** KT Identity account number, for example `KT251018…`. */
+  readonly accountNo?: string
+  /** Telegram username without a leading `@`, when this account has one. */
+  readonly telegramUsername?: string
   readonly balance?: number
 }
 
@@ -59,11 +90,6 @@ function stringField(value: unknown): string | undefined {
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined
-}
-
-/** @param key - relay secret from NewAPI. @returns a key with the `sk-` prefix. */
-export function formatRelayKey(key: string): string {
-  return key.startsWith('sk-') ? key : `sk-${key}`
 }
 
 /**
@@ -179,68 +205,34 @@ async function exchange(
   const token = stringField(source?.access_token) ?? stringField(source?.accessToken)
   const accountId = stringField(source?.subject) ?? stringField(source?.account_id)
   if (!token || !accountId) throw new Error('KT Identity device token exchange returned an unexpected payload')
-  return { accountId, token }
+  const refreshToken = stringField(source?.refresh_token) ?? stringField(source?.refreshToken)
+  return refreshToken === undefined ? { accountId, token } : { accountId, token, refreshToken }
 }
 
 /**
- * Exchange an Identity bearer for the shared `kito` NewAPI key.
- * A missing dedicated endpoint falls back to the session token Kito already uses.
- * @param identityToken - KT Identity access token.
- * @param input - optional NewAPI origin.
- * @returns the relay key stored as `KITO_NEWAPI_API_KEY`.
+ * Renew the Identity access token with the device refresh token.
+ * KT Identity keeps the refresh token and omits it from the reply; a reply that carries one replaces it.
+ * @param refreshToken - stored {@link KITO_IDENTITY_REFRESH_TOKEN_REF}.
+ * @param input - optional origin, cancellation, and fetch.
+ * @returns the new access token, or undefined when KT Identity rejects the refresh token.
  */
-export async function ensureKitoApiKey(identityToken: string, input: FetchInit = {}): Promise<string> {
+export async function refreshKitoIdentity(refreshToken: string, input: FetchInit = {}): Promise<KitoIdentityRefresh | undefined> {
   const fetchImpl = input.fetchImpl ?? kitoFetch
-  const baseUrl = input.baseUrl ?? newapiBaseUrl()
-  const dedicated = await fetchImpl(`${baseUrl}/api/iam/token/ensure`, {
+  const response = await fetchImpl(`${input.baseUrl ?? identityBaseUrl()}/identity/v1/device/token/refresh`, {
     method: 'POST',
-    headers: jsonHeaders({ authorization: `Bearer ${identityToken}` }),
-    body: JSON.stringify({ name: KITO_MANAGED_TOKEN_NAME }),
+    headers: jsonHeaders(),
+    body: JSON.stringify({ refresh_token: refreshToken }),
     signal: withTimeout(input.signal),
   })
-  if (dedicated.status !== 404) {
-    const payload = await readJson(dedicated)
-    if (!dedicated.ok) throw new Error(errorMessage(payload, `NewAPI token ensure failed (${dedicated.status})`))
-    const key = stringField(asRecord(payload)?.key) ?? stringField(asRecord(asRecord(payload)?.data)?.key)
-    if (!key) throw new Error('NewAPI token ensure returned no key')
-    return formatRelayKey(key)
-  }
-  return ensureViaSession(identityToken, baseUrl, fetchImpl, input.signal)
-}
-
-async function ensureViaSession(
-  identityToken: string,
-  baseUrl: string,
-  fetchImpl: typeof fetch,
-  signal: AbortSignal | undefined,
-): Promise<string> {
-  const ensured = await fetchImpl(`${baseUrl}/api/iam/ensure`, {
-    method: 'POST',
-    headers: jsonHeaders({ authorization: `Bearer ${identityToken}` }),
-    body: '{}',
-    signal: withTimeout(signal),
-  })
-  const payload = await readJson(ensured)
-  if (!ensured.ok) throw new Error(errorMessage(payload, `NewAPI ensure failed (${ensured.status})`))
-  const cookie = cookieHeader(ensured)
-  const data = asRecord(asRecord(payload)?.data) ?? asRecord(payload)
-  const id = data?.id ?? asRecord(data?.user)?.id
-  const userId = typeof id === 'number' || typeof id === 'string' ? String(id) : ''
-  if (!cookie || userId === '') throw new Error('NewAPI ensure did not return a session')
-  const headers = { ...jsonHeaders(), cookie, 'New-Api-User': userId }
-  const listed = await fetchImpl(`${baseUrl}/api/token/?p=1&size=100`, { method: 'GET', headers, signal: withTimeout(signal) })
-  const listPayload = await readJson(listed)
-  if (!listed.ok) throw new Error(errorMessage(listPayload, `NewAPI token list failed (${listed.status})`))
-  const listedRows = asRecord(listPayload)?.data
-  const rows = Array.isArray(listedRows) ? listedRows : []
-  const row = rows.map(asRecord).find(item => typeof item?.name === 'string' && item.name.trim().toLowerCase() === KITO_MANAGED_TOKEN_NAME)
-  const tokenId = typeof row?.id === 'number' ? row.id : Number(row?.id)
-  if (!Number.isFinite(tokenId)) throw new Error('NewAPI managed token id was missing')
-  const keyResult = await fetchImpl(`${baseUrl}/api/token/${tokenId}/key`, { method: 'POST', headers, signal: withTimeout(signal) })
-  const keyPayload = await readJson(keyResult)
-  const key = stringField(asRecord(keyPayload)?.key)
-  if (!keyResult.ok || !key) throw new Error(errorMessage(keyPayload, `NewAPI token key failed (${keyResult.status})`))
-  return formatRelayKey(key)
+  const payload = await readJson(response)
+  if (response.status === 401 || response.status === 403) return undefined
+  if (!response.ok) throw new Error(errorMessage(payload, `KT Identity refresh failed (${response.status})`))
+  const record = asRecord(payload)
+  const source = asRecord(record?.data) ?? record
+  const token = stringField(source?.access_token) ?? stringField(source?.accessToken)
+  if (!token) throw new Error('KT Identity refresh returned an unexpected payload')
+  const rotated = stringField(source?.refresh_token) ?? stringField(source?.refreshToken)
+  return rotated === undefined ? { token } : { token, refreshToken: rotated }
 }
 
 /**
@@ -272,9 +264,13 @@ export async function fetchKitoAccount(identityToken: string, input: FetchInit =
  */
 export function kitoAccountView(profilePayload: unknown, balance: number | undefined): KitoAccountView {
   const displayName = displayNameFrom(profilePayload)
+  const accountNo = accountNoFrom(profilePayload)
+  const telegramUsername = telegramUsernameFrom(profilePayload)
   return {
     signedIn: true,
     ...(displayName === undefined ? {} : { displayName }),
+    ...(accountNo === undefined ? {} : { accountNo }),
+    ...(telegramUsername === undefined ? {} : { telegramUsername }),
     ...(balance === undefined ? {} : { balance }),
   }
 }
@@ -282,6 +278,24 @@ export function kitoAccountView(profilePayload: unknown, balance: number | undef
 /** @param quota - NewAPI quota units. @returns USD rounded to cents. */
 export function newapiQuotaToUsd(quota: number): number {
   return Math.round((quota / NEWAPI_QUOTA_PER_USD) * 100) / 100
+}
+
+function accountNoFrom(payload: unknown): string | undefined {
+  const record = asRecord(payload)
+  const account = asRecord(record?.account) ?? asRecord(asRecord(record?.data)?.account) ?? record
+  return stringField(account?.accountNo)?.trim() ?? stringField(account?.account_no)?.trim()
+}
+
+function telegramUsernameFrom(payload: unknown): string | undefined {
+  const identities = asRecord(payload)?.identities
+  if (!Array.isArray(identities)) return undefined
+  for (const item of identities) {
+    const row = asRecord(item)
+    if (stringField(row?.provider) !== 'telegram') continue
+    const username = stringField(asRecord(row?.metadata)?.username)?.replace(/^@/u, '').trim()
+    if (username) return username
+  }
+  return undefined
 }
 
 function displayNameFrom(payload: unknown): string | undefined {
@@ -321,10 +335,16 @@ export function spendableFromEnsure(payload: unknown): number | undefined {
   return typeof quota === 'number' && Number.isFinite(quota) ? newapiQuotaToUsd(quota) : undefined
 }
 
-function cookieHeader(response: Response): string | undefined {
-  const cookies = typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : []
-  const pairs = cookies.map(entry => entry.split(';')[0]?.trim()).filter((entry): entry is string => Boolean(entry))
-  return pairs.length > 0 ? pairs.join('; ') : undefined
+/**
+ * How long to wait after a critical-route 429. Login, session refresh, and the
+ * balance read share one 20-request window, so a rejected read must not be retried immediately.
+ * @param retryAfterHeader - `Retry-After` seconds from the gateway.
+ * @returns delay in milliseconds, capped at the 20 minute window.
+ */
+export function criticalRetryDelayMs(retryAfterHeader: string | null): number {
+  const seconds = Number(retryAfterHeader)
+  if (!Number.isFinite(seconds) || seconds <= 0) return 60_000
+  return Math.min(seconds, 20 * 60) * 1000
 }
 
 function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {

@@ -4,6 +4,8 @@ import { Resolver } from 'node:dns/promises'
 import type { IncomingHttpHeaders } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
+
 /** Cloudflare nameserver that still publishes the ktapi.cc zone. */
 const KTAPI_ZONE_NAMESERVER = 'aron.ns.cloudflare.com'
 
@@ -20,7 +22,7 @@ export async function readJson(response: Response): Promise<unknown> {
   const text = await response.text()
   if (!text) return undefined
   try {
-    return JSON.parse(text) as unknown
+    return JSON.parse(text) as JsonValue
   } catch {
     return text
   }

@@ -4,6 +4,7 @@
 - navigation "Global panels":
   - button "Plugins"
   - button "Automation tasks"
+  - button "More"
 - text: Workspaces
 - button "Search sessions"
 - textbox "Search session names"
@@ -18,6 +19,7 @@
 - text: Into the Unknown Preview
 - button "Choose workspace": workspace
 - button "Standard mode"
+- button "English"
 - textbox "Describe what you want to build, / commands, @ files or sessions"
 - button "Add files or run commands"
 - 'button "Access mode, current: Workspace Write"': Workspace Write

@@ -1,11 +1,13 @@
 - banner:
   - navigation "Session hierarchy": Use read_image to inspect red.png.
   - text: Minimal mode
+  - button "English"
   - button "More actions"
   - button "Open right sidebar"
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
+  - button "More conversation views"
 - text: Use read_image to inspect red.png. Then reply exactly MINIMAL_IMAGE_OK and stop. {{clock}}
 - button "Copy"
 - status: Completed

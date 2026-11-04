@@ -1,12 +1,13 @@
 // Web e2e scenario: a hand-declared model's `reasoningEfforts` reaches the
-// composer's effort pane — the levels a settings profile declares are exactly
-// what the picker offers, and picking one records it with the Agent default.
+// composer's page-sized model dialog — the levels a settings profile declares
+// are exactly what the effort pane offers, and picking one records it with the
+// Agent default.
 // Zero model calls: declaring, describing, and switching are settings/llm
 // traffic only, so there is no fixture and a stray stream would fail loud.
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-import type { Browser, Page, Request } from 'playwright'
+import type { Browser, Locator, Page, Request } from 'playwright'
 import { chromium, webkit } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed, onTestFinished } from 'vitest'
 import {
@@ -21,6 +22,31 @@ const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/declared-reasoning', impo
 const UI_EXPECTED = fileURLToPath(new URL('./expected/declared-reasoning/ui.expected.md', import.meta.url))
 const POINTER_EXPECTED = fileURLToPath(new URL('./expected/declared-reasoning/pointer-menu.expected.md', import.meta.url))
 const MODE = webSnapshotMode()
+
+/** The page-sized dialog the composer's model seat opens. */
+const modelsDialog = (page: Page): Locator => page.getByRole('dialog', { name: '模型与推理等级', exact: true })
+
+/** The model pane's always-present search field. */
+const dialogSearch = (dialog: Locator): Locator => dialog.getByRole('searchbox', { name: '搜索模型…', exact: true })
+
+/** The chip that drills from the model pane into the effort list. */
+const effortChip = (dialog: Locator): Locator => dialog.getByRole('button', { name: /^推理等级/ })
+
+/** The effort list's level rows; the back button carries no pressed state. */
+const effortLevels = (dialog: Locator): Locator =>
+  dialog.locator('[role="group"][aria-label="推理等级"] button[aria-pressed]')
+
+/** The level row currently in use, which is where the effort pane parks focus. */
+const pressedLevel = (dialog: Locator): Locator =>
+  dialog.locator('[role="group"][aria-label="推理等级"] button[aria-pressed="true"]')
+
+/** The model pane's plain rows under their vendor sections. */
+const modelRows = (dialog: Locator): Locator =>
+  dialog.locator('[role="group"][aria-label="模型"] button[aria-pressed]')
+
+/** Whether a locator holds the keyboard right now. */
+const holdsKeyboard = (locator: Locator): Promise<boolean> =>
+  locator.evaluate(element => element === element.ownerDocument.activeElement)
 
 describe.skipIf(MODE === 'record').each([
   { name: 'Chromium', engine: chromium },
@@ -74,40 +100,39 @@ describe.skipIf(MODE === 'record').each([
     onTestFailed(() => saveFailureShot(page, `web-e2e-declared-reasoning-${engine.name()}`))
     const trigger = page.getByRole('button', { name: /^选择模型/ })
     await trigger.waitFor({ timeout: 15_000 })
+    // The seat opens a dialog, not the retired anchored menu.
+    expect(await trigger.getAttribute('aria-haspopup')).toBe('dialog')
     await trigger.click()
-    await page.getByRole('menuitem', { name: /推理等级/ }).click()
+    const dialog = modelsDialog(page)
+    await dialog.waitFor()
+    await effortChip(dialog).click()
 
     // Declared levels, nothing else: the provider-default entry (the route
     // configures no `reasoning`), then Off/High/Max — minimal, low, medium,
     // and xhigh were not declared and must not be offered.
-    const levels = page.getByRole('menuitemradio')
+    const levels = effortLevels(dialog)
     await expect.poll(async () => levels.allTextContents(), { timeout: 10_000 })
       .toEqual(['Default', 'Off', 'High', 'Max'])
-    const snapshot = await captureStableAria(page, '[role="menu"]', scaffold.workspaceCwd)
-    await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
+    // The dialog is a labelled group of plain pressed buttons: no menu roles,
+    // menu items, or virtual descendant tracking survive the redesign.
+    expect(await dialog.getByRole('menuitemradio').count()).toBe(0)
+    expect(await dialog.getByRole('menu').count()).toBe(0)
+    await compareOrRefreshGolden(UI_EXPECTED,
+      await captureStableAria(page, '[role="dialog"][aria-label="模型与推理等级"]', scaffold.workspaceCwd), MODE)
 
-    // Keyboard: the clicked cell unmounts with its pane, so the drilled pane's
-    // checked row takes the focus it left behind. ↑↓ walk the rows from there
-    // and Tab settles the focused one exactly as Enter would.
-    await expect.poll(
-      () => levels.nth(0).evaluate(element => element === document.activeElement),
-      { timeout: 10_000 },
-    ).toBe(true)
+    // Keyboard: the pane parks focus on the level in use, ↑↓ walk the rows
+    // from there, and Tab settles the focused row exactly as Enter would.
+    await expect.poll(() => holdsKeyboard(levels.nth(0)), { timeout: 10_000 }).toBe(true)
     await page.keyboard.press('ArrowDown')
-    await expect.poll(
-      () => levels.nth(1).evaluate(element => element === document.activeElement),
-      { timeout: 10_000 },
-    ).toBe(true)
+    await expect.poll(() => holdsKeyboard(levels.nth(1)), { timeout: 10_000 }).toBe(true)
     await page.keyboard.press('ArrowDown')
-    await expect.poll(
-      () => levels.nth(2).evaluate(element => element === document.activeElement),
-      { timeout: 10_000 },
-    ).toBe(true)
+    await expect.poll(() => holdsKeyboard(levels.nth(2)), { timeout: 10_000 }).toBe(true)
 
-    // Settling with Tab is the same gesture that saves the default selection, so
-    // the effort lands in the Agent default Settings section beside provider/model.
+    // Settling is the same gesture that saves the default selection, so the
+    // effort lands in the Agent default Settings section beside provider/model;
+    // a successful effort change closes the dialog back to the seat.
     await page.keyboard.press('Tab')
-    await expect.poll(() => levels.count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(() => dialog.count(), { timeout: 10_000 }).toBe(0)
     await expect.poll(
       async () => readFile(join(scaffold.harnessHome, 'profiles', 'scaffold', 'cordis.patch.yml'), 'utf8'),
       { timeout: 10_000 },
@@ -115,48 +140,50 @@ describe.skipIf(MODE === 'record').each([
     await expect.poll(() => trigger.getAttribute('aria-label'), { timeout: 10_000 })
       .toBe('选择模型，当前 Acme Think，推理等级 High')
 
-    // Reopening the drilled pane parks the keyboard on the level in use, and
-    // Shift+Tab walks back out like Escape: to the drilled cell, then closed.
+    // Reopening the effort pane parks the keyboard on the level in use, and
+    // Escape / Shift+Tab walk back out: to the model pane first, then closed.
     await trigger.click()
-    await page.getByRole('menuitem', { name: /推理等级/ }).click()
-    const high = page.getByRole('menuitemradio', { name: 'High' })
-    await expect.poll(
-      () => high.evaluate(element => element === document.activeElement),
-      { timeout: 10_000 },
-    ).toBe(true)
+    await dialog.waitFor()
+    await effortChip(dialog).click()
+    const high = dialog.getByRole('button', { name: 'High', exact: true })
+    await expect.poll(() => holdsKeyboard(high), { timeout: 10_000 }).toBe(true)
     await page.keyboard.press('Shift+Tab')
-    await expect.poll(
-      () => page.getByRole('menuitem', { name: /推理等级/ })
-        .evaluate(element => element === document.activeElement),
-      { timeout: 10_000 },
-    ).toBe(true)
+    await expect.poll(() => effortLevels(dialog).count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(() => holdsKeyboard(dialogSearch(dialog)), { timeout: 10_000 }).toBe(true)
     await page.keyboard.press('Shift+Tab')
-    await expect.poll(() => page.getByRole('menu').count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(() => dialog.count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(() => holdsKeyboard(trigger), { timeout: 10_000 }).toBe(true)
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
 
-  it('opens from the pointer with keyboard focus and closes from the trigger in every pane', async () => {
+  it('opens from the pointer with keyboard focus and closes from the dialog in every pane', async () => {
     onTestFailed(() => saveFailureShot(page, `web-e2e-model-trigger-${engine.name()}`))
     const trigger = page.getByRole('button', { name: /^选择模型/ })
-    const menu = page.getByRole('menu')
-    for (const pane of ['root', 'model', 'effort']) {
+    const dialog = modelsDialog(page)
+    for (const pane of ['model', 'effort'] as const) {
       await page.locator('[data-composer-input][contenteditable="true"]').focus()
       await trigger.click()
-      await expect.poll(() => trigger.evaluate(element => element === document.activeElement)).toBe(true)
-      if (pane === 'root') {
-        await page.keyboard.press('ArrowDown')
-        await expect.poll(() => page.getByRole('menuitem', { name: /^模型/ })
-          .evaluate(element => element === document.activeElement)).toBe(true)
+      await dialog.waitFor()
+      // The pointer opens the page-sized dialog with the keyboard already in
+      // the pane the user works in: search for models, the level in use for
+      // the effort list.
+      if (pane === 'model') {
+        await expect.poll(() => holdsKeyboard(dialogSearch(dialog)), { timeout: 10_000 }).toBe(true)
+        // The close button returns focus to the seat.
+        await dialog.getByRole('button', { name: '关闭模型选择器', exact: true }).click()
       } else {
-        await page.getByRole('menuitem', { name: pane === 'model' ? /^模型/ : /推理等级/ }).click()
-        const focused = pane === 'model'
-          ? page.getByRole('searchbox', { name: '搜索模型…' })
-          : page.locator('[role="menuitemradio"][aria-checked="true"]')
-        await expect.poll(() => focused.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
+        await effortChip(dialog).click()
+        await expect.poll(() => holdsKeyboard(pressedLevel(dialog)), { timeout: 10_000 }).toBe(true)
+        // Escape leaves the effort list for the model pane first, and only the
+        // next Escape closes the dialog.
+        await page.keyboard.press('Escape')
+        await expect.poll(() => effortLevels(dialog).count(), { timeout: 10_000 }).toBe(0)
+        await expect.poll(() => dialog.count(), { timeout: 10_000 }).toBe(1)
+        await expect.poll(() => holdsKeyboard(dialogSearch(dialog)), { timeout: 10_000 }).toBe(true)
+        await page.keyboard.press('Escape')
       }
-      await trigger.click()
-      await menu.waitFor({ state: 'detached' })
-      await expect.poll(() => trigger.evaluate(element => element === document.activeElement)).toBe(true)
+      await expect.poll(() => dialog.count(), { timeout: 10_000 }).toBe(0)
+      await expect.poll(() => holdsKeyboard(trigger), { timeout: 10_000 }).toBe(true)
     }
     expect(tripwire.pageErrors).toEqual([])
   })
@@ -170,52 +197,77 @@ describe.skipIf(MODE === 'record').each([
     page.on('request', countSelection)
     onTestFinished(() => { page.off('request', countSelection) })
     const trigger = page.getByRole('button', { name: /^选择模型/ })
-    const menu = page.getByRole('menu')
+    const dialog = modelsDialog(page)
     await trigger.click()
-    await page.getByRole('menuitem', { name: /^模型/ }).click()
-    const current = page.getByRole('menuitemradio', { name: 'Acme Think', exact: true })
-    const target = page.getByRole('menuitemradio', { name: 'Acme Swift', exact: true })
-    const search = page.getByRole('searchbox', { name: '搜索模型…' })
-    await expect.poll(() => search.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
-    expect(await search.getAttribute('aria-activedescendant')).toBe(await current.getAttribute('id'))
+    await dialog.waitFor()
+    const search = dialogSearch(dialog)
+    const rows = modelRows(dialog)
+    await expect.poll(() => rows.count(), { timeout: 10_000 }).toBe(5)
+    const current = dialog.getByRole('button', { name: 'Acme Think', exact: true })
+    const target = dialog.getByRole('button', { name: 'Acme Swift', exact: true })
+    const highlightedIndex = (): Promise<number> =>
+      rows.evaluateAll(nodes => nodes.findIndex(row => row.hasAttribute('data-highlighted')))
+    const currentIndex = await rows.evaluateAll(nodes =>
+      nodes.findIndex(row => row.getAttribute('aria-pressed') === 'true' && row.textContent === 'Acme Think'))
+    expect(currentIndex).toBeGreaterThanOrEqual(0)
+    await expect.poll(() => holdsKeyboard(search), { timeout: 10_000 }).toBe(true)
+    // Search keeps the keyboard while the highlighted row moves with the
+    // arrows; the dialog no longer republishes a virtual descendant.
+    expect(await highlightedIndex()).toBe(currentIndex)
+    expect(await search.getAttribute('aria-activedescendant')).toBeNull()
 
-    // Native mousedown must not blur search and unmount the menu before click in WebKit.
+    // Native mousedown must not blur search and unmount the dialog before click in WebKit.
     await target.getByText('Acme Swift', { exact: true }).hover()
     await page.mouse.down()
     try {
-      await expect.poll(() => menu.count()).toBe(1)
-      await expect.poll(() => search.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
-      await page.getByText('Acme Gateway', { exact: true }).hover()
+      await expect.poll(() => dialog.count()).toBe(1)
+      await expect.poll(() => holdsKeyboard(search)).toBe(true)
+      await dialog.locator('section[aria-label="Other"] h3').hover()
     } finally {
       await page.mouse.up()
     }
-    // Later selection counts also include any request from this cancelled press.
+    // The cancelled press submitted nothing; its hover leaves the pointer's row highlighted.
     expect(selections).toBe(0)
     await search.press('ArrowUp')
-    expect(await search.getAttribute('aria-activedescendant')).toBe(await current.getAttribute('id'))
+    await expect.poll(highlightedIndex).toBe(currentIndex)
     await search.press('ArrowDown')
-    expect(await search.getAttribute('aria-activedescendant')).toBe(await target.getAttribute('id'))
-    await expect.poll(() => search.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
+    await expect.poll(highlightedIndex).toBe(currentIndex + 1)
+    await expect.poll(() => holdsKeyboard(search)).toBe(true)
     await page.keyboard.press('Escape')
-    await page.keyboard.press('Shift+Tab')
-    await menu.waitFor({ state: 'detached' })
+    await expect.poll(() => dialog.count()).toBe(0)
 
+    // A model row submits its selection and closes the dialog.
     await trigger.click()
-    await page.getByRole('menuitem', { name: /^模型/ }).click()
-    await target.getByText('Acme Swift', { exact: true }).click()
-    await menu.waitFor({ state: 'detached' })
+    await dialog.waitFor()
+    await dialog.getByRole('button', { name: 'Acme Swift', exact: true }).click()
+    await expect.poll(() => dialog.count()).toBe(0)
     expect(selections).toBe(1)
     await expect.poll(() => scaffold.ctx.agentDefaultModel.currentSelection().model, { timeout: 10_000 })
       .toBe('acme-swift')
 
+    // While the session selection is pending, every level row is disabled and
+    // the seat announces it is busy; settling closes the dialog.
+    const held = Promise.withResolvers<undefined>()
+    await page.route('**/api/session/selectModel', async (route) => {
+      await held.promise
+      await route.continue()
+    }, { times: 1 })
     await trigger.click()
-    await page.getByRole('menuitem', { name: /推理等级/ }).click()
-    await page.getByRole('menuitemradio', { name: 'Max', exact: true }).click()
-    await menu.waitFor({ state: 'detached' })
+    await dialog.waitFor()
+    await effortChip(dialog).click()
+    await dialog.getByRole('button', { name: 'Max', exact: true }).click()
+    await expect.poll(() => trigger.getAttribute('aria-busy'), { timeout: 10_000 }).toBe('true')
+    await expect.poll(() => effortLevels(dialog).evaluateAll(nodes =>
+      nodes.every(node => node.hasAttribute('disabled'))), { timeout: 10_000 }).toBe(true)
     expect(selections).toBe(2)
+    held.resolve(undefined)
+    await expect.poll(() => dialog.count(), { timeout: 10_000 }).toBe(0)
     await expect.poll(() => scaffold.ctx.agentDefaultModel.currentSelection().reasoningEffort, { timeout: 10_000 })
       .toBe('max')
 
+    // A rejected selection keeps the dialog open, announces through the shared
+    // toast, and hands the keyboard back to the seat so traversal resumes from
+    // the row in use.
     await page.route('**/api/session/selectModel', async (route) => {
       const envelope = route.request().postDataJSON() as { rpcId: string }
       await route.fulfill({
@@ -229,34 +281,36 @@ describe.skipIf(MODE === 'record').each([
       })
     }, { times: 1 })
     await trigger.click()
-    await page.getByRole('menuitem', { name: /^模型/ }).click()
-    await expect.poll(() => search.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
-    expect(await search.getAttribute('aria-activedescendant')).toBe(await target.getAttribute('id'))
+    await dialog.waitFor()
+    await expect.poll(() => holdsKeyboard(dialogSearch(dialog)), { timeout: 10_000 }).toBe(true)
     await current.click()
     await page.getByRole('alert').waitFor()
     expect(selections).toBe(3)
     await compareOrRefreshGolden(POINTER_EXPECTED,
-      await captureStableAria(page, '[role="group"][aria-label="模型与推理等级"]', scaffold.workspaceCwd), MODE)
-    await expect.poll(() => trigger.evaluate(element => element === document.activeElement)).toBe(true)
+      await captureStableAria(page, '[role="dialog"][aria-label="模型与推理等级"]', scaffold.workspaceCwd), MODE)
+    await expect.poll(() => holdsKeyboard(trigger), { timeout: 10_000 }).toBe(true)
     await page.keyboard.press('Tab')
-    await expect.poll(() => search.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
-    expect(await search.getAttribute('aria-activedescendant')).toBe(await target.getAttribute('id'))
-    await search.press('ArrowUp')
-    expect(await search.getAttribute('aria-activedescendant')).toBe(await current.getAttribute('id'))
-    expect(await search.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
+    await expect.poll(() => holdsKeyboard(dialogSearch(dialog)), { timeout: 10_000 }).toBe(true)
+    const pressedRow = await rows.evaluateAll(nodes =>
+      nodes.findIndex(row => row.getAttribute('aria-pressed') === 'true'))
+    expect(await highlightedIndex()).toBe(pressedRow)
+    const rowCount = await rows.count()
+    await dialogSearch(dialog).press('ArrowUp')
+    await expect.poll(highlightedIndex).toBe((pressedRow - 1 + rowCount) % rowCount)
+    await dialogSearch(dialog).press('ArrowDown')
+    await expect.poll(highlightedIndex).toBe(pressedRow)
+    expect(await dialogSearch(dialog).getAttribute('aria-activedescendant')).toBeNull()
     await page.keyboard.press('Escape')
-    await page.keyboard.press('Escape')
-    await menu.waitFor({ state: 'detached' })
+    await expect.poll(() => dialog.count()).toBe(0)
 
+    // The mask closes the page-sized dialog too, returning to the seat.
     await trigger.click()
-    await page.getByRole('menuitem', { name: /^模型/ }).click()
-    await page.locator('[data-composer-input][contenteditable="true"]').focus()
-    await menu.waitFor({ state: 'detached' })
-    await trigger.click()
+    await dialog.waitFor()
     await page.mouse.click(0, 0)
-    await menu.waitFor({ state: 'detached' })
+    await expect.poll(() => dialog.count()).toBe(0)
+    await expect.poll(() => holdsKeyboard(trigger)).toBe(true)
     expect(tripwire.pageErrors).toEqual([])
-  })
+  }, 60_000)
 
   it('keeps its snapshot inventory closed', async () => {
     await assertFixtureInventory(SNAPSHOT_DIR, ['ui.expected.md', 'pointer-menu.expected.md'])

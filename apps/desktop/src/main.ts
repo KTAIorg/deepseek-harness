@@ -1,8 +1,9 @@
+import { installFileActions } from './file-actions.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { access, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -26,6 +27,7 @@ import { resolveDesktopPaths } from './paths.ts'
 import { DesktopProjectManager } from './project-manager.ts'
 import { DesktopHostFatalError, DesktopHostProcess, DesktopHostUncleanExitError } from './host-process.ts'
 import { DesktopPlatformView, PLATFORM_IPC, platformBounds } from './platform-view.ts'
+import { installDesktopFileDrag } from './file-drag.ts'
 import { installDesktopDirectoryPicker } from './directory-picker.ts'
 import { installMicrophonePermissions } from './microphone-permissions.ts'
 import { DesktopBackendController } from './backend-controller.ts'
@@ -35,10 +37,14 @@ import { desktopUpdateReadyConfirmation, formatDesktopMessage, resolveDesktopLoc
 import { claimDesktopSingleInstance } from './single-instance.ts'
 import { desktopUpdateChannel } from './update-channel.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
+import { prepareDesktopUpdateWindow } from './update-window.ts'
 import { DesktopCommandManager } from './command-management.ts'
 import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
 import { DesktopFatalRecovery } from './fatal-recovery.ts'
 import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
+import { captureKitoFailure, initKitoSentry } from './kito-sentry.ts'
+import { OperationJournal } from './operation-journal.ts'
+import { runOperationReportJob, type OperationReportJobResult } from './operation-report-job.ts'
 import { openWelcomeWindow } from './welcome-window.ts'
 import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
 import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
@@ -53,6 +59,7 @@ import { desktopClientMetadata, desktopClientVersion } from './client-metadata.t
 import { DesktopMandatoryUpdateWindow } from './mandatory-update-window.ts'
 import { DesktopPolicyTestAuth } from './policy-test-auth.ts'
 import { readDesktopSettings } from './settings.ts'
+import { readDesktopLocaleCache, writeDesktopLocaleCache } from './locale-cache.ts'
 import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
@@ -62,20 +69,33 @@ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 import { handleKitoAppRoute } from './kito-account-route.ts'
-import { openKitoWallet, readKitoConsoleBalance, signOutKitoConsole } from './kito-wallet-window.ts'
+import { openKitoConsole, readKitoAccountBalance, signOutKitoConsole } from './kito-wallet-window.ts'
 import { shouldDismissNewWelcome } from './kito-welcome-policy.ts'
-import { KITO_IDENTITY_TOKEN_REF } from './kito-identity.ts'
+import { identityBaseUrl, KITO_CLAUDE_KEY_REF, KITO_IDENTITY_REFRESH_TOKEN_REF, KITO_IDENTITY_TOKEN_REF, KITO_NEWAPI_KEY_REF, refreshKitoIdentity } from './kito-identity.ts'
+import { createKitoIdentityRefresher } from './kito-identity-refresh.ts'
+import { createKitoIdentityKeepalive } from './kito-identity-keepalive.ts'
 import { createKitoSignIn, type KitoSignIn } from './kito-sign-in.ts'
+import { readStoredCredential } from './kito-credentials.ts'
+import { runKitoDesktopLink } from './kito-desktop-link.ts'
 
 let focusPrimaryWindow = (): void => {}
-let stopForRecovery = async (): Promise<void> => {}
+const pendingHarnessLogins: string[] = []
+let deliverHarnessLogin = (url: string): void => {
+  if (url.startsWith('kito-harness://desktop-login')) pendingHarnessLogins.push(url)
+}
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  if (url === 'dsh://open' || url === 'dsh://open/') focusPrimaryWindow()
+  deliverHarnessLogin(url)
+})
+let stopForRecovery = async (): Promise<void> => { await stopOperationReports() }
 let shuttingDown = false
 /**
  * Set by quit entries that must not ask: crash recovery exit and restart, and the
  * development restart command. The installer handoff has its own before-quit branch.
  */
 let skipQuitConfirmation = false
-let windowsLanguage: string | undefined
+let windowsLanguage: string | undefined = readDesktopLocaleCache(app.getPath('userData'))
 /**
  * Whether the backend has reached ready: false until the first ready, back to
  * false when a restart returns it to starting, frozen during shutdown so a
@@ -84,6 +104,15 @@ let windowsLanguage: string | undefined
 let backendReady = false
 /** Error-level console output of the primary window, attached to crash reports. */
 const rendererConsole = new RendererConsoleTail()
+
+// Packaged Kito must not share Electron's userData with DeepSeek Harness.
+// The single-instance lock lives in that directory, so a shared path makes the
+// second app quit as soon as it starts.
+if (app.isPackaged) {
+  const kitoUserData = join(app.getPath('appData'), 'Kito Harness')
+  app.setPath('userData', kitoUserData)
+  app.setPath('sessionData', kitoUserData)
+}
 
 // Platform-conventional logs directory (macOS ~/Library/Logs/<name>, otherwise under userData);
 // set before ready so the first fatal report already resolves under it.
@@ -109,10 +138,39 @@ const recovery = new DesktopFatalRecovery({
   exit: () => { quitWithoutConfirmation() },
   restart: () => { app.relaunch(); quitWithoutConfirmation() },
   writeReport: (error, source) => persistCrashReport(error, source),
+  revealReport: async (path) => { await access(path); shell.showItemInFolder(path) },
 })
 
+let operationJournal: OperationJournal | undefined
+let operationReportJob: Promise<OperationReportJobResult> | undefined
+let operationReportAbort: AbortController | undefined
+let operationReportsStopping = false
+let operationReportStop: Promise<void> | undefined
+
+/** Bound application shutdown waiting without claiming that an unresponsive Worker has exited. */
+function stopOperationReports(): Promise<void> {
+  operationReportStop ??= waitForOperationReports()
+  return operationReportStop
+}
+
+async function waitForOperationReports(): Promise<void> {
+  operationReportsStopping = true
+  operationReportAbort?.abort()
+  const job = operationReportJob
+  if (job === undefined) return
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const exited = await Promise.race([job.then(() => true), new Promise<false>((resolve) => {
+      timer = setTimeout(() => { resolve(false) }, 500)
+    })])
+    if (!exited) console.error('dsh desktop: operation report Worker has not exited; continuing shutdown')
+  } finally { clearTimeout(timer) }
+}
+
 function persistCrashReport(error: unknown, source: CrashReportSource): Promise<string | undefined> {
-  return writeCrashReport(app.getPath('logs'), {
+  const directory = app.getPath('logs')
+  const report = writeCrashReport(directory, {
+    operationHistoryPlanned: !shuttingDown && !operationReportsStopping,
     source,
     phase: backendReady ? 'running' : 'startup',
     error,
@@ -124,16 +182,33 @@ function persistCrashReport(error: unknown, source: CrashReportSource): Promise<
     },
     time: new Date(),
   })
+  void report.then((path) => {
+    if (path !== undefined && operationReportJob === undefined && !shuttingDown && !operationReportsStopping) {
+      operationReportAbort = new AbortController()
+      operationReportJob = runOperationReportJob({ reportPath: path, directory: join(app.getPath('userData'), 'plugin-operations'),
+        limits: { bytes: 64 * 1024, recordBytes: 4096, records: 100, outputBytes: 64 * 1024 },
+        journal: operationJournal?.status() ?? null,
+      }, { timeoutMs: 500, cancellationGraceMs: 100 }, operationReportAbort.signal)
+      void operationReportJob.finally(() => { operationReportJob = undefined; operationReportAbort = undefined })
+    }
+  }).catch((_error: unknown) => { /* Basic persistence failure is owned by fatal recovery. */ })
+  return report
 }
 
 function reportFatal(error: unknown, source: CrashReportSource): void {
   console.error(error)
+  void captureKitoFailure(error, { source, phase: backendReady ? 'running' : 'startup' })
   if (shuttingDown) {
     // No dialog during shutdown, but the report still records what failed on the way out.
     void persistCrashReport(error, source)
     return
   }
-  void recovery.report(error, source).catch((failure: unknown) => { console.error(failure); app.exit(1) })
+  void recovery.report(error, source).catch(async (failure: unknown) => {
+    console.error(failure)
+    shuttingDown = true
+    await stopOperationReports()
+    app.exit(1)
+  })
 }
 
 protocol.registerSchemesAsPrivileged([{
@@ -306,6 +381,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
 }
 
 async function main(): Promise<void> {
+  console.debug('desktop startup: main entered')
   const desktopSettings = readDesktopSettings(app.getPath('userData'))
   void pruneCrashReports(app.getPath('logs'))
   const journalDirectory = process.env.DSH_DESKTOP_UPDATE_JOURNAL_DIR
@@ -334,7 +410,28 @@ async function main(): Promise<void> {
   let startup: Promise<void> | undefined
   let workspaceRecovery: Promise<void> | undefined
   let mainWindow: BrowserWindow | undefined
+  /** Consecutive renderer crash timestamps inside a one-minute window. */
+  let rendererCrashTimes: number[] = []
   let welcomeWindow: BrowserWindow | undefined
+  const installFileDrag = (): (() => Promise<void>) => installDesktopFileDrag(
+    event => assertProductSender(event),
+    (address, signal) => {
+      const host = backend.host
+      if (host === undefined) return Promise.reject(new Error('File drag Host unavailable'))
+      return host.resolveDragResource(address, signal)
+    },
+  )
+  const fileDragCleanups = new Set([installFileDrag()])
+  let fileDragStopped = false
+  const disposeFileDrag = async (): Promise<void> => {
+    fileDragStopped = true
+    const results = await Promise.allSettled([...fileDragCleanups].map(async (release) => {
+      await release()
+      fileDragCleanups.delete(release)
+    }))
+    const failure = results.find(result => result.status === 'rejected')
+    if (failure?.status === 'rejected') throw failure.reason
+  }
   let enteredWorkspace = false
   // NSIS passes --updated when it launches the application after installation.
   let raiseAfterUpdate = process.platform === 'win32' && process.argv.includes('--updated')
@@ -344,7 +441,8 @@ async function main(): Promise<void> {
   let updateStopFailure: DesktopHostUncleanExitError | undefined
   let updateState: DesktopUpdateState = { phase: 'idle' }
   const systemLanguages = app.getPreferredSystemLanguages()
-  let locale = resolveDesktopStartupLocale(null, systemLanguages)
+  let locale = windowsLanguage === undefined
+    ? resolveDesktopStartupLocale(null, systemLanguages) : resolveDesktopLocale(windowsLanguage)
   windowsLanguage = locale.id
   let mandatoryPolicy: DesktopMandatoryUpdatePolicy | undefined
   let mandatoryUI: DesktopMandatoryUpdateWindow | undefined
@@ -406,12 +504,13 @@ async function main(): Promise<void> {
     } catch (_error) { /* Analytics cannot interrupt native actions. */ }
   }
   let pendingWelcomeNotice: WelcomeNotice | undefined
-  const assertProductSender = (event: IpcMainInvokeEvent): void => {
+  const assertProductSender = (event: IpcMainInvokeEvent): BrowserWindow => {
     assertDesktopSender(event, ['app'])
     if (mainWindow === undefined || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents
       || event.senderFrame === null || event.senderFrame !== mainWindow.webContents.mainFrame) {
       throw new Error('dsh desktop: rejected IPC from an unowned renderer')
     }
+    return mainWindow
   }
   let navigation: { window: BrowserWindow; url: string; promise: Promise<void> } | undefined
   const navigateMain = (url: string): Promise<void> => {
@@ -429,21 +528,29 @@ async function main(): Promise<void> {
     return next.promise
   }
   const platformView = new DesktopPlatformView(join(app.getAppPath(), 'lib', 'preload-platform-account.cjs'),
-    () => locale.id === 'zh-CN' ? 'zh_CN' : 'en_US', process.platform === 'win32' ? 'win32' : 'darwin')
+    () => locale.id === 'zh-CN' ? 'zh_CN' : 'en_US', process.platform === 'win32' ? 'win32' : 'darwin',
+    owner => isMandatory() || updateOverlays.input(owner).blocked)
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
       hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, onFailure,
       primaryRuntime,
-      resources, (next) => { platformView.setSession(next) })
+      resources, (next) => { platformView.setSession(next) }, (record) => {
+        operationJournal ??= new OperationJournal(join(app.getPath('userData'), 'plugin-operations'), {
+          segmentBytes: 256 * 1024, recordBytes: 4096, queuedBytes: 64 * 1024,
+        })
+        operationJournal.enqueue(JSON.stringify(record))
+      })
     return {
       start: async () => {
         const ready = await host.start()
+        console.debug('desktop startup: host ready')
         hostCookie = await authenticateWebHost(ready.url)
         hostUrl = ready.url
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
         injections = ready.injections
         welcomeBackend = await connectDesktopWelcome(ready.url, (input, init) => net.fetch(input, init), async () => (await session.defaultSession.cookies.get({ url: ready.url })).map(cookie => `${cookie.name}=${cookie.value}`).join('; '))
+        console.debug('desktop startup: welcome connected')
         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
         // Kito owns sign-in. The DeepSeek account stream must not open its browser
@@ -460,6 +567,7 @@ async function main(): Promise<void> {
       },
       updateTasks: (action: 'inspect' | 'lock' | 'unlock') => host.updateTasks(action),
       inspectQuit: () => host.inspectQuit(),
+      resolveDragResource: (address: string, signal?: AbortSignal) => host.resolveDragResource(address, signal),
     }
   }, (state) => {
     if (state.phase === 'error') reportFatal(state.failure, 'host')
@@ -487,7 +595,15 @@ async function main(): Promise<void> {
       window.webContents.send(DESKTOP_IPC.updatesPresentation, presentDesktopUpdate(state))
     }
     if (state.phase === 'error' && state.failedOperation !== 'check') {
+      if (state.failedOperation === 'install' && fileDragStopped && !quitting) {
+        fileDragCleanups.add(installFileDrag())
+        fileDragStopped = false
+      }
       const restoreHost = state.failedOperation === 'install' && updateStoppedHost && !quitting
+      if (state.failedOperation === 'install' && !quitting) {
+        operationReportsStopping = shuttingDown
+        operationReportStop = undefined
+      }
       shellInstallerOwnsQuit = false
       updateStoppedHost = false
       if (restoreHost) {
@@ -516,14 +632,24 @@ async function main(): Promise<void> {
     if (backend.host === undefined || welcomeBackend === undefined) throw new Error('desktop welcome: backend unavailable')
     return welcomeBackend.read()
   }
-  stopForRecovery = () => backend.close()
+  stopForRecovery = async () => {
+    const reports = stopOperationReports()
+    try { await backend.close() }
+    finally { await Promise.all([operationJournal?.drain(500), reports]) }
+  }
 
   const reconcileBackend = (): Promise<void> => {
     startup ??= (async () => {
       await navigateMain(applicationUrl)
+      console.debug('desktop startup: navigation complete')
       await backend.start(async () => {
-        await Promise.all([manager.applyRelease(), prepareHostEnvironment()])
+        console.debug('desktop startup: preparing profile and environment')
+        await Promise.all([
+          manager.applyRelease().then(() => { console.debug('desktop startup: profile prepared') }),
+          prepareHostEnvironment().then(() => { console.debug('desktop startup: environment prepared') }),
+        ])
       })
+      console.debug('desktop startup: backend ready')
       if (backend.host !== undefined) await openInitialWindow()
       if (backend.host !== undefined) updateJournal?.action('workspace-ready')
       // The existing Web document resumes through the boot IPC response.
@@ -546,6 +672,8 @@ async function main(): Promise<void> {
       const host = backend.host
       if (host === undefined) throw new DesktopUpdatePreparationError('tasks-unavailable', locale.messages.updateTasksUnavailable)
       const active = await host.updateTasks('inspect')
+      const parent = currentDialogWindow()
+      if (parent === undefined || !await prepareDesktopUpdateWindow(parent, locale.messages.updateFullscreenTimeout)) return false
       const ready = desktopUpdateReadyConfirmation(locale.messages, updates.state.version ?? '', process.platform)
       const confirmation: Electron.MessageBoxOptions = {
         type: active ? 'warning' : 'info', title: locale.messages.updateTitle,
@@ -557,8 +685,6 @@ async function main(): Promise<void> {
       if (isMandatory()) {
         if (!await mandatoryUI?.confirm(updates.state.version ?? '', active)) return false
       } else {
-        const parent = currentDialogWindow()
-        if (parent === undefined) return false
         const result = await updateDialog.show(parent, confirmation)
         if (result.response !== 0 || isMandatory()) return false
       }
@@ -571,16 +697,20 @@ async function main(): Promise<void> {
         mandatoryUI?.preparingRestart(stillActive)
         // The embedded Platform document holds credentials issued by the Host that is about to stop.
         await platformView.closeAndWait()
+        await disposeFileDrag().catch((error: unknown) => { console.error(error) })
         requireCleanStop = true
         updateStopFailure = undefined
-        await backend.stop()
+        await Promise.all([backend.stop(), stopOperationReports()])
         updateStoppedHost = true
         // The backend's async cleanup callback can assign this after the reset above.
         const stopFailure = updateStopFailure as DesktopHostUncleanExitError | undefined
         if (stopFailure !== undefined) throw new DesktopUpdatePreparationError('stop-failed', locale.messages.updateStopFailed, stopFailure.message)
+        await operationJournal?.drain(500)
         updateJournal?.action('install-confirmed')
         shellInstallerOwnsQuit = true
       } catch (error) {
+        operationReportsStopping = shuttingDown
+        operationReportStop = undefined
         if (!updateStoppedHost) await host.updateTasks('unlock').catch((unlockError: unknown) => { console.error(unlockError) })
         throw error
       } finally {
@@ -604,7 +734,6 @@ async function main(): Promise<void> {
     // A confirmation on a hidden window would go unseen, so it waits for the next show; the mandatory
     // flow keeps its own taskbar and Dock attention instead.
     if (!isMandatory()) await windowShown()
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- A quit can begin while the show is awaited.
     if (quitting) return state
     return updates.install(version)
   }
@@ -615,16 +744,43 @@ async function main(): Promise<void> {
     window.once('closed', () => { resolve() })
   })
 
+  const refreshKitoIdentityToken = createKitoIdentityRefresher({
+    readRefreshToken: () => readStoredCredential(KITO_IDENTITY_REFRESH_TOKEN_REF),
+    refresh: refreshToken => refreshKitoIdentity(refreshToken),
+    saveToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false },
+    saveRefreshToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false },
+  })
+  const kitoIdentityKeepalive = createKitoIdentityKeepalive({
+    refresh: () => refreshKitoIdentityToken(),
+    onRenewed: () => { publishKitoAccount() },
+  })
+  app.on('will-quit', () => { kitoIdentityKeepalive.stop() })
+
   protocol.handle(SCHEME, async (request) => {
     const url = new URL(request.url)
     // Shell-owned documents live in the application bundle and never pass through the Host.
-    if (url.hostname === 'shell') return serveWebDocument(request, join(app.getAppPath(), 'renderer'))
+    if (url.hostname === 'shell') return serveWebDocument(request, join(app.getAppPath(),
+      url.pathname === '/design-platform.css' ? 'lib/welcome' : 'renderer'))
     if (url.hostname === 'app') {
       const kito = await handleKitoAppRoute(request, {
         showWelcome: () => { void showWelcome(true) },
-        openWallet: token => openKitoWallet(token),
+        openWallet: token => openKitoConsole(token, 'wallet'),
+        openConsole: (token, page) => openKitoConsole(token, page),
         signOutConsole: () => signOutKitoConsole(),
-        readBalance: () => readKitoConsoleBalance(),
+        readBalance: token => readKitoAccountBalance(token),
+        refreshIdentity: () => refreshKitoIdentityToken(),
+        forgetIdentity: async () => {
+          for (const ref of [KITO_IDENTITY_TOKEN_REF, KITO_IDENTITY_REFRESH_TOKEN_REF]) {
+            const removed = await welcomeBackend?.removeNamed(ref)
+            if (removed?.ok !== true) console.error('kito sign-out could not remove a stored login credential')
+          }
+        },
+        forgetModelKeys: async () => {
+          for (const ref of [KITO_NEWAPI_KEY_REF, KITO_CLAUDE_KEY_REF]) {
+            const removed = await welcomeBackend?.removeNamed(ref)
+            if (removed?.ok !== true) throw new Error(`kito sign-out could not remove ${ref}`)
+          }
+        },
       })
       if (kito !== undefined) return kito
       if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname.startsWith('/assets/')
@@ -689,6 +845,7 @@ async function main(): Promise<void> {
       || !event.senderFrame.url.startsWith('dsh-app://app/')) throw new Error('Rejected Platform command')
     return owner
   }
+  installFileActions(assertMainApplication, () => hostUrl)
   ipcMain.on(PLATFORM_IPC.bootstrap, (event) => {
     try { event.returnValue = platformView.bootstrap(event) }
     catch { event.returnValue = null }
@@ -721,6 +878,7 @@ async function main(): Promise<void> {
     if (window === undefined || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame
       || typeof next !== 'string') return
     const current = resolveDesktopStartupLocale(next, systemLanguages)
+    writeDesktopLocaleCache(app.getPath('userData'), current.id)
     if (current.id === locale.id) return
     locale = current
     platformView.notifyLocaleChanged()
@@ -881,9 +1039,12 @@ async function main(): Promise<void> {
     if (!quitting) void updateSchedule.check().catch((error: unknown) => { console.error(error) })
   }
   powerMonitor.on('resume', automaticCheck)
+  const pokeKitoIdentity = (): void => { kitoIdentityKeepalive.poke() }
+  powerMonitor.on('resume', pokeKitoIdentity)
   app.on('will-quit', () => {
     updateSchedule.dispose()
     powerMonitor.off('resume', automaticCheck)
+    powerMonitor.off('resume', pokeKitoIdentity)
     updates.dispose()
   })
 
@@ -897,6 +1058,13 @@ async function main(): Promise<void> {
     copyright: '',
     iconPath: applicationIconPath,
   })
+  // The development bundle is a copy of Electron's; show the product mark in the
+  // Dock even when a cold Launch Services registration has not refreshed yet.
+  // Packaged builds take the icon from their signed bundle instead.
+  if (development && process.platform === 'darwin') {
+    const dockIcon = nativeImage.createFromPath(join(app.getAppPath(), 'resources', 'icon-macos.png'))
+    if (!dockIcon.isEmpty()) app.dock?.setIcon(dockIcon)
+  }
   // A custom application menu replaces Electron's default menu, so macOS needs
   // its standard menus and application hide commands declared explicitly.
   // Keep app.name stable: Electron derives its default userData directory from it.
@@ -920,8 +1088,8 @@ async function main(): Promise<void> {
     { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
     ...process.platform === 'darwin' || process.platform === 'win32'
       ? [{ label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } }] : [],
+    { type: 'separator' },
     ...development ? [
-      { type: 'separator' as const },
       { label: currentDesktopLocale().messages.reloadPageMenu, role: 'reload' as const },
       { label: currentDesktopLocale().messages.restartAppHostMenu, click: () => {
         if (quitting) return
@@ -929,20 +1097,23 @@ async function main(): Promise<void> {
         quitWithoutConfirmation()
       } },
     ] : [],
+    { role: 'toggleDevTools', label: currentDesktopLocale().messages.toggleDevToolsMenu },
     { type: 'separator' },
     ...hideCommands,
     { role: 'quit', ...(darwin ? { label: currentDesktopLocale().messages.quitApplication }
       : process.platform === 'win32' ? { label: currentDesktopLocale().messages.exitApplication } : {}) },
   ]
-  const devToolsItems: MenuItemConstructorOptions[] = [
+  const devToolsF12Shortcut: MenuItemConstructorOptions = { role: 'toggleDevTools', visible: false, accelerator: 'F12' }
+  const windowsDevToolsShortcuts: MenuItemConstructorOptions[] = [
     { role: 'toggleDevTools', visible: false },
-    { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
+    devToolsF12Shortcut,
   ]
   const refreshApplicationMenu = (): void => {
-    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' ? devToolsItems : [{
-      label: darwin ? app.name : currentDesktopLocale().messages.application,
-      submenu: [...applicationItems(), ...devToolsItems],
-    }, ...platformMenus()]))
+    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32'
+      ? windowsDevToolsShortcuts : [{
+        label: darwin ? app.name : currentDesktopLocale().messages.application,
+        submenu: [...applicationItems(), devToolsF12Shortcut],
+      }, ...platformMenus()]))
     tray?.relabel()
   }
   refreshApplicationMenu()
@@ -1004,13 +1175,11 @@ async function main(): Promise<void> {
         Menu.buildFromTemplate(items).popup({ window, x: Math.round(x * zoom), y: Math.round(y * zoom), callback: resolve })
       })
     })
-    ipcMain.on(DESKTOP_IPC.windowsAppearance, (event, language: unknown, color: unknown, symbolColor: unknown) => {
+    ipcMain.on(DESKTOP_IPC.windowsAppearance, (event, _language: unknown, color: unknown, symbolColor: unknown) => {
       if (mainWindow === undefined || event.sender !== mainWindow.webContents
         || event.senderFrame !== mainWindow.webContents.mainFrame) return
       if (!event.senderFrame.url.startsWith(`${SCHEME}://app/`)) return
-      if (typeof language === 'string' && /^[a-zA-Z]+(?:-[a-zA-Z0-9]+)*$/u.test(language)) {
-        windowsLanguage = language
-      }
+      // Document lang starts as English before Host locale bootstrap; only localeChanged owns shell language.
       // Empty colors precede client stylesheet installation; only CSS color values cross IPC.
       const validColor = (value: unknown): value is string => typeof value === 'string'
         && /^(?:#[\da-f]{3,8}|rgba?\([\d.,%\s]+\))$/iu.test(value)
@@ -1033,6 +1202,7 @@ async function main(): Promise<void> {
     browserGuests.bind(window, (guest, name) => shortcuts.attachGuest(window, guest, name))
     shortcuts.attach(window)
     window.on('focus', automaticCheck)
+    window.on('focus', () => { kitoIdentityKeepalive.poke() })
     // Closing hides: the page and the Host keep running, and the next show resumes the same document.
     window.on('close', (event) => {
       if (quitting || shellInstallerOwnsQuit || sessionEnding) return
@@ -1069,9 +1239,27 @@ async function main(): Promise<void> {
     })
     window.webContents.on('render-process-gone', (_event, details) => {
       navigation = undefined
-      if (!quitting && !window.isDestroyed() && details.reason !== 'clean-exit') {
-        reportFatal(new Error(`Desktop renderer exited: ${details.reason}`), 'renderer')
+      if (quitting || window.isDestroyed() || details.reason === 'clean-exit') return
+      const error = new Error(`Desktop renderer exited: ${details.reason}`)
+      // A GPU or OOM crash kills the renderer but not the app: reload the
+      // window instead of surfacing a fatal dialog. Three consecutive
+      // crashes inside one minute give up and fall back to recovery.
+      const now = Date.now()
+      rendererCrashTimes = rendererCrashTimes.filter(time => now - time < 60_000)
+      rendererCrashTimes.push(now)
+      if (rendererCrashTimes.length >= 3) {
+        rendererCrashTimes = []
+        reportFatal(error, 'renderer')
+        return
       }
+      console.warn(`[desktop] renderer crashed (${details.reason}), reloading (attempt ${rendererCrashTimes.length}/3)`)
+      void captureKitoFailure(error, { source: 'renderer', phase: 'running' })
+      if (window.isDestroyed()) return
+      try { window.webContents.forcefullyCrashRenderer() } catch { /* already gone */ }
+      setTimeout(() => {
+        if (quitting || window.isDestroyed()) return
+        void navigateMain(applicationUrl)
+      }, 500)
     })
     return window
   }
@@ -1096,6 +1284,7 @@ async function main(): Promise<void> {
     if (activate && development && process.env.DSH_DESKTOP_OPEN_DEVTOOLS !== '0') {
       window.webContents.openDevTools({ mode: 'detach' })
     }
+    kitoIdentityKeepalive.start()
   }
   let openingWelcome: Promise<void> | undefined
   /** Ask the open workspace to read the account again. The token stays in this process. */
@@ -1126,8 +1315,8 @@ async function main(): Promise<void> {
             publish: (state) => {
               if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
             },
-            saveKey: async key => welcomeBackend?.save(key) ?? { ok: false },
             saveIdentity: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false },
+            saveRefreshToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false },
             onSuccess: () => {
               void enterWorkspace({ activate: false }).then(() => { publishKitoAccount() }).catch(() => undefined)
             },
@@ -1182,6 +1371,7 @@ async function main(): Promise<void> {
     const state = await readWelcomeState()
     if (isQuitting() || backend.state.phase !== 'ready') return
     locale = resolveDesktopStartupLocale(state.localePreference, systemLanguages)
+    writeDesktopLocaleCache(app.getPath('userData'), locale.id)
     windowsLanguage = locale.id
     refreshApplicationMenu()
     if (!enteredWorkspace && needsWelcome({ loggedIn: state.loggedIn, hasApiKey: state.hasApiKey })) {
@@ -1201,18 +1391,59 @@ async function main(): Promise<void> {
       void (backend.state.phase === 'ready' ? openInitialWindow() : navigateMain(applicationUrl)).catch((error: unknown) => { reportFatal(error, 'main') })
       return
     }
-    // Startup and sign-out select the visible window before activation may reveal the workspace.
-    if (window === mainWindow && !enteredWorkspace) return
+    // A later launch before the workspace is open should bring the sign-in window
+    // forward. Leaving this as a no-op makes the Dock icon look like it failed.
+    if (window === mainWindow && !enteredWorkspace) {
+      void showWelcome().catch((error: unknown) => { reportFatal(error, 'main') })
+      return
+    }
     if (window.isMinimized()) window.restore()
     window.show()
     window.focus()
   }
 
-  if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') app.setAsDefaultProtocolClient('dsh')
-  app.on('open-url', (event, url) => {
-    event.preventDefault()
-    if (url === 'dsh://open' || url === 'dsh://open/') focusPrimaryWindow()
-  })
+  if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') {
+    app.setAsDefaultProtocolClient('dsh')
+    app.setAsDefaultProtocolClient('kito-harness')
+  }
+  const seenHarnessLogins = new Set<string>()
+  const waitForWelcomeBackend = async (): Promise<void> => {
+    const deadline = Date.now() + 150_000
+    while (welcomeBackend === undefined && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 250))
+    }
+  }
+  deliverHarnessLogin = (url: string): void => {
+    if (!url.startsWith('kito-harness://desktop-login') || seenHarnessLogins.has(url)) return
+    seenHarnessLogins.add(url)
+    void runKitoDesktopLink(url, {
+      currentAccountId: async () => {
+        const token = await readStoredCredential(KITO_IDENTITY_TOKEN_REF)
+        if (!token) return undefined
+        const response = await fetch(`${identityBaseUrl()}/identity/v1/account/me`, {
+          headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+        })
+        if (!response.ok) return undefined
+        const body = await response.json() as { account?: { id?: string }; id?: string }
+        return body.account?.id ?? body.id
+      },
+      saveIdentity: async (token) => {
+        await waitForWelcomeBackend()
+        return welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false }
+      },
+      saveRefreshToken: async (token) => {
+        await waitForWelcomeBackend()
+        return welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false }
+      },
+      onSuccess: () => {
+        void enterWorkspace({ activate: true }).then(() => { publishKitoAccount() }).catch(() => undefined)
+      },
+    }).catch((error: unknown) => {
+      console.error('kito desktop login failed', error instanceof Error ? error.message : 'unknown')
+    }).finally(() => { seenHarnessLogins.delete(url) })
+  }
+  for (const url of pendingHarnessLogins.splice(0)) deliverHarnessLogin(url)
+  for (const item of process.argv) deliverHarnessLogin(item)
 
   app.on('activate', (_event, hasVisibleWindows) => {
     if (!hasVisibleWindows) focusPrimaryWindow()
@@ -1233,10 +1464,15 @@ async function main(): Promise<void> {
     updateSchedule.dispose()
     updateDialog.dispose()
     mandatoryUI?.dispose()
-    void Promise.all([Promise.resolve(mandatoryPolicy?.dispose()).then(() => policyAuth?.dispose()), backend.close(),
-      // A Platform cleanup failure is logged without cutting the remaining Host shutdown short.
-      platformView.dispose().catch((error: unknown) => { console.error(error) })])
-      .catch((error: unknown) => { console.error(error) }).finally(() => { app.quit() })
+    void Promise.all([stopOperationReports(), Promise.resolve(mandatoryPolicy?.dispose()).then(() => policyAuth?.dispose()),
+      backend.close().then(async () => { await operationJournal?.drain(500) }, async (error: unknown) => {
+        await operationJournal?.drain(500)
+        throw error
+      }),
+      platformView.dispose(),
+      disposeFileDrag(),
+    ].map(cleanup => cleanup.catch((error: unknown) => { console.error(error) })))
+      .then(() => { app.quit() })
   }
   app.on('before-quit', (event) => {
     if (shellInstallerOwnsQuit) {
@@ -1315,9 +1551,15 @@ async function main(): Promise<void> {
   publishUpdate(updateState)
 }
 
-const ownsDesktopInstance = claimDesktopSingleInstance(app, () => { focusPrimaryWindow() })
+const ownsDesktopInstance = claimDesktopSingleInstance(app, (argv) => {
+  focusPrimaryWindow()
+  for (const item of argv ?? []) deliverHarnessLogin(item)
+})
 
-if (ownsDesktopInstance) void app.whenReady().then(main).catch(async (error: unknown) => {
+if (ownsDesktopInstance) void app.whenReady().then(async () => {
+  initKitoSentry({ packaged: app.isPackaged, release: app.getVersion() })
+  await main()
+}).catch(async (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error)
   console.error(error)
   const diagnosticFile = process.env.DSH_DESKTOP_DIAGNOSTIC_FILE
@@ -1325,7 +1567,9 @@ if (ownsDesktopInstance) void app.whenReady().then(main).catch(async (error: unk
     await writeFile(diagnosticFile, `${error instanceof Error ? error.stack ?? message : message}\n`).catch(() => undefined)
   }
   reportFatal(error, 'main')
-}).catch((error: unknown) => {
+}).catch(async (error: unknown) => {
   console.error(error)
+  shuttingDown = true
+  await stopOperationReports()
   app.exit(1)
 })

@@ -3,7 +3,7 @@
  * CommandUiRuntime (`ctx.commandUi`) implements this face; business packages
  * consume its registration and dismissal operations.
  */
-import type { ComponentType } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ClientSessionContext } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -21,6 +21,12 @@ export interface SelectConfirmation {
 export interface SelectOptionGroup {
   readonly name: string
   readonly label: string
+  /**
+   * Optional mark rendered inside the sticky group heading, before the label.
+   * The shared shell renders it as decoration, so it must be hidden from
+   * assistive technology; the heading keeps naming the group.
+   */
+  readonly icon?: ReactNode
 }
 
 /** Search behavior selected by the popup owner. */

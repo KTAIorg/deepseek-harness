@@ -1,6 +1,6 @@
 .mark {
   display: block;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
 }
 
 .local {
@@ -47,15 +47,104 @@
 
 .account {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
   min-width: 0;
   margin: 0 8px 8px;
 }
 
-.account button {
+.account[data-wide='false'] {
+  align-items: center;
+  margin: 0 0 8px;
+}
+
+.accountButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-interactive-bg);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+}
+
+.account[data-wide='false'] .accountButton {
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+}
+
+.accountButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+@media (hover: hover) {
+  .accountButton:hover:not(:disabled),
+  .copyButton:hover,
+  .bindButton:hover,
+  .language:hover,
+  .languageActive:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.accountIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+.accountName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountStatusLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.bindButton {
+  min-height: 24px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-link);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  line-height: 14px;
+  text-align: left;
+}
+
+.copyButton,
+.language,
+.languageActive {
+  border: none;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-interactive-bg);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
@@ -66,8 +155,126 @@
   text-align: left;
 }
 
-.account button:hover {
+.copies {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.copyRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.copyLabel {
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.copyValue {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copyButton {
+  flex: none;
+  padding: 2px 6px;
+}
+
+.languageDock {
+  flex: none;
+  -webkit-app-region: no-drag;
+}
+
+.languageTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.languagePanel {
+  width: min(320px, calc(100vw - 24px));
+}
+
+.languageGroup {
+  margin: 8px 4px 4px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.languageGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.languageOption,
+.languageOptionActive {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+}
+
+.languageOptionActive {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+@media (hover: hover) {
+  .languageOption:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.languageAux {
+  margin-left: auto;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
+.flag,
+.flagGlobe {
+  width: 18px;
+  height: 12px;
+  flex: none;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.flag {
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 12%);
 }
 
 .panel {
@@ -83,7 +290,7 @@
   margin: 0;
   color: var(--dsw-alias-label-primary);
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 22px;
 }
 
@@ -94,14 +301,27 @@
   line-height: 18px;
 }
 
+.balanceLine {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
 .panelActions {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.panelActions .panelButton {
+  flex: 1 1 calc(50% - 6px);
+  text-align: center;
 }
 
 .panelButton {
   border: none;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-interactive-bg);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
@@ -111,6 +331,8 @@
   padding: 6px 10px;
 }
 
-.panelButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .panelButton:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }

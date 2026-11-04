@@ -4,6 +4,7 @@ import {
   Toast, Menu, IconEllipsisOutlineMedium, IconPaperPlaneOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type { AccountSectionInjected } from './AccountSection.tsx'
 import { SignOutDialog } from './SignOutDialog.tsx'
 import { SignInDialog } from './SignInDialog.tsx'
@@ -21,7 +22,7 @@ export type AccountMenuProps = PropsRuntime<'settings.launcher'> & PropsLocale<'
  */
 export function AccountMenu({
   subscribeSessionExpired, subscribeModelSignInRequired, wide, settingsShortcut, openSettings, openOnboarding, settingsOpen,
-  useAccount, useTheme, signOut, hasRunningAccountTasks, refreshAccount, bonusNoticeShown, bonusNoticeDismissed,
+  useAccount, useTheme, useResource, signOut, hasRunningAccountTasks, refreshAccount, bonusNoticeShown, bonusNoticeDismissed,
   contactUs, showLogin, start, cancel, avatarFailed, t,
 }: AccountMenuProps) {
   const anchor = useRef<HTMLDivElement>(null)
@@ -34,7 +35,11 @@ export function AccountMenu({
   }, [refreshAccount, settingsOpen])
   const account = useAccount(state => state)
   const colorScheme = useTheme(snapshot => snapshot.active.colorScheme)
-  const signedIn = account.view?.status === 'credential-stored'
+  // Kito owns its Telegram entry from the first Desktop frame; provider presence
+  // also covers shells without the build marker. Absence preserves the official menu.
+  const kitoOwnsLauncher = useResource('dsh-resource://kitoaccount/current').status !== 'none'
+    || ('dshDesktop' in globalThis && process.env.DSH_CLIENT_BUILD_PROFILE !== 'official')
+  const signedIn = !kitoOwnsLauncher && account.view?.status === 'credential-stored'
   const [signInNotice, setSignInNotice] = useState(0)
   useEffect(() => subscribeModelSignInRequired?.(() => { setSignInNotice(value => value + 1) }), [subscribeModelSignInRequired])
   const [expiryNotice, setExpiryNotice] = useState(false)
@@ -54,37 +59,49 @@ export function AccountMenu({
   }
   // The plugin's start publishes `loginFailed` before it rejects, so the dialog owns the report.
   const beginSignIn = (): void => { setOpen(false); void start().catch(() => undefined) }
-  return <div ref={anchor} className={css.root}>
+  return <div ref={anchor} className={css.root} data-inset={signedIn && wide}>
     {signInNotice > 0 && <Toast key={signInNotice} text={t('modelSignInRequired')} onDone={() => { setSignInNotice(0) }} />}
     {expiryNotice && <Toast text={t('sessionExpired')} onDone={() => { setExpiryNotice(false) }} />}
-    {signedIn && !account.desktopOnboardingVisible && !account.onboarding && account.notices && <AccountNoticeStack
+    {account.view?.status === 'credential-stored' && !account.desktopOnboardingVisible && !account.onboarding && account.notices && <AccountNoticeStack
       notices={account.notices}
       anchor={anchor} title={t('bonusNoticeTitle')} closeLabel={t('close')}
       onShown={bonusNoticeShown} onDismiss={bonusNoticeDismissed} />}
-    <Menu open={open} side="top" portal autoFocus className={css.anchor} listClassName={signedIn ? undefined : css.signedOutMenu}
-      anchor={<button ref={trigger} type="button" className={css.trigger} data-collapsed={!wide} data-signed-out={!signedIn} aria-label={t('menu')}
-        aria-haspopup="menu" aria-expanded={open} onClick={() => { setOpen(value => !value) }}>
-        {signedIn
-          ? <span className={css.avatar} data-avatar-status={account.avatar?.status}>
-            <AccountAvatar avatar={account.avatar} avatarFailed={avatarFailed} />
-          </span>
-          : <IconEllipsisOutlineMedium size={14} />}
-        {wide && <span className={css.label}>{signedIn ? label : t('more')}</span>}
-      </button>}
-      items={[
-        { id: 'settings', label: t('settings'), icon: <IconSettingsOutlineMedium size={16} />,
-          ...(settingsShortcut === undefined ? {} : { shortcut: settingsShortcut }) },
-        { id: 'contact', label: t('contactUs'), icon: <IconPaperPlaneOutlineMedium size={16} /> },
-        ...(signedIn ? [{ id: 'signout', label: t('signOut'), icon: <LogoutIcon />, disabled: busy }]
-          : [{ id: 'signin', label: t('signIn'), icon: <IconUserOutlineMedium size={16} /> }]),
-      ]}
-      onClose={() => { setOpen(false) }}
-      onSelect={(id) => {
-        if (id === 'settings') { setOpen(false); trigger.current?.focus(); openSettings() }
-        else if (id === 'contact') { setOpen(false); contactUs() }
-        else if (id === 'signin') beginSignIn()
-        else void requestSignOut()
-      }} />
+    {kitoOwnsLauncher
+      ? <div className={css.actions} data-collapsed={!wide}>
+        <button type="button" className={css.action} data-collapsed={!wide} aria-label={t('settings')}
+          aria-keyshortcuts={settingsShortcut?.aria} onClick={openSettings}>
+          <IconSettingsOutlineMedium size={14} />
+          {wide && <span className={css.label}>{t('settings')}</span>}
+        </button>
+        <button type="button" className={css.action} data-collapsed={!wide} aria-label={t('contactUs')} onClick={contactUs}>
+          <IconPaperPlaneOutlineMedium size={14} />
+          {wide && <span className={css.label}>{t('contactUs')}</span>}
+        </button>
+      </div>
+      : <Menu open={open} side="top" portal autoFocus className={css.anchor} listClassName={signedIn ? undefined : css.signedOutMenu}
+        anchor={<button ref={trigger} type="button" className={css.trigger} data-collapsed={!wide} data-signed-out={!signedIn} aria-label={t('menu')}
+          aria-haspopup="menu" aria-expanded={open} onClick={() => { setOpen(value => !value) }}>
+          {signedIn
+            ? <span className={css.avatar} data-avatar-status={account.avatar?.status}>
+              <AccountAvatar avatar={account.avatar} avatarFailed={avatarFailed} />
+            </span>
+            : <IconEllipsisOutlineMedium size={14} />}
+          {wide && <span className={css.label}>{signedIn ? label : t('more')}</span>}
+        </button>}
+        items={[
+          { id: 'settings', label: t('settings'), icon: <IconSettingsOutlineMedium size={16} />,
+            ...(settingsShortcut === undefined ? {} : { shortcut: settingsShortcut }) },
+          { id: 'contact', label: t('contactUs'), icon: <IconPaperPlaneOutlineMedium size={16} /> },
+          ...(signedIn ? [{ id: 'signout', label: t('signOut'), icon: <LogoutIcon />, disabled: busy }]
+            : [{ id: 'signin', label: t('signIn'), icon: <IconUserOutlineMedium size={16} /> }]),
+        ]}
+        onClose={() => { setOpen(false) }}
+        onSelect={(id) => {
+          if (id === 'settings') { setOpen(false); trigger.current?.focus(); openSettings() }
+          else if (id === 'contact') { setOpen(false); contactUs() }
+          else if (id === 'signin') beginSignIn()
+          else void requestSignOut()
+        }} />}
     {account.loginVisible && !account.onboarding && <SignInDialog account={account} colorScheme={colorScheme}
       start={start} cancel={cancel} t={t}
       close={() => { showLogin(false) }} useApiKey={() => { showLogin(false); openOnboarding('deepseek-official') }} />}

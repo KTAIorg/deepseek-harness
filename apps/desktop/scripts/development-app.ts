@@ -15,6 +15,8 @@ export interface DevelopmentAppOptions {
   readonly rendererPort: number
   readonly hostPort: number
   readonly openDevtools: string
+  /** Local collection DSN. Omitted from the launcher when unset. */
+  readonly sentryDsn?: string
 }
 
 function quote(value: string): string { return `'${value.replaceAll("'", "'\\''")}'` }
@@ -30,23 +32,36 @@ export function prepareDevelopmentApp(options: DevelopmentAppOptions): string {
   const executable = join(bundle, 'Contents', 'MacOS', 'HarnessDev')
   const stamp = join(bundle, 'Contents', 'Resources', 'dsh-development.json')
   const launcher = developmentLauncher(options, bundle)
-  const identity = JSON.stringify({ ...options, launcher, plist: readFileSync(join(source, 'Contents', 'Info.plist'), 'utf8') })
+  const iconSource = join(options.appRoot, 'resources', 'icon-macos.png')
+  const iconBytes = existsSync(iconSource) ? readFileSync(iconSource) : undefined
+  const identity = JSON.stringify({
+    ...options, launcher,
+    plist: readFileSync(join(source, 'Contents', 'Info.plist'), 'utf8'),
+    icon: iconBytes === undefined ? null : createHash('sha256').update(iconBytes).digest('hex'),
+  })
   if (!existsSync(stamp) || readFileSync(stamp, 'utf8') !== identity) {
     rmSync(bundle, { recursive: true, force: true })
     execFileSync('/usr/bin/ditto', [source, bundle])
     const plist = join(bundle, 'Contents', 'Info.plist')
     const values = {
       CFBundleIdentifier: `com.deepseek.harness.dev.${createHash('sha256').update(options.appRoot).digest('hex').slice(0, 12)}`,
-      CFBundleName: 'Harness Dev',
-      CFBundleDisplayName: 'Harness Dev',
+      CFBundleName: 'Kito Harness Dev',
+      CFBundleDisplayName: 'Kito Harness Dev',
       CFBundleExecutable: 'HarnessDev',
-      CFBundleURLTypes: [{ CFBundleURLName: 'Kito Harness', CFBundleURLSchemes: ['dsh'], CFBundleTypeRole: 'Viewer' }],
+      ...(iconBytes === undefined ? {} : { CFBundleIconFile: 'dsh-dev.icns' }),
+      CFBundleURLTypes: [{ CFBundleURLName: 'Kito Harness', CFBundleURLSchemes: ['dsh', 'kito-harness'], CFBundleTypeRole: 'Viewer' }],
     }
     for (const [key, value] of Object.entries(values)) {
       execFileSync('/usr/bin/plutil', ['-replace', key, '-json', JSON.stringify(value), plist])
     }
     writeFileSync(executable, launcher, { mode: 0o755 })
     writeFileSync(stamp, identity, { mode: 0o600 })
+    // A directly executed Electron bundle would otherwise keep Electron's own
+    // mark in the Dock; convert the product icon before signing the copy.
+    if (iconBytes !== undefined) {
+      execFileSync('/usr/bin/sips', ['-s', 'format', 'icns', iconSource, '--out',
+        join(bundle, 'Contents', 'Resources', 'dsh-dev.icns')], { stdio: 'pipe' })
+    }
     execFileSync('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', bundle], { stdio: 'pipe' })
   }
   execFileSync('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', bundle])
@@ -66,6 +81,7 @@ export function developmentLauncher(options: DevelopmentAppOptions, bundle: stri
     DSH_DESKTOP_HOST_INSPECT_PORT: String(options.hostPort),
     DSH_DESKTOP_OPEN_DEVTOOLS: options.openDevtools,
     ELECTRON_ENABLE_LOGGING: '1',
+    ...(options.sentryDsn ? { DSH_SENTRY_DSN: options.sentryDsn, DSH_SENTRY_ENVIRONMENT: 'development' } : {}),
   }
   const args = [
     join(bundle, 'Contents', 'MacOS', 'Electron'),

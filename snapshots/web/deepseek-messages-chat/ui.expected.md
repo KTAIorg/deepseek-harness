@@ -1,11 +1,13 @@
 - banner:
   - navigation "会话层级": 只回复 MESSAGES_WEB_READY，不调用
   - text: 标准模式
+  - button "中文"
   - button "更多操作"
   - button "打开右侧边栏"
   - tablist:
     - tab "对话" [selected]
     - tab "轨迹"
+  - button "更多会话视图"
 - text: 只回复 MESSAGES_WEB_READY，不调用工具。 {{clock}}
 - button "复制"
 - status: 已完成

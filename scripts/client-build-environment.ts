@@ -26,6 +26,7 @@ const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
 const KITO_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_BUILD_PROFILE: 'kito',
   DSH_CLIENT_TITLE: 'Kito Harness',
+  DSH_CLIENT_FEEDBACK_URL: 'https://www.ktapi.cc/',
 } as const
 
 /** Public variable carrying the source commit embedded in client artifacts. */
@@ -44,6 +45,7 @@ const CLIENT_ARTIFACT_PATTERNS = [
   'packages/*/*/lib/client.js.map',
   'packages/*/*/lib/client.*.js',
   'packages/*/*/lib/client.*.js.map',
+  'packages/*/*/lib/assets/**/*',
 ] as const
 
 /** Public values embedded in one set of client artifacts. */
@@ -203,6 +205,8 @@ function clientBuildEnvironment(environment: NodeJS.ProcessEnv): ClientBuildEnvi
 
 /**
  * Resolve the exact public environment selected for a complete client build.
+ * Named profiles discard inherited public overrides. Local builds retain the supplied
+ * commit, version, and true dirty marker; repositoryClientBuildEnvironment supplies that metadata.
  * @param environment - parent process environment.
  * @param profile - explicit profile, or the non-public selector when omitted.
  * @returns the inherited public values when no profile is selected, otherwise the named profile.
@@ -212,7 +216,7 @@ export function resolveClientBuildEnvironment(
   profile: string | undefined = environment[CLIENT_BUILD_PROFILE_SELECTOR],
 ): ClientBuildEnvironment {
   if (profile === undefined) return clientBuildEnvironment(environment)
-  if (profile === 'official' || profile === 'kito') {
+  if (profile === 'official' || profile === 'kito' || profile === 'local') {
     const commitHash = environment[CLIENT_COMMIT_HASH_VARIABLE]
     const version = environment[CLIENT_VERSION_VARIABLE]
     if (commitHash === undefined) {
@@ -224,10 +228,14 @@ export function resolveClientBuildEnvironment(
     return {
       DSH_CLIENT_COMMIT_HASH: commitHash,
       DSH_CLIENT_VERSION: version,
-      ...(profile === 'official' ? OFFICIAL_CLIENT_BUILD_ENVIRONMENT : KITO_CLIENT_BUILD_ENVIRONMENT),
+      ...(profile === 'official' ? OFFICIAL_CLIENT_BUILD_ENVIRONMENT : profile === 'kito' ? KITO_CLIENT_BUILD_ENVIRONMENT : {
+        DSH_CLIENT_BUILD_PROFILE: 'local',
+        DSH_CLIENT_FEEDBACK_URL: KITO_CLIENT_BUILD_ENVIRONMENT.DSH_CLIENT_FEEDBACK_URL,
+        ...(environment.DSH_CLIENT_GIT_DIRTY === 'true' ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),
+      }),
     }
   }
-  throw new Error(`unknown client build profile ${JSON.stringify(profile)}; expected "official" or "kito"`)
+  throw new Error(`unknown client build profile ${JSON.stringify(profile)}; expected "official", "kito", or "local"`)
 }
 
 /**

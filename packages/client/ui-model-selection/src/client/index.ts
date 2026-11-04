@@ -23,12 +23,16 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { IconDataOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { createElement } from 'react'
 import type { ModelDirectoryState } from './directory.ts'
 import { ModelDirectoryResolver } from './service.ts'
 import type { ModelSelectInjected } from './slots.ts'
 import { ModelSelect } from './ModelSelect.tsx'
-import { en, zh, type ModelKey } from './locales.ts'
+import { en, ja, es, fr, de, ru, pt, zh, type ModelKey } from './locales.ts'
 import { orderModelProviders } from './provider-order.ts'
+import { buildModelSections, choiceMatches, modelChoices } from './model-sections.ts'
+import { loadModelUsage } from './model-usage.ts'
+import { VendorIcon } from './VendorIcon.tsx'
 
 export { ModelDirectory } from './directory.ts'
 export type { ModelDirectoryState } from './directory.ts'
@@ -48,19 +52,33 @@ function rowId(providerId: string, modelId: string): string {
   return `${providerId}/${modelId}`
 }
 
-/** Flatten the directory into popup rows; failure rows are listed for visibility but never selectable. */
+/**
+ * Flatten the directory into popup rows grouped by vendor family, using the composer
+ * picker's own sections and brand marks. Alias ids fold into their canonical row, so
+ * {@link selectionOf} keeps resolving every row. Failure rows are listed for
+ * visibility, ungrouped, and never selectable. Recent/frequent shortcut rows stay
+ * out of the popup: they would repeat a row id and make selection ambiguous.
+ */
 function optionsOf(directory: ModelDirectoryState, t: TranslateNS<'model'>): SelectOption[] {
+  const groups = orderModelProviders(directory.groups).map(group => ({
+    ...group,
+    name: group.id === 'deepseek-account' ? t('provider.account') : group.name,
+  }))
   const rows: SelectOption[] = []
-  for (const group of orderModelProviders(directory.groups)) {
-    const name = group.id === 'deepseek-account' ? t('provider.account') : group.name
-    for (const model of group.models) {
+  for (const section of buildModelSections(modelChoices(groups), loadModelUsage(), '')) {
+    if (section.kind !== 'vendor' || section.label === undefined || section.vendor === undefined) continue
+    const group = {
+      name: section.id,
+      label: section.label,
+      icon: createElement(VendorIcon, { vendor: section.vendor }),
+    }
+    for (const choice of section.choices) {
       rows.push({
-        id: rowId(group.id, model.id),
-        label: model.name,
-        group: { name: group.id, label: name },
+        id: rowId(choice.provider, choice.model.id),
+        label: choice.displayName,
+        group,
         ...(directory.current !== null
-          && directory.current.provider === group.id
-          && directory.current.model === model.id
+          && choiceMatches(choice, directory.current.provider, directory.current.model)
           ? { active: true } : {}),
       })
     }
@@ -113,7 +131,7 @@ export const inject = ['commandUi', 'locale', 'sessions', 'slots', 'remote', 're
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-model-selection: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-model-selection: dictionaries')
 
   // Non-slot faces (the command description, the popup option builder) read
   // through the bound translate; the seat component reads the standard seat.
@@ -184,6 +202,7 @@ export function apply(ctx: ClientContext): void {
           load: () => {
             if (available) directory.load().catch(() => { /* surfaced on the store */ })
           },
+          resolveText: text => ctx.locale.resolveText(text),
           select: (selection: ModelSelection) => available
             ? directory.select(selection)
             : Promise.resolve(undefined),
