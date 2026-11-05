@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for kito-harness-release.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/development/kito-harness-release.md
+/kito-harness-release-and-operations-runbook:
+  en: 9e5785203f6c9fdb
+  zh: d8e34174abb13267
+/kito-harness-release-and-operations-runbook/scope-and-release-boundaries:
+  en: c3a4acc4112c6ce1
+  zh: 495a9194f8bfd63f
+/kito-harness-release-and-operations-runbook/custom-feature-map:
+  en: 668a3e2c6b06b4f7
+  zh: 64af704ba3bb47e2
+/kito-harness-release-and-operations-runbook/standard-release-flow:
+  en: c477f44c9a52c9cf
+  zh: 4456afbc3fc039eb
+/kito-harness-release-and-operations-runbook/standard-release-flow/1-synchronize-upstream-and-verify-custom-behavior:
+  en: 0b3cd8ffeefd36a9
+  zh: ed11143a4be1b029
+/kito-harness-release-and-operations-runbook/standard-release-flow/2-bump-the-version-and-merge-into-main:
+  en: 1520e8cf0a7b61af
+  zh: c1f157ad3880bd43
+/kito-harness-release-and-operations-runbook/standard-release-flow/3-build-natively-on-both-platforms:
+  en: b3a14be2ca92d127
+  zh: 3500656954ddf455
+/kito-harness-release-and-operations-runbook/standard-release-flow/4-create-the-release-and-upload-immutable-assets:
+  en: 70e88a2e27040a86
+  zh: 295c16c9f70ee3ee
+/kito-harness-release-and-operations-runbook/standard-release-flow/5-update-latest-json:
+  en: a6efa22b710ab0aa
+  zh: f638b2cbffbbeb64
+/kito-harness-release-and-operations-runbook/standard-release-flow/6-production-acceptance:
+  en: f73613f6180fe902
+  zh: 6da8df1e0bfb846e
+/kito-harness-release-and-operations-runbook/recurring-failures-and-their-fixes:
+  en: c6ab0dea99417298
+  zh: 7a330eff60e4e441
+/kito-harness-release-and-operations-runbook/rollback:
+  en: 34c69c332d8fcf20
+  zh: f90cf69ef211628e
+/kito-harness-release-and-operations-runbook/handoff-checklist:
+  en: 5e4f845898e81cf6
+  zh: 7c4b6fc09d434303

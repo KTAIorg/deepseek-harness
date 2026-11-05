@@ -52,6 +52,8 @@ composer 菜单中的模型名称和推理等级均使用 400（regular）字重
 扩展必须渲染非交互的内联内容，例如带颜色的名称或徽标。选择器负责点击、搜索、焦点、禁用状态、勾选标记、推理强度和触发按钮的无障碍文字。没有扩展（包括插件卸载后）时显示目录名称；模型带有目录角标 `model.badge` 时，触发按钮在名称前显示一个按角标语调着色的 `Tag`，菜单仍放在名称后，文字按当前语言解析。较长的目录名称会在可用宽度内省略，角标保持可见。扩展会同时替换两者，并从 owner props 收到角标。触发按钮和根菜单当前值仅在所选模型存在于显示目录中时调用 slot，否则保留内置占位文字。刷新期间保留的目录条目仍调用 slot。菜单打开时会跟随名称内容的尺寸变化调整位置，保持在视口内。`/model` 命令行使用命令弹窗独立的渲染 API。
 以 type-only 方式导入本包的 `/client` 声明，再通过 `ctx.slots.inject('conversation.input.model.label', () => ctx.slots.register({ name: 'conversation.input.model.label' }, ModelLabel))` 注册。`ModelLabel` 的 props 从 `PropsRuntime<'conversation.input.model.label'>` 派生；用提供方 ID 选择 CSS Module 类，并保留 `model.name` 作为文字。注册随声明和贡献插件的生命周期清理。不替换组件时，样式也可以在两个显示位置通过名称外层的 `data-provider-id` 和 `data-model-id` 属性定位。
 
+<a id="brand-marks"></a>
+
 ### 品牌标识
 
 厂商分区标题把品牌名词与厂商标识放在一起。标识放在 [`src/client/assets/vendors`](src/client/assets/vendors/NOTICE.md)：来源为 [lobehub/lobe-icons](https://github.com/lobehub/lobe-icons) 的 `packages/static-svg`，MIT 许可，Copyright (c) 2023 LobeHub——除本地文件名外均按上游原样复制，[`NOTICE.md`](src/client/assets/vendors/NOTICE.md) 记录了每个本地文件与上游文件的对应关系。这些标识归各厂商所有，仅用于标识该分组路由到的提供方。
