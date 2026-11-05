@@ -35,7 +35,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: kito-harness-macos-arm64-${{ github.run_id }}-${{ github.run_attempt }}
-          path: apps/desktop/.desktop-build/targets/mac-arm64/unsigned-artifacts/*.{dmg,pkg}
+          path: |
+            apps/desktop/.desktop-build/targets/mac-arm64/unsigned-artifacts/*.dmg
+            apps/desktop/.desktop-build/targets/mac-arm64/unsigned-artifacts/*.pkg
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
@@ -57,7 +59,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Select unsigned local Windows settings
         shell: pwsh
-        run: Copy-Item apps/desktop/.env.windows.example apps/desktop/.env.windows
+        run: |
+          Copy-Item apps/desktop/.env.windows.example apps/desktop/.env.windows
+          Add-Content apps/desktop/.env.windows "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://policy.example.com"
+          Add-Content apps/desktop/.env.windows 'DSH_DESKTOP_MANDATORY_UPDATE_CONFIG={\"allowedAuthOrigins\":[\"https://login.example.com\"]}'
       - name: Build unsigned Windows installer
         run: pnpm run package:desktop:win:x64:unsigned
       - name: Upload Windows installer
