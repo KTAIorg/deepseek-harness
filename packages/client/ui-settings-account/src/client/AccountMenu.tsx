@@ -40,6 +40,7 @@ export function AccountMenu({
   const kitoOwnsLauncher = useResource('dsh-resource://kitoaccount/current').status !== 'none'
     || ('dshDesktop' in globalThis && process.env.DSH_CLIENT_BUILD_PROFILE !== 'official')
   const signedIn = !kitoOwnsLauncher && account.view?.status === 'credential-stored'
+  const versionLabel = process.env.DSH_CLIENT_VERSION === undefined ? t('contactUs') : `v${process.env.DSH_CLIENT_VERSION}`
   const [signInNotice, setSignInNotice] = useState(0)
   useEffect(() => subscribeModelSignInRequired?.(() => { setSignInNotice(value => value + 1) }), [subscribeModelSignInRequired])
   const [expiryNotice, setExpiryNotice] = useState(false)
@@ -75,7 +76,7 @@ export function AccountMenu({
         </button>
         <button type="button" className={css.action} data-collapsed={!wide} aria-label={t('contactUs')} onClick={contactUs}>
           <IconPaperPlaneOutlineMedium size={14} />
-          {wide && <span className={css.label}>{t('contactUs')}</span>}
+          {wide && <span className={css.label}>{versionLabel}</span>}
         </button>
       </div>
       : <Menu open={open} side="top" portal autoFocus className={css.anchor} listClassName={signedIn ? undefined : css.signedOutMenu}
