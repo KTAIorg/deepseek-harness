@@ -205,6 +205,10 @@ pnpm run dev:desktop     # build, then launch Desktop
 
 Web 命令后面的参数会传给 `dsh web`，例如 `pnpm run dev:web --no-open --port 3081`；`dev:web` 还接受 `--skip-build` 复用现有产物树，以及 `--no-serve` 只运行重建 watcher、配合别处启动的服务器。两个 Web 命令使用正常的 Harness home，而 Desktop 命令使用 [Desktop README](../apps/desktop/README.zh.md) 描述的隔离开发 home。根目录 `Makefile` 以 `make web`、`make dev-web`、`make desktop`、`make dev-desktop` 和 `make build` 命名同一套命令；`ARGS='--no-open'` 用于转发参数。
 
+### Kito Harness 发布运维
+
+上游同步、macOS 与 Windows 原生构建、下载站发布、验收清单以及 Kito 常见故障，统一查阅 [Kito Harness 发布与运维手册](development/kito-harness-release.zh.md)。
+
 ### TODO 标记
 
 请使用以下三种注释标签之一标记代码中的已知问题，按紧急程度排序：
