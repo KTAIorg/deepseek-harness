@@ -61,8 +61,8 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item apps/desktop/.env.windows.example apps/desktop/.env.windows
-          Add-Content apps/desktop/.env.windows "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://policy.example.com"
-          Add-Content apps/desktop/.env.windows 'DSH_DESKTOP_MANDATORY_UPDATE_CONFIG={\"allowedAuthOrigins\":[\"https://login.example.com\"]}'
+          Add-Content apps/desktop/.env.windows 'DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://policy.example.com'
+          Add-Content apps/desktop/.env.windows 'DSH_DESKTOP_MANDATORY_UPDATE_CONFIG={"allowedAuthOrigins":["https://login.example.com"]}'
       - name: Build unsigned Windows installer
         run: pnpm run package:desktop:win:x64:unsigned
       - name: Upload Windows installer
