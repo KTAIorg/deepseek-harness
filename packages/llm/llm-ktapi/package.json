@@ -6,7 +6,6 @@
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "license": "MIT",
-  "private": true,
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
@@ -17,7 +16,8 @@
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "files": [
-    "lib",
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
     "cordis.patch.yml",
     "README.md"
   ],
@@ -40,5 +40,8 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
