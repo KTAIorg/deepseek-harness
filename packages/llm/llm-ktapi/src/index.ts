@@ -16,7 +16,7 @@ import { authContextFrom, credentialStoreFrom } from '@deepseek-ai/dsh-llm-pi-ai
 import { resolveProfiles, type ResolvedPiAiProviderProfile } from '@deepseek-ai/dsh-llm-pi-ai/src/config.ts'
 import z from '@deepseek-ai/schemastery'
 import { DEFAULT_CONTEXT, DEFAULT_OUTPUT, type KtapiModel } from './catalog.ts'
-import { CATALOG_TIMEOUT_MS, fetchKtapiCatalog, KtapiCredentialError, type KtapiCatalogSnapshot } from './discovery.ts'
+import { CATALOG_TIMEOUT_MS, fetchKtapiCatalog, type KtapiCatalogSnapshot } from './discovery.ts'
 
 /** Cordis plugin name. */
 export const name = 'llm-ktapi'
@@ -79,6 +79,9 @@ function modelRow(model: KtapiModel): Record<string, unknown> {
     contextWindow: model.contextWindow > 0 ? model.contextWindow : DEFAULT_CONTEXT,
     maxTokens: DEFAULT_OUTPUT,
     input: ['text'],
+    // The gateway states each model's reasoning levels itself; a row without
+    // one describes a model that reads no reasoning parameter.
+    ...model.reasoning === undefined ? {} : { reasoningEfforts: model.reasoning.efforts },
   }
 }
 
@@ -170,8 +173,7 @@ export function apply(ctx: Context, config: Config): void {
           + ` ${String(snapshot.models.filter(model => model.defaultVisible).length)} curated`)
       } catch (error) {
         const detail = error instanceof Error ? error.message : 'unknown'
-        const prefix = error instanceof KtapiCredentialError ? 'model credential refused' : 'catalog read failed'
-        console.warn(`[llm-ktapi] ${prefix}; keeping the previous catalog: ${detail}`)
+        console.warn(`[llm-ktapi] catalog read failed; keeping the previous catalog: ${detail}`)
       } finally {
         reading = undefined
       }

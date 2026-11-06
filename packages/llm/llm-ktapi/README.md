@@ -14,7 +14,8 @@ would show the same model four times. This package folds every spelling into one
 normalized request id, intersects the account's own listing with the curated Kito
 picks, and attaches the pricing a selector shows.
 
-The account's listing comes from `GET {baseURL}/models` with the relay key derived
+The account's listing is read by the shared pi-ai live-catalog reader (`GET {baseURL}/models`
+with the relay key derived
 from the KT Identity login; pricing comes from the shared `GET /api/pricing`, which
 needs no credential.
 
@@ -23,7 +24,7 @@ needs no credential.
 ```ts
 import { buildKtapiCatalog } from '@deepseek-ai/dsh-llm-ktapi'
 
-const catalog = buildKtapiCatalog(await modelsResponse.json(), await pricingResponse.json())
+const catalog = buildKtapiCatalog(await fetchLiveCatalog(modelsUrl, apiKey), await pricingResponse.json())
 // catalog[0] === { id: 'deepseek-latest', name: 'DeepSeek-Latest', defaultVisible: true, … }
 ```
 
@@ -49,10 +50,9 @@ None; it assembles no prompt material.
 
 ## Known Limitations and Deferred Work
 
-- **No provider registration yet** — this package is the catalog half of the ktapi
-  route. Registering it as a model provider (credential resolution, request
-  transport, discovery) stays with the route's owner, so the parsing stays testable
-  without a gateway.
+- **Reasoning depends on the gateway declaring it** — a listing row without a
+  `reasoning` object describes a model that reads no reasoning parameter, because
+  the route has no installed catalog entry to inherit capability from.
 - **Output cap is a fixed default** — pricing rows publish no output-token cap, so
   every entry advertises `DEFAULT_OUTPUT` until a listing field supplies one.
 - **Pricing is account-independent** — the shared payload cannot express a per-account

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fetchKtapiCatalog, groupsFromPricing, KtapiCredentialError } from '../src/discovery.ts'
+import { endpointsOf, fetchKtapiCatalog, groupsFromPricing } from '../src/discovery.ts'
 
 const listing = {
   data: [
@@ -53,11 +53,11 @@ describe('ktapi catalog discovery', () => {
     expect(authorization).toBe('Bearer sk-test')
   })
 
-  it('classifies a refused credential so the caller can re-derive it', async () => {
+  it('reports a refused credential instead of an empty catalog', async () => {
     const { fetchImpl } = stub(url =>
       url.endsWith('/v1/models') ? json({ error: { message: 'Invalid token' } }, 401) : json(pricing))
     await expect(fetchKtapiCatalog({ apiKey: 'sk-stale', fetchImpl, baseUrl: 'https://ktapi.example' }))
-      .rejects.toBeInstanceOf(KtapiCredentialError)
+      .rejects.toThrow(/401/)
   })
 
   it('keeps the catalog when pricing is unavailable', async () => {
@@ -71,13 +71,29 @@ describe('ktapi catalog discovery', () => {
   it('fails when the listing cannot be read', async () => {
     const { fetchImpl } = stub(() => json({ message: 'boom' }, 500))
     await expect(fetchKtapiCatalog({ apiKey: 'sk-test', fetchImpl, baseUrl: 'https://ktapi.example' }))
-      .rejects.toThrow(/boom/)
+      .rejects.toThrow(/answered 500/)
   })
 
   it('rejects a blank relay key before any request', async () => {
     const { fetchImpl, urls } = stub(() => json(listing))
     await expect(fetchKtapiCatalog({ apiKey: '  ', fetchImpl })).rejects.toThrow(/relay key/)
     expect(urls).toHaveLength(0)
+  })
+
+  it('joins the models endpoint once whether or not the base URL carries /v1', () => {
+    expect(endpointsOf('https://ktapi.cc/v1')).toEqual({
+      origin: 'https://ktapi.cc',
+      models: 'https://ktapi.cc/v1',
+    })
+    expect(endpointsOf('https://ktapi.cc')).toEqual({
+      origin: 'https://ktapi.cc',
+      models: 'https://ktapi.cc/v1',
+    })
+    expect(endpointsOf('https://ktapi.cc/v1/')).toEqual({
+      origin: 'https://ktapi.cc',
+      models: 'https://ktapi.cc/v1',
+    })
+    expect(endpointsOf(undefined)).toEqual({ origin: 'https://ktapi.cc', models: 'https://ktapi.cc/v1' })
   })
 
   it('reads every group the pricing payload enables', () => {
