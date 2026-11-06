@@ -1,0 +1,18 @@
+# The ktapi route as a bundle: mounting this package is enough to serve the
+# account's own models. Both rows live here rather than in a user patch — a
+# packaged profile without them boots on the dsh-base default
+# (`deepseek-official`, which needs an API key) and shows an empty model list.
+
+- insert:
+    # Registered provider `ktapi`: reads KITO_NEWAPI_API_KEY, lists the account's
+    # own models through `GET https://ktapi.cc/v1/models`, and serves inference
+    # through the shared OpenAI-compatible transport.
+    - id: llm-ktapi
+      name: '@deepseek-ai/dsh-llm-ktapi'
+
+# The model every new Agent starts on. `deepseek-latest` leads the curated
+# DeepSeek picks, so the selector and the default agree.
+- id: agent-default-model
+  config:
+    provider: ktapi
+    model: deepseek-latest
