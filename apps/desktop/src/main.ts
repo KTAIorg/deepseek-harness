@@ -74,6 +74,7 @@ import { shouldDismissNewWelcome } from './kito-welcome-policy.ts'
 import { identityBaseUrl, KITO_CLAUDE_KEY_REF, KITO_IDENTITY_REFRESH_TOKEN_REF, KITO_IDENTITY_TOKEN_REF, KITO_NEWAPI_KEY_REF, refreshKitoIdentity } from './kito-identity.ts'
 import { createKitoIdentityRefresher } from './kito-identity-refresh.ts'
 import { createKitoIdentityKeepalive } from './kito-identity-keepalive.ts'
+import { ensureKitoModelKey } from './kito-model-credential.ts'
 import { createKitoSignIn, type KitoSignIn } from './kito-sign-in.ts'
 import { readStoredCredential } from './kito-credentials.ts'
 import { runKitoDesktopLink } from './kito-desktop-link.ts'
@@ -744,6 +745,21 @@ async function main(): Promise<void> {
     window.once('closed', () => { resolve() })
   })
 
+  /**
+   * Derive the account's ktapi relay key from a KT Identity login and store it
+   * as the model credential. A failure is logged rather than thrown: the sign-in
+   * itself succeeded, and the model route retries derivation on its next access.
+   * @param identityToken - KT Identity access token to derive from.
+   */
+  const persistKitoModelKey = async (identityToken: string): Promise<void> => {
+    try {
+      const credential = await ensureKitoModelKey(identityToken)
+      const saved = await welcomeBackend?.saveNamed(KITO_NEWAPI_KEY_REF, credential.key)
+      if (saved?.ok !== true) console.error('kito model key could not be stored')
+    } catch (error) {
+      console.error('kito model key derivation failed', error instanceof Error ? error.message : 'unknown')
+    }
+  }
   const refreshKitoIdentityToken = createKitoIdentityRefresher({
     readRefreshToken: () => readStoredCredential(KITO_IDENTITY_REFRESH_TOKEN_REF),
     refresh: refreshToken => refreshKitoIdentity(refreshToken),
@@ -751,7 +767,13 @@ async function main(): Promise<void> {
     saveRefreshToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false },
   })
   const kitoIdentityKeepalive = createKitoIdentityKeepalive({
-    refresh: () => refreshKitoIdentityToken(),
+    refresh: async () => {
+      const token = await refreshKitoIdentityToken()
+      // A renewed identity token also renews the model key derived from it, so an
+      // account whose relay key was revoked cannot keep a stale credential.
+      if (token !== undefined) void persistKitoModelKey(token)
+      return token
+    },
     onRenewed: () => { publishKitoAccount() },
   })
   app.on('will-quit', () => { kitoIdentityKeepalive.stop() })
@@ -1315,7 +1337,13 @@ async function main(): Promise<void> {
             publish: (state) => {
               if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
             },
-            saveIdentity: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false },
+            saveIdentity: async (token) => {
+              const saved = await welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false }
+              // The model key is derived from a stored identity token, so it follows
+              // the same sign-in rather than asking the person for a second credential.
+              if (saved.ok) void persistKitoModelKey(token)
+              return saved
+            },
             saveRefreshToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false },
             onSuccess: () => {
               void enterWorkspace({ activate: false }).then(() => { publishKitoAccount() }).catch(() => undefined)
