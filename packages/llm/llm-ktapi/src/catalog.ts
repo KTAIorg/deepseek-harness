@@ -3,11 +3,17 @@
  * model, intersecting it with the curated Kito picks, and attaching the pricing
  * a selector shows.
  *
- * ktapi exposes each model under several spellings (`DeepSeek Latest`,
- * `DeepSeek-Latest`, `deepseek/deepseek-latest`, `deepseek-latest`). They all
- * route to the same upstream, so a catalog keyed by the raw listing would show
- * duplicates; every id is normalized to one lowercase request id here.
+ * The listing itself is read by the shared pi-ai live-catalog reader, so this
+ * module starts from rows that already passed the chat-capability filter and
+ * carry whatever reasoning capability the gateway declared for them. What is
+ * left here is ktapi's own concern: the gateway exposes each model under
+ * several spellings (`DeepSeek Latest`, `DeepSeek-Latest`,
+ * `deepseek/deepseek-latest`, `deepseek-latest`), all routing to the same
+ * upstream, so a catalog keyed by the raw listing would show duplicates; every
+ * id is normalized to one lowercase request id here.
  */
+
+import type { LiveCatalogModel, LiveModelReasoning } from '@deepseek-ai/dsh-llm-pi-ai/src/live-catalog.ts'
 
 /** Context window assumed when the pricing row carries no size tag. */
 export const DEFAULT_CONTEXT = 131_072
@@ -70,6 +76,8 @@ export interface KtapiModel {
   readonly outputRatio?: number
   /** Groups the model is enabled for, as the pricing row declares them. */
   readonly groups?: readonly string[]
+  /** Reasoning capability the gateway declared for this model, when it declared one. */
+  readonly reasoning?: LiveModelReasoning
 }
 
 type JsonRecord = Record<string, unknown>
@@ -134,15 +142,24 @@ export function contextFromTags(tags: string | undefined): number {
   return Math.round(Number(match[1]) * multiplier)
 }
 
-/** @param payload - `GET /v1/models` body. @returns one record per listed model, keyed by normalized id. */
-export function parseModelsPayload(payload: unknown): Map<string, { id: string; name: string }> {
-  const byId = new Map<string, { id: string; name: string }>()
-  for (const row of asRows(payload)) {
-    const raw = typeof row.id === 'string' ? row.id.trim() : ''
-    if (!raw) continue
-    const id = normalizeModelId(raw)
+/**
+ * Fold the listing onto one row per normalized id, keeping the first spelling.
+ * @param listed - chat-capable rows from the shared live-catalog reader.
+ * @returns one row per normalized id.
+ */
+export function normalizeListing(listed: readonly LiveCatalogModel[]): Map<string, KtapiModel> {
+  const byId = new Map<string, KtapiModel>()
+  for (const row of listed) {
+    const id = normalizeModelId(row.id)
     if (!id || byId.has(id)) continue
-    byId.set(id, { id, name: raw })
+    byId.set(id, {
+      id,
+      name: row.name ?? row.id,
+      contextWindow: DEFAULT_CONTEXT,
+      maxTokens: DEFAULT_OUTPUT,
+      defaultVisible: false,
+      ...row.reasoning === undefined ? {} : { reasoning: row.reasoning },
+    })
   }
   return byId
 }
@@ -186,12 +203,12 @@ export function parsePricingPayload(payload: unknown): Map<string, KtapiPricing>
 
 /**
  * Join the account's listing with the shared pricing into the selector's catalog.
- * @param models - `GET /v1/models` body for the account's credential.
+ * @param models - chat-capable rows the shared live-catalog reader returned for this account.
  * @param pricing - `GET /api/pricing` body, shared by every account.
  * @returns the catalog in curated order first, then the rest by id.
  */
-export function buildKtapiCatalog(models: unknown, pricing: unknown): KtapiModel[] {
-  const listed = parseModelsPayload(models)
+export function buildKtapiCatalog(models: readonly LiveCatalogModel[], pricing: unknown): KtapiModel[] {
+  const listed = normalizeListing(models)
   const priced = parsePricingPayload(pricing)
   const picked = pickDefaultVisibleModelIds(listed.keys())
   const entries: KtapiModel[] = []
@@ -206,6 +223,7 @@ export function buildKtapiCatalog(models: unknown, pricing: unknown): KtapiModel
       ...row?.inputRatio === undefined ? {} : { inputRatio: row.inputRatio },
       ...row?.outputRatio === undefined ? {} : { outputRatio: row.outputRatio },
       ...row?.groups === undefined ? {} : { groups: row.groups },
+      ...listedEntry.reasoning === undefined ? {} : { reasoning: listedEntry.reasoning },
     })
   }
   const curatedOrder = new Map<string, number>()

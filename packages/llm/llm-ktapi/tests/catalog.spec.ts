@@ -3,22 +3,20 @@ import {
   buildKtapiCatalog,
   contextFromTags,
   DEFAULT_CONTEXT,
+  normalizeListing,
   normalizeModelId,
-  parseModelsPayload,
   parsePricingPayload,
   pickDefaultVisibleModelIds,
 } from '../src/catalog.ts'
 
-const listing = {
-  data: [
-    { id: 'DeepSeek Latest', object: 'model' },
-    { id: 'DeepSeek-Latest', object: 'model' },
-    { id: 'deepseek/deepseek-latest', object: 'model' },
-    { id: 'deepseek-v4-flash', object: 'model' },
-    { id: 'grok-latest', object: 'model' },
-    { id: 'some-other-model', object: 'model' },
-  ],
-}
+const listing = [
+  { id: 'DeepSeek Latest' },
+  { id: 'DeepSeek-Latest' },
+  { id: 'deepseek/deepseek-latest' },
+  { id: 'deepseek-v4-flash' },
+  { id: 'grok-latest' },
+  { id: 'some-other-model' },
+]
 
 const pricing = {
   data: [
@@ -29,7 +27,7 @@ const pricing = {
 
 describe('ktapi catalog', () => {
   it('folds every spelling of one model into a single request id', () => {
-    const listed = parseModelsPayload(listing)
+    const listed = normalizeListing(listing)
     expect([...listed.keys()]).toEqual([
       'deepseek-latest',
       'deepseek-v4-flash',
@@ -86,7 +84,17 @@ describe('ktapi catalog', () => {
     expect(parsePricingPayload(null).size).toBe(0)
   })
 
-  it('ignores listing rows without an id', () => {
-    expect([...parseModelsPayload({ data: [{ id: '  ' }, { id: 'ok' }, {}] }).keys()]).toEqual(['ok'])
+  it('keeps the reasoning capability the gateway declares', () => {
+    const catalog = buildKtapiCatalog([
+      { id: 'deepseek-latest', reasoning: { efforts: { low: 'low', high: 'high' }, defaultEffort: 'high' } },
+      { id: 'plain-model' },
+    ], undefined)
+    expect(catalog.find(entry => entry.id === 'deepseek-latest')?.reasoning)
+      .toEqual({ efforts: { low: 'low', high: 'high' }, defaultEffort: 'high' })
+    expect(catalog.find(entry => entry.id === 'plain-model')?.reasoning).toBeUndefined()
+  })
+
+  it('ignores listing rows whose id normalizes to nothing', () => {
+    expect([...normalizeListing([{ id: '   ' }, { id: 'ok' }]).keys()]).toEqual(['ok'])
   })
 })
