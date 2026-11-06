@@ -306,62 +306,62 @@ jobs:
         include:
           - platform: linux
             cores: '4'
-            runner: dsh-ubuntu-24-04-4core
+            runner: ubuntu-latest
             blacksmith: blacksmith-4vcpu-ubuntu-2404
             workload: typecheck
           - platform: linux
             cores: '8'
-            runner: dsh-ubuntu-24-04-8core
+            runner: ubuntu-latest
             blacksmith: blacksmith-8vcpu-ubuntu-2404
             workload: typecheck
           - platform: linux
             cores: '16'
-            runner: dsh-ubuntu-24-04-16core
+            runner: ubuntu-latest
             blacksmith: blacksmith-16vcpu-ubuntu-2404
             workload: typecheck
           - platform: linux
             cores: '32'
-            runner: dsh-ubuntu-24-04-32core
+            runner: ubuntu-latest
             blacksmith: blacksmith-32vcpu-ubuntu-2404
             workload: typecheck
           - platform: linux
             cores: '64'
-            runner: dsh-ubuntu-24-04-64core
+            runner: ubuntu-latest
             blacksmith: ''
             workload: typecheck
           - platform: linux
             cores: '96'
-            runner: dsh-ubuntu-24-04-96core
+            runner: ubuntu-latest
             blacksmith: ''
             workload: typecheck
           - platform: windows
             cores: '4'
-            runner: dsh-windows-2025-4core
+            runner: windows-latest
             blacksmith: blacksmith-4vcpu-windows-2025
             workload: production-site
           - platform: windows
             cores: '8'
-            runner: dsh-windows-2025-8core
+            runner: windows-latest
             blacksmith: blacksmith-8vcpu-windows-2025
             workload: production-site
           - platform: windows
             cores: '16'
-            runner: dsh-windows-2025-16core
+            runner: windows-latest
             blacksmith: blacksmith-16vcpu-windows-2025
             workload: production-site
           - platform: windows
             cores: '32'
-            runner: dsh-windows-2025-32core
+            runner: windows-latest
             blacksmith: blacksmith-32vcpu-windows-2025
             workload: production-site
           - platform: windows
             cores: '64'
-            runner: dsh-windows-2025-64core
+            runner: windows-latest
             blacksmith: ''
             workload: production-site
           - platform: windows
             cores: '96'
-            runner: dsh-windows-2025-96core
+            runner: windows-latest
             blacksmith: ''
             workload: production-site
     steps:
@@ -417,62 +417,62 @@ jobs:
         include:
           - platform: linux
             cores: '4'
-            runner: dsh-ubuntu-24-04-4core
+            runner: ubuntu-latest
             blacksmith: blacksmith-4vcpu-ubuntu-2404
             workers: '4'
           - platform: linux
             cores: '8'
-            runner: dsh-ubuntu-24-04-8core
+            runner: ubuntu-latest
             blacksmith: blacksmith-8vcpu-ubuntu-2404
             workers: '8'
           - platform: linux
             cores: '16'
-            runner: dsh-ubuntu-24-04-16core
+            runner: ubuntu-latest
             blacksmith: blacksmith-16vcpu-ubuntu-2404
             workers: '16'
           - platform: linux
             cores: '32'
-            runner: dsh-ubuntu-24-04-32core
+            runner: ubuntu-latest
             blacksmith: blacksmith-32vcpu-ubuntu-2404
             workers: '32'
           - platform: linux
             cores: '64'
-            runner: dsh-ubuntu-24-04-64core
+            runner: ubuntu-latest
             blacksmith: ''
             workers: '32'
           - platform: linux
             cores: '96'
-            runner: dsh-ubuntu-24-04-96core
+            runner: ubuntu-latest
             blacksmith: ''
             workers: '32'
           - platform: windows
             cores: '4'
-            runner: dsh-windows-2025-4core
+            runner: windows-latest
             blacksmith: blacksmith-4vcpu-windows-2025
             workers: '2'
           - platform: windows
             cores: '8'
-            runner: dsh-windows-2025-8core
+            runner: windows-latest
             blacksmith: blacksmith-8vcpu-windows-2025
             workers: '2'
           - platform: windows
             cores: '16'
-            runner: dsh-windows-2025-16core
+            runner: windows-latest
             blacksmith: blacksmith-16vcpu-windows-2025
             workers: '2'
           - platform: windows
             cores: '32'
-            runner: dsh-windows-2025-32core
+            runner: windows-latest
             blacksmith: blacksmith-32vcpu-windows-2025
             workers: '2'
           - platform: windows
             cores: '64'
-            runner: dsh-windows-2025-64core
+            runner: windows-latest
             blacksmith: ''
             workers: '2'
           - platform: windows
             cores: '96'
-            runner: dsh-windows-2025-96core
+            runner: windows-latest
             blacksmith: ''
             workers: '2'
     steps:
