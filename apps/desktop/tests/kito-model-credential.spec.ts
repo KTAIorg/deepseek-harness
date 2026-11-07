@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ensureKitoModelKey, formatRelayKey, KITO_MANAGED_TOKEN_NAME } from '../src/kito-model-credential.ts'
+import { ensureKitoModelKey, ensureKitoModelKeyWithRefresh, formatRelayKey, isIdentityTokenRejected, KITO_MANAGED_TOKEN_NAME, KtapiHttpError } from '../src/kito-model-credential.ts'
 
 /** One recorded request, so a test can assert the route and headers that were used. */
 interface Call {
@@ -110,5 +110,47 @@ describe('Kito model credential', () => {
   it('formats relay keys idempotently', () => {
     expect(formatRelayKey('plain')).toBe('sk-plain')
     expect(formatRelayKey('sk-plain')).toBe('sk-plain')
+  })
+
+  it('treats only a rejected identity token as refreshable', () => {
+    expect(isIdentityTokenRejected(new KtapiHttpError('invalid or inactive Identity token', 401))).toBe(true)
+    expect(isIdentityTokenRejected(new KtapiHttpError('session limit', 409))).toBe(false)
+    expect(isIdentityTokenRejected(new Error('socket hang up'))).toBe(false)
+  })
+
+  it('re-derives with a renewed token when the stored one was rejected', { timeout: 20_000 }, async () => {
+    let seen = 0
+    const { fetchImpl, calls } = recorder(() => {
+      seen += 1
+      return seen === 1 ? json({ message: 'invalid or inactive Identity token' }, 401) : json({ key: 'abc123' })
+    })
+    const credential = await ensureKitoModelKeyWithRefresh(
+      'stale-token',
+      async () => 'fresh-token',
+      { fetchImpl, baseUrl: 'https://ktapi.example' },
+    )
+
+    expect(credential.key).toBe('sk-abc123')
+    expect(calls.map(call => (call.init?.headers as Record<string, string>).authorization))
+      .toEqual(['Bearer stale-token', 'Bearer fresh-token'])
+  })
+
+  it('does not spend the refresh when the failure is not a rejected token', { timeout: 20_000 }, async () => {
+    const { fetchImpl } = recorder(() => json({ message: 'server overloaded' }, 503))
+    let refreshed = 0
+
+    await expect(ensureKitoModelKeyWithRefresh('identity-token', async () => {
+      refreshed += 1
+      return 'fresh-token'
+    }, { fetchImpl, baseUrl: 'https://ktapi.example' })).rejects.toThrow(/server overloaded/)
+
+    expect(refreshed).toBe(0)
+  })
+
+  it('surfaces the original failure when no renewed token is available', { timeout: 20_000 }, async () => {
+    const { fetchImpl } = recorder(() => json({ message: 'invalid or inactive Identity token' }, 401))
+
+    await expect(ensureKitoModelKeyWithRefresh('stale-token', async () => undefined,
+      { fetchImpl, baseUrl: 'https://ktapi.example' })).rejects.toThrow(/invalid or inactive Identity token/)
   })
 })

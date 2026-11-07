@@ -75,7 +75,7 @@ import { shouldDismissNewWelcome } from './kito-welcome-policy.ts'
 import { identityBaseUrl, KITO_CLAUDE_KEY_REF, KITO_IDENTITY_REFRESH_TOKEN_REF, KITO_IDENTITY_TOKEN_REF, KITO_NEWAPI_KEY_REF, refreshKitoIdentity } from './kito-identity.ts'
 import { createKitoIdentityRefresher } from './kito-identity-refresh.ts'
 import { createKitoIdentityKeepalive } from './kito-identity-keepalive.ts'
-import { ensureKitoModelKey } from './kito-model-credential.ts'
+import { ensureKitoModelKeyWithRefresh } from './kito-model-credential.ts'
 import { createKitoSignIn, type KitoSignIn } from './kito-sign-in.ts'
 import { readStoredCredential } from './kito-credentials.ts'
 import { runKitoDesktopLink } from './kito-desktop-link.ts'
@@ -773,7 +773,9 @@ async function main(): Promise<void> {
    */
   const persistKitoModelKey = async (identityToken: string): Promise<void> => {
     try {
-      const credential = await ensureKitoModelKey(identityToken)
+      // A stored access token that ktapi has stopped accepting recovers here,
+      // rather than leaving the model list empty until the next sign-in.
+      const credential = await ensureKitoModelKeyWithRefresh(identityToken, () => refreshKitoIdentityToken())
       const saved = await welcomeBackend?.saveNamed(KITO_NEWAPI_KEY_REF, credential.key)
       if (saved?.ok !== true) console.error('kito model key could not be stored')
     } catch (error) {
