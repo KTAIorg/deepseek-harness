@@ -229,9 +229,12 @@ it('keeps direct Kito launcher actions free of a second login from the first fra
   expect(settings.getAttribute('aria-keyshortcuts')).toBe('Meta+,')
   fireEvent.click(settings)
   expect(openSettings).toHaveBeenCalledOnce()
-  const versionButton = screen.getByRole('button', { name: zh.contactUs })
-  expect(versionButton.textContent).toBe('v0.2.2-rc.1')
-  fireEvent.click(versionButton)
+  // The feedback entry carries its own name: showing the build version here
+  // read as part of the version display rather than as a control.
+  const feedbackButton = screen.getByRole('button', { name: zh.contactUs })
+  expect(feedbackButton.textContent).toBe(zh.contactUs)
+  expect(feedbackButton.textContent).not.toContain('v0.2.2')
+  fireEvent.click(feedbackButton)
   expect(operations.contactUs).toHaveBeenCalledOnce()
   expect(screen.queryByRole('button', { name: zh.signIn })).toBeNull()
   expect(fetchAccount).not.toHaveBeenCalled()

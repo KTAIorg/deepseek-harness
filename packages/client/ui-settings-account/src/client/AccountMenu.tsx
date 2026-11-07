@@ -74,9 +74,15 @@ export function AccountMenu({
           <IconSettingsOutlineMedium size={14} />
           {wide && <span className={css.label}>{t('settings')}</span>}
         </button>
-        <button type="button" className={css.action} data-collapsed={!wide} aria-label={t('contactUs')} onClick={contactUs}>
+        {/* The paper plane opens the feedback page. Its label is the entry's own
+            name: showing the build version here made the button read as part of
+            the version display, so a click looked like it opened something
+            unexplained. The version stays where it is displayed, not on a
+            control. */}
+        <button type="button" className={css.action} data-collapsed={!wide} aria-label={t('contactUs')}
+          title={t('contactUs')} onClick={contactUs}>
           <IconPaperPlaneOutlineMedium size={14} />
-          {wide && <span className={css.label}>{versionLabel}</span>}
+          {wide && <span className={css.label}>{t('contactUs')}</span>}
         </button>
       </div>
       : <Menu open={open} side="top" portal autoFocus className={css.anchor} listClassName={signedIn ? undefined : css.signedOutMenu}
