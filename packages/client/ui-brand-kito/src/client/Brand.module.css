@@ -319,8 +319,11 @@
   text-align: center;
 }
 
+/* A control that only differs from body text by a near-invisible surface reads
+   as text. Give it an edge, a press state, and a visible focus ring so the
+   account section's entries look like what they do. */
 .panelButton {
-  border: none;
+  border: 1px solid var(--dsw-alias-border-l);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-interactive-bg);
   color: var(--dsw-alias-label-primary);
@@ -328,11 +331,20 @@
   font: inherit;
   font-size: 13px;
   line-height: 18px;
-  padding: 6px 10px;
+  padding: 7px 12px;
+}
+
+.panelButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-border-inverted);
+  outline-offset: 2px;
 }
 
 @media (hover: hover) {
   .panelButton:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
+}
+
+.panelButton:active {
+  background: var(--dsw-alias-interactive-bg-active);
 }
