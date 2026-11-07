@@ -12,8 +12,9 @@ import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { LlmError, type AdapterRegistrationHandle } from '@deepseek-ai/dsh-llm'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
-import { authContextFrom, credentialStoreFrom } from '@deepseek-ai/dsh-llm-pi-ai/src/auth.ts'
-import { resolveProfiles, type ResolvedPiAiProviderProfile } from '@deepseek-ai/dsh-llm-pi-ai/src/config.ts'
+import {
+  authContextFrom, credentialStoreFrom, resolveProfiles, type ResolvedPiAiProviderProfile,
+} from '@deepseek-ai/dsh-llm-pi-ai/host'
 import z from '@deepseek-ai/schemastery'
 import { DEFAULT_CONTEXT, DEFAULT_OUTPUT, type KtapiModel } from './catalog.ts'
 import { CATALOG_TIMEOUT_MS, fetchKtapiCatalog, type KtapiCatalogSnapshot } from './discovery.ts'
