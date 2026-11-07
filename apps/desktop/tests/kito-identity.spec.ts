@@ -14,6 +14,7 @@ function recorder(handler: Array<() => Response>): { fetchImpl: typeof fetch; ur
     urls.push(String(input))
     const next = handler[Math.min(index, handler.length - 1)]
     index += 1
+    if (next === undefined) throw new Error('recorder ran out of responses')
     return next()
   }) as typeof fetch
   return { fetchImpl, urls }
