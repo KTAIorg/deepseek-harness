@@ -1,3 +1,4 @@
+import { startDesktopLog, type DesktopLog } from './desktop-log.ts'
 import { installFileActions } from './file-actions.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
@@ -96,6 +97,22 @@ let shuttingDown = false
  * development restart command. The installer handoff has its own before-quit branch.
  */
 let skipQuitConfirmation = false
+/**
+ * Whether this build exposes the developer tools.
+ *
+ * A packaged build ships to end users, so no menu entry, accelerator, or
+ * in-window menu may open the debugging surface there; development builds keep
+ * the labelled entry and the hidden shortcuts.
+ */
+const devToolsEnabled = !app.isPackaged
+
+/** Mirrored console output, started once the user data path is available. */
+let desktopLog: DesktopLog | undefined
+
+/** @returns the directory holding the shell's log files. */
+function logDirectory(): string {
+  return join(app.getPath('userData'), 'logs')
+}
 let windowsLanguage: string | undefined = readDesktopLocaleCache(app.getPath('userData'))
 /**
  * Whether the backend has reached ready: false until the first ready, back to
@@ -302,7 +319,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
       sandbox: true,
       webSecurity: true,
       webviewTag: primary,
-      devTools: true,
+      devTools: devToolsEnabled,
     },
   })
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -398,7 +415,10 @@ async function main(): Promise<void> {
   // Dock and Finder launches inherit only launchd's environment; every Host shares one login-shell read.
   const loginShellRead = new AbortController()
   // The probe runs in its own process group, which outlives Desktop unless the read is aborted.
-  app.on('will-quit', () => { loginShellRead.abort() })
+  app.on('will-quit', () => {
+    loginShellRead.abort()
+    desktopLog?.close()
+  })
   const loginShell = readDesktopLoginShellEnvironment(process.env, resolveDesktopLoginShellConfig(process.env), {
     signal: loginShellRead.signal,
   }).then((result) => {
@@ -1108,6 +1128,8 @@ async function main(): Promise<void> {
       : { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
     { type: 'separator' },
     { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
+    { label: currentDesktopLocale().messages.openLogsMenu,
+      click: () => { void shell.openPath(logDirectory()).catch((error: unknown) => { console.error(error) }) } },
     ...process.platform === 'darwin' || process.platform === 'win32'
       ? [{ label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } }] : [],
     { type: 'separator' },
@@ -1119,22 +1141,21 @@ async function main(): Promise<void> {
         quitWithoutConfirmation()
       } },
     ] : [],
-    { role: 'toggleDevTools', label: currentDesktopLocale().messages.toggleDevToolsMenu },
+    ...devToolsEnabled ? [{ role: 'toggleDevTools' as const, label: currentDesktopLocale().messages.toggleDevToolsMenu }] : [],
     { type: 'separator' },
     ...hideCommands,
     { role: 'quit', ...(darwin ? { label: currentDesktopLocale().messages.quitApplication }
       : process.platform === 'win32' ? { label: currentDesktopLocale().messages.exitApplication } : {}) },
   ]
   const devToolsF12Shortcut: MenuItemConstructorOptions = { role: 'toggleDevTools', visible: false, accelerator: 'F12' }
-  const windowsDevToolsShortcuts: MenuItemConstructorOptions[] = [
-    { role: 'toggleDevTools', visible: false },
-    devToolsF12Shortcut,
-  ]
+  const windowsDevToolsShortcuts: MenuItemConstructorOptions[] = devToolsEnabled
+    ? [{ role: 'toggleDevTools', visible: false }, devToolsF12Shortcut]
+    : []
   const refreshApplicationMenu = (): void => {
     Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32'
       ? windowsDevToolsShortcuts : [{
         label: darwin ? app.name : currentDesktopLocale().messages.application,
-        submenu: [...applicationItems(), devToolsF12Shortcut],
+        submenu: [...applicationItems(), ...devToolsEnabled ? [devToolsF12Shortcut] : []],
       }, ...platformMenus()]))
     tray?.relabel()
   }
@@ -1585,6 +1606,9 @@ const ownsDesktopInstance = claimDesktopSingleInstance(app, (argv) => {
 })
 
 if (ownsDesktopInstance) void app.whenReady().then(async () => {
+  // Before anything else can fail: a packaged build has no terminal, so this
+  // is the only place a startup failure stays readable afterwards.
+  desktopLog = startDesktopLog(logDirectory())
   initKitoSentry({ packaged: app.isPackaged, release: app.getVersion() })
   await main()
 }).catch(async (error: unknown) => {
