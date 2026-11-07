@@ -1,5 +1,5 @@
 ---
-description: "The ktapi model catalog: normalizes the gateway listing, applies the curated Kito picks, and attaches pricing."
+description: "The ktapi model catalog: normalizes the gateway listing, orders the curated Kito picks first, and attaches pricing."
 kind: "package-reference"
 ---
 
@@ -11,8 +11,9 @@ The catalog layer for the Kito model route. ktapi names one model several ways
 (`DeepSeek Latest`, `DeepSeek-Latest`, `deepseek/deepseek-latest`, `deepseek-latest`)
 and prices it in a separate payload, so a selector that rendered the raw listing
 would show the same model four times. This package folds every spelling into one
-normalized request id, intersects the account's own listing with the curated Kito
-picks, and attaches the pricing a selector shows.
+normalized request id, attaches the pricing a selector shows, and serves every
+model the account may call with the curated Kito picks first (`showAllModels`,
+default on; `false` restores the curated shortlist of one entry per group).
 
 The account's listing is read by the shared pi-ai live-catalog reader (`GET {baseURL}/models`
 with the relay key derived

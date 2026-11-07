@@ -92,6 +92,8 @@ export function apply(ctx) {
   if (!(ctx instanceof Context)) throw new Error('desktop runtime: external plugin loaded another Cordis instance')
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke',
     handler(_request, response) { response.end('plugin route ready') } }))
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-llm-providers',
+    handler(_request, response) { response.end(JSON.stringify(ctx.llm.listProviders())) } }))
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-install',
     async handler(_request, response) {
       try {
@@ -135,7 +137,7 @@ export function apply(ctx) {
   }
 }
 `)
-    writeFileSync(join(plugin, 'bundle.yml'), '- insert:\n    - id: desktop-runtime-smoke-plugin\n      name: desktop-runtime-smoke-plugin\n      inject: [webServer, officeToPdf, skills, pluginManager]\n')
+    writeFileSync(join(plugin, 'bundle.yml'), '- insert:\n    - id: desktop-runtime-smoke-plugin\n      name: desktop-runtime-smoke-plugin\n      inject: [webServer, officeToPdf, skills, pluginManager, llm]\n')
     cpSync(plugin, join(profile, 'node_modules', pluginName), { recursive: true })
     const manifest = JSON.parse(readFileSync(join(profile, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>
@@ -157,6 +159,16 @@ export function apply(ctx) {
     }
     const pluginResponse = await fetch(new URL('/desktop-smoke', ready.url), { headers: { cookie } })
     if (await pluginResponse.text() !== 'plugin route ready') throw new Error('desktop runtime: plugin HTTP route failed')
+    // The packaged application must register the in-box ktapi model route end
+    // to end: profile bundle tuple, Loader import of the shipped package, and
+    // adapter registration. A release missing any of those layers shipped
+    // model selectors that read empty on every account.
+    const providersResponse = await fetch(new URL('/desktop-smoke-llm-providers', ready.url), { headers: { cookie } })
+    const providers = await providersResponse.json() as ReadonlyArray<{ id?: string }>
+    if (!providers.some(provider => provider.id === 'ktapi')) {
+      throw new Error(`desktop runtime: the packaged ktapi model route did not register: ${JSON.stringify(providers)}`)
+    }
+    console.log('desktop runtime: packaged ktapi model route registered')
     const installation = await fetch(new URL('/desktop-smoke-install', ready.url), {
       headers: { cookie }, signal: AbortSignal.timeout(120_000),
     })

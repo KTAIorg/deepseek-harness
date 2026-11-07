@@ -22,7 +22,7 @@ import {
 import type { DesktopPaths } from './paths.ts'
 import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
-import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
+import { ensureProfileBundles, initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
 
 /**
@@ -97,6 +97,11 @@ export class DesktopProjectManager {
       readDesktopRuntime(this.runtime.dsh)
       migrateProfileSettings(this.paths.profile)
       createPluginProfile(this.paths.profile)
+      // A profile written by an earlier release carries a narrower bundle
+      // list, and `initProfile` never rewrites an initialized manifest: this
+      // is what actually upgrades the profile to the shipped bundles instead
+      // of only seeding a fresh one.
+      ensureProfileBundles(this.paths.profile, kitoBundles())
       removeLinkProjections(this.paths.profile)
     })
   }

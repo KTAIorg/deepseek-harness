@@ -15,6 +15,7 @@ import { afterAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
   composeEntries,
   createRuntimeResolution,
+  ensureProfileBundles,
   getDshRuntimeVersion,
   initProfile,
   loadProfile,
@@ -239,6 +240,29 @@ describe('initProfile', () => {
     initProfile(dir, ['other'])
     expect(readProfileManifest('t', dir).dsh?.profile?.bundles).toEqual(['@deepseek-ai/dsh-base'])
     expect(readFileSync(join(dir, PROFILE_PATCH_FILENAME), 'utf8')).toContain('- id: x')
+  })
+})
+
+describe('ensureProfileBundles', () => {
+  it('appends missing installation-owned bundles after the profile list, preserving user entries', () => {
+    const dir = tmp()
+    initProfile(dir, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'])
+    ensureProfileBundles(dir, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-llm-ktapi'])
+    expect(readProfileManifest('dsh', dir).dsh?.profile?.bundles)
+      .toEqual(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-llm-ktapi'])
+    // A user-added bundle keeps its place.
+    writeProfileManifest(dir, { name: 'dsh-profile-desktop', dsh: { profile: { bundles: ['user-extra', '@deepseek-ai/dsh-base'] } } })
+    ensureProfileBundles(dir, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-llm-ktapi'])
+    expect(readProfileManifest('dsh', dir).dsh?.profile?.bundles)
+      .toEqual(['user-extra', '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-llm-ktapi'])
+  })
+
+  it('does not rewrite a manifest that already carries every owned bundle', () => {
+    const dir = tmp()
+    initProfile(dir, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-llm-ktapi'])
+    const before = readFileSync(join(dir, 'package.json'), 'utf8')
+    ensureProfileBundles(dir, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-llm-ktapi'])
+    expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(before)
   })
 })
 
