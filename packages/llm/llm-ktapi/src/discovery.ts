@@ -9,7 +9,7 @@
  * catalog instead of hiding models the account can already call.
  */
 
-import { fetchLiveCatalog } from '@deepseek-ai/dsh-llm-pi-ai/src/live-catalog.ts'
+import { fetchLiveCatalog } from '@deepseek-ai/dsh-llm-pi-ai/host'
 import { buildKtapiCatalog, type KtapiModel } from './catalog.ts'
 
 /** Default ktapi origin. */

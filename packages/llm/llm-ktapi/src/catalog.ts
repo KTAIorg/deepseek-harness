@@ -13,7 +13,7 @@
  * id is normalized to one lowercase request id here.
  */
 
-import type { LiveCatalogModel, LiveModelReasoning } from '@deepseek-ai/dsh-llm-pi-ai/src/live-catalog.ts'
+import type { LiveCatalogModel, LiveModelReasoning } from '@deepseek-ai/dsh-llm-pi-ai/host'
 
 /** Context window assumed when the pricing row carries no size tag. */
 export const DEFAULT_CONTEXT = 131_072
