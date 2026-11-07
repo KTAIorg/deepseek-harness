@@ -187,4 +187,56 @@ describe('real Loader composition', () => {
     expect((await live.llm.listModels(Ktapi.KTAI_PROVIDER)).map(model => model.id))
       .toEqual(['grok-4.6', 'deepseek-latest'])
   })
+
+  it('reports a stored sign-in with no relay key instead of an empty list', { timeout: 60_000 }, async () => {
+    // The desktop derives the relay key from the identity session. When that
+    // derivation fails the account is signed in and the route has nothing, and
+    // an empty selector is indistinguishable from "the catalog is empty".
+    root = await mkdtemp(join(tmpdir(), 'dsh-llm-ktapi-no-key-'))
+    const configPath = join(root, 'cordis.yml')
+    await writeFile(configPath, [
+      '- name: fixture-dependencies',
+      "- name: '@deepseek-ai/dsh-llm'",
+      "- name: '@deepseek-ai/dsh-llm-ktapi'",
+      '  config:',
+      "    baseURL: 'https://ktapi.example/v1'",
+      '',
+    ].join('\n'))
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => gateway(String(input))) as typeof fetch
+
+    const stored = new Map<string, string>([['KITO_IDENTITY_TOKEN', 'identity-access-token']])
+    const dependencies = {
+      name: 'fixture-dependencies',
+      apply(ctx: Context) {
+        ctx.provide('credentials', {
+          resolve: async (ref: string) => stored.has(ref) ? { value: stored.get(ref), source: 'file', ref } : undefined,
+        } as never)
+      },
+    }
+
+    context = new Context()
+    context.baseUrl = pathToFileURL(root).href + '/'
+    await context.plugin(Loader)
+    context.loader.builtins.include = Include
+    const modules = new Map<string, unknown>([
+      ['fixture-dependencies', dependencies],
+      ['@deepseek-ai/dsh-llm', LlmRuntime],
+      ['@deepseek-ai/dsh-llm-ktapi', Ktapi],
+    ])
+    context.loader.internal = {
+      version: 'v2',
+      async import(specifier: string) {
+        if (!modules.has(specifier)) throw new Error(`unexpected Loader import: ${specifier}`)
+        return modules.get(specifier)
+      },
+    } as unknown as NonNullable<typeof context.loader.internal>
+    await context.loader.create({
+      name: 'cordis:include',
+      config: { path: pathToFileURL(configPath).href },
+    })
+    await context.loader.await()
+
+    await expect(context.llm.listModels(Ktapi.KTAI_PROVIDER)).rejects.toThrow(/KITO_NEWAPI_API_KEY was not derived/)
+  })
 })

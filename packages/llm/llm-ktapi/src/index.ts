@@ -10,7 +10,7 @@
 
 import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import type { AdapterRegistrationHandle } from '@deepseek-ai/dsh-llm'
+import { LlmError, type AdapterRegistrationHandle } from '@deepseek-ai/dsh-llm'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
 import { authContextFrom, credentialStoreFrom } from '@deepseek-ai/dsh-llm-pi-ai/src/auth.ts'
 import { resolveProfiles, type ResolvedPiAiProviderProfile } from '@deepseek-ai/dsh-llm-pi-ai/src/config.ts'
@@ -30,6 +30,8 @@ export const KTAI_PROVIDER = 'ktapi'
 export interface Config {
   /** Credential reference holding the relay key derived from the KT Identity login. */
   apiKeyEnv: Volatile<string>
+  /** Credential reference holding the KT Identity session the relay key is derived from. */
+  identityTokenRef: Volatile<string>
   /** Gateway origin, including its `/v1` segment. */
   baseURL: Volatile<string>
   /** Name shown in the model selector. */
@@ -42,6 +44,7 @@ export interface Config {
 
 export const Config = z.object({
   apiKeyEnv: z.string().role('credential-ref').default('KITO_NEWAPI_API_KEY').volatile(),
+  identityTokenRef: z.string().role('credential-ref').default('KITO_IDENTITY_TOKEN').volatile(),
   baseURL: z.string().default('https://ktapi.cc/v1').volatile(),
   displayName: z.string().default('KT AI').volatile(),
   modelsMaxAgeMs: z.number().min(0).default(600_000).volatile(),
@@ -51,6 +54,7 @@ export const Config = z.object({
 /** Detached configuration values for one operation. */
 interface Options {
   readonly apiKeyEnv: string
+  readonly identityTokenRef: string
   readonly baseURL: string
   readonly displayName: string
   readonly modelsMaxAgeMs: number
@@ -64,6 +68,7 @@ const BOOTSTRAP_MODEL = 'deepseek-latest'
 function optionsOf(config: Config): Options {
   return {
     apiKeyEnv: config.apiKeyEnv.get(),
+    identityTokenRef: config.identityTokenRef.get(),
     baseURL: config.baseURL.get() || 'https://ktapi.cc/v1',
     displayName: config.displayName.get(),
     modelsMaxAgeMs: config.modelsMaxAgeMs.get(),
@@ -134,11 +139,24 @@ export function apply(ctx: Context, config: Config): void {
 
   /**
    * Resolve the relay key through the credential seam.
+   *
+   * A stored KT Identity session with no relay key is a broken state, not a
+   * signed-out one: the account is signed in and the desktop was supposed to
+   * derive the key from it. Reporting that as "no credential" leaves the model
+   * selector empty with nothing said, which is exactly how a failed derivation
+   * reads to the person looking at it, so it fails loud instead.
    * @returns the relay key, or undefined while the account is signed out.
    */
   const resolveApiKey = async (): Promise<string | undefined> => {
-    const hit = await ctx.credentials.resolve(credentialRef(optionsOf(config).apiKeyEnv))
-    return hit?.value
+    const { apiKeyEnv, identityTokenRef } = optionsOf(config)
+    const hit = await ctx.credentials.resolve(credentialRef(apiKeyEnv))
+    if (hit?.value !== undefined) return hit.value
+    const identity = await ctx.credentials.resolve(credentialRef(identityTokenRef))
+    if (identity?.value === undefined) return undefined
+    throw new LlmError(
+      `KT sign-in is stored but ${apiKeyEnv} was not derived from it; the model list stays empty until the relay key is stored`,
+      'KTAI_RELAY_KEY_MISSING',
+    )
   }
 
   const adapter = new PiAiAdapter({
