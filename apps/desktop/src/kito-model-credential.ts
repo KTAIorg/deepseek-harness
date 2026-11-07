@@ -39,6 +39,21 @@ export interface KitoModelCredentialInput {
 
 type JsonRecord = Record<string, unknown>
 
+/**
+ * One ktapi exchange that answered with a non-success status.
+ *
+ * The payload's own message is what a person should read, but recovering from
+ * an expired identity token needs the status itself, which the message does not
+ * carry.
+ */
+export class KtapiHttpError extends Error {
+  /** @param message - readable failure. @param status - HTTP status ktapi answered with. */
+  constructor(message: string, readonly status: number) {
+    super(message)
+    this.name = 'KtapiHttpError'
+  }
+}
+
 function asRecord(value: unknown): JsonRecord | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as JsonRecord : undefined
 }
@@ -112,7 +127,7 @@ async function ensureViaDedicatedRoute(
   // An older ktapi without this route falls back to the session path below.
   if (ensured.response.status === 404) return undefined
   if (!ensured.response.ok) {
-    throw new Error(errorMessage(ensured.payload, `ktapi token ensure failed (${String(ensured.response.status)})`))
+    throw new KtapiHttpError(errorMessage(ensured.payload, `ktapi token ensure failed (${String(ensured.response.status)})`), ensured.response.status)
   }
   const key = stringField(ensured.payload, 'key') ?? stringField(asRecord(ensured.payload)?.data, 'key')
   if (key === undefined) throw new Error('ktapi token ensure returned no key')
@@ -164,7 +179,7 @@ async function ensureViaSession(
     signal,
   })
   if (!ensured.response.ok) {
-    throw new Error(errorMessage(ensured.payload, `ktapi session ensure failed (${String(ensured.response.status)})`))
+    throw new KtapiHttpError(errorMessage(ensured.payload, `ktapi session ensure failed (${String(ensured.response.status)})`), ensured.response.status)
   }
   if (ensured.cookie === undefined) throw new Error('ktapi session ensure returned no session cookie')
   const userId = userIdFrom(ensured.payload)
@@ -178,7 +193,7 @@ async function ensureViaSession(
       signal,
     })
     if (!listed.response.ok) {
-      throw new Error(errorMessage(listed.payload, `ktapi token list failed (${String(listed.response.status)})`))
+      throw new KtapiHttpError(errorMessage(listed.payload, `ktapi token list failed (${String(listed.response.status)})`), listed.response.status)
     }
     return tokenRows(listed.payload).find((row) => {
       const name = typeof row.name === 'string' ? row.name.trim().toLowerCase() : ''
@@ -197,7 +212,7 @@ async function ensureViaSession(
     })
     const failed = !minted.response.ok || asRecord(minted.payload)?.success === false
     if (failed) {
-      throw new Error(errorMessage(minted.payload, `ktapi token create failed (${String(minted.response.status)})`))
+      throw new KtapiHttpError(errorMessage(minted.payload, `ktapi token create failed (${String(minted.response.status)})`), minted.response.status)
     }
     created = true
     row = await findManaged()
@@ -213,7 +228,7 @@ async function ensureViaSession(
   })
   const key = stringField(keyResult.payload, 'key')
   if (!keyResult.response.ok || key === undefined) {
-    throw new Error(errorMessage(keyResult.payload, `ktapi token key failed (${String(keyResult.response.status)})`))
+    throw new KtapiHttpError(errorMessage(keyResult.payload, `ktapi token key failed (${String(keyResult.response.status)})`), keyResult.response.status)
   }
   return { key: formatRelayKey(key), created }
 }
@@ -234,4 +249,42 @@ export async function ensureKitoModelKey(
   const baseUrl = (input.baseUrl ?? newapiBaseUrl()).replace(/\/+$/, '')
   const dedicated = await ensureViaDedicatedRoute(token, baseUrl, input)
   return dedicated ?? ensureViaSession(token, baseUrl, input)
+}
+
+/**
+ * Whether a derivation failure means the identity token itself was rejected.
+ *
+ * The stored access token outlives nothing in particular: once it stops being
+ * active, every ktapi exchange answers 401 while the shell keeps showing the
+ * account it last saw. Deriving again after a refresh is what recovers that
+ * state instead of leaving the model list empty until the next sign-in.
+ * @param error - the derivation failure.
+ * @returns whether refreshing the identity token could change the outcome.
+ */
+export function isIdentityTokenRejected(error: unknown): boolean {
+  return error instanceof KtapiHttpError && error.status === 401
+}
+
+/**
+ * Derive the relay key, retrying once with a refreshed identity token when the
+ * stored one was rejected.
+ * @param identityToken - current KT Identity access token.
+ * @param refreshIdentity - obtains a renewed access token, or undefined when none is available.
+ * @param input - request seams.
+ * @returns the derived credential.
+ * @throws when the first attempt fails for another reason, or the retry fails too.
+ */
+export async function ensureKitoModelKeyWithRefresh(
+  identityToken: string,
+  refreshIdentity: () => Promise<string | undefined>,
+  input: KitoModelCredentialInput = {},
+): Promise<KitoModelCredential> {
+  try {
+    return await ensureKitoModelKey(identityToken, input)
+  } catch (error) {
+    if (!isIdentityTokenRejected(error)) throw error
+    const renewed = await refreshIdentity()
+    if (renewed === undefined) throw error
+    return await ensureKitoModelKey(renewed, input)
+  }
 }
