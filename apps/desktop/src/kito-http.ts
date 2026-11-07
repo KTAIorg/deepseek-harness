@@ -3,6 +3,7 @@
 import { Resolver } from 'node:dns/promises'
 import type { IncomingHttpHeaders } from 'node:http'
 import { request as httpsRequest } from 'node:https'
+import { proxyRequest, systemProxy } from './kito-proxy.ts'
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
@@ -77,9 +78,24 @@ export async function resolveKtapiHost(hostname: string): Promise<string | undef
  */
 export const kitoFetch: typeof fetch = async (input, init) => {
   const url = requestUrl(input)
+  // A configured proxy resolves the target itself, so pinning an address here
+  // would only route the request around it.
+  const proxy = await activeProxy()
+  if (proxy !== undefined) return await proxyRequest(proxy, url, init)
   const address = await resolveKtapiHost(url.hostname)
   if (address === undefined) return fetch(input, init)
   return fetchByAddress(url, address, init)
+}
+
+/** Cached proxy lookup: the system setting changes far less often than these calls run. */
+let proxyCache: { readonly url: URL | undefined; readonly readAt: number } | undefined
+
+/** @returns the proxy to tunnel these calls through, or undefined for a direct connection. */
+async function activeProxy(): Promise<URL | undefined> {
+  if (proxyCache !== undefined && Date.now() - proxyCache.readAt < 60_000) return proxyCache.url
+  const url = await systemProxy()
+  proxyCache = { url, readAt: Date.now() }
+  return url
 }
 
 /** @param signal - caller cancellation. @param ms - request deadline. @returns a signal that aborts on either condition. */
