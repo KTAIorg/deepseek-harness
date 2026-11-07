@@ -119,6 +119,7 @@ export function apply(ctx: Context, config: Config): void {
 
   let snapshot: KtapiCatalogSnapshot | undefined
   let reading: Promise<void> | undefined
+  let revision = 0
   let registration: AdapterRegistrationHandle | undefined
 
   /** @returns whether the cached catalog still satisfies the configured lifetime. */
@@ -150,38 +151,70 @@ export function apply(ctx: Context, config: Config): void {
    * Read the account's catalog and republish the route so selectors pick it up.
    * A refused credential or a failed read keeps the previous catalog: the route
    * continues serving what the account could already call.
+   *
+   * A request that arrives while a read is running re-runs once that read
+   * settles, because the running read may have started before the credential
+   * this request is about. Without that, a key landing mid-read would be
+   * swallowed by the in-flight read that resolved nothing.
    */
   const refresh = (): Promise<void> => {
-    reading ??= (async () => {
+    const requested = ++revision
+    if (reading !== undefined) return reading
+    reading = (async () => {
       try {
-        const key = await resolveApiKey()
-        if (key === undefined) {
-          console.info(`[llm-ktapi] no ${optionsOf(config).apiKeyEnv} yet; serving the bootstrap model`)
-          return
-        }
-        const options = optionsOf(config)
-        snapshot = await fetchKtapiCatalog({
-          apiKey: key,
-          baseUrl: options.baseURL,
-          timeoutMs: options.modelsTimeoutMs,
-        })
-        registration?.replace([KTAI_PROVIDER])
-        // An open selector caches the list it drew; the event is what makes it
-        // re-read the route instead of waiting for the next page reload.
-        ctx.emit('llm/models-updated', KTAI_PROVIDER)
-        console.info(`[llm-ktapi] catalog: ${String(snapshot.models.length)} models,`
-          + ` ${String(snapshot.models.filter(model => model.defaultVisible).length)} curated`)
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : 'unknown'
-        console.warn(`[llm-ktapi] catalog read failed; keeping the previous catalog: ${detail}`)
+        await read(requested)
       } finally {
         reading = undefined
+        if (revision !== requested) void refresh()
       }
     })()
     return reading
   }
 
+  /** @param requested - the refresh request this read answers. */
+  const read = async (requested: number): Promise<void> => {
+    try {
+      const key = await resolveApiKey()
+      if (key === undefined) {
+        console.info(`[llm-ktapi] no ${optionsOf(config).apiKeyEnv} yet; serving the bootstrap model`)
+        // A sign-out must not leave the previous account's picks in place, and
+        // the event keeps an open selector from drawing them after a key
+        // disappears.
+        snapshot = undefined
+        registration?.replace([KTAI_PROVIDER])
+        ctx.emit('llm/models-updated', KTAI_PROVIDER)
+        return
+      }
+      if (revision !== requested) return
+      const options = optionsOf(config)
+      snapshot = await fetchKtapiCatalog({
+        apiKey: key,
+        baseUrl: options.baseURL,
+        timeoutMs: options.modelsTimeoutMs,
+      })
+      registration?.replace([KTAI_PROVIDER])
+      // An open selector caches the list it drew; the event is what makes it
+      // re-read the route instead of waiting for the next page reload.
+      ctx.emit('llm/models-updated', KTAI_PROVIDER)
+      console.info(`[llm-ktapi] catalog: ${String(snapshot.models.length)} models,`
+        + ` ${String(snapshot.models.filter(model => model.defaultVisible).length)} curated`)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'unknown'
+      console.warn(`[llm-ktapi] catalog read failed; keeping the previous catalog: ${detail}`)
+    }
+  }
+
   registration = ctx.llm.registerAdapter([KTAI_PROVIDER], adapter)
+  // The relay key arrives after this plugin mounts: a fresh install signs in
+  // from the welcome window, so the mount-time read has nothing to resolve and
+  // the route offers no models. Without this listener that first empty result
+  // is final — the catalog is never read again, and the selector keeps drawing
+  // the empty list it cached. The credential seam publishes every committed
+  // write, so the key landing here is what republishes the route.
+  ctx.on('credentials/reference-updated', (ref) => {
+    if (ref !== optionsOf(config).apiKeyEnv) return
+    void refresh()
+  })
   ctx.effect(() => {
     if (!fresh()) void refresh()
     return () => { registration = undefined }

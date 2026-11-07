@@ -108,4 +108,83 @@ describe('real Loader composition', () => {
     const resolved = await context.llm.resolveModelInfo(Ktapi.KTAI_PROVIDER, 'deepseek-latest')
     expect(resolved.context?.contextWindow).toBe(128_000)
   })
+
+  it('publishes the account catalog when the relay key arrives after mount', { timeout: 60_000 }, async () => {
+    // A fresh install signs in from the welcome window, so the plugin mounts
+    // with no relay key. The route must recover when the key lands instead of
+    // keeping the empty list it drew first.
+    root = await mkdtemp(join(tmpdir(), 'dsh-llm-ktapi-late-key-'))
+    const configPath = join(root, 'cordis.yml')
+    await writeFile(configPath, [
+      '- name: fixture-dependencies',
+      "- name: '@deepseek-ai/dsh-llm'",
+      "- name: '@deepseek-ai/dsh-llm-ktapi'",
+      '  config:',
+      "    baseURL: 'https://ktapi.example/v1'",
+      '',
+    ].join('\n'))
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => gateway(String(input))) as typeof fetch
+
+    const stored = new Map<string, string>()
+    const dependencies = {
+      name: 'fixture-dependencies',
+      apply(ctx: Context) {
+        ctx.provide('credentials', {
+          resolve: async (ref: string) => stored.has(ref) ? { value: stored.get(ref), source: 'file', ref } : undefined,
+          set: async (ref: string, value: string) => {
+            stored.set(ref, value)
+            ctx.emit('credentials/reference-updated', ref as never)
+          },
+          unset: async (ref: string) => {
+            stored.delete(ref)
+            ctx.emit('credentials/reference-updated', ref as never)
+          },
+        } as never)
+      },
+    }
+
+    context = new Context()
+    context.baseUrl = pathToFileURL(root).href + '/'
+    await context.plugin(Loader)
+    context.loader.builtins.include = Include
+    const modules = new Map<string, unknown>([
+      ['fixture-dependencies', dependencies],
+      ['@deepseek-ai/dsh-llm', LlmRuntime],
+      ['@deepseek-ai/dsh-llm-ktapi', Ktapi],
+    ])
+    context.loader.internal = {
+      version: 'v2',
+      async import(specifier: string) {
+        if (!modules.has(specifier)) throw new Error(`unexpected Loader import: ${specifier}`)
+        return modules.get(specifier)
+      },
+    } as unknown as NonNullable<typeof context.loader.internal>
+    await context.loader.create({
+      name: 'cordis:include',
+      config: { path: pathToFileURL(configPath).href },
+    })
+    await context.loader.await()
+
+    // Signed out: no relay key. The route still publishes its bootstrap row,
+    // and every consumer of `llm/models-updated` has been told so — a selector
+    // that drew this list keeps drawing it until the key lands.
+    expect((await context.llm.listModels(Ktapi.KTAI_PROVIDER)).map(model => model.id)).toEqual(['deepseek-latest'])
+
+    const live = context
+    const published: string[] = []
+    live.on('llm/models-updated', (provider: string) => { published.push(provider) })
+    const republished = new Promise<void>((resolve) => {
+      live.on('llm/models-updated', () => { resolve() })
+    })
+    // An unrelated credential must not republish this route.
+    await live.credentials.set('SOME_OTHER_KEY' as never, 'sk-unrelated' as never)
+    expect(published).toEqual([])
+
+    await live.credentials.set('KITO_NEWAPI_API_KEY' as never, 'sk-from-kito-login' as never)
+    await republished
+
+    expect((await live.llm.listModels(Ktapi.KTAI_PROVIDER)).map(model => model.id))
+      .toEqual(['grok-4.6', 'deepseek-latest'])
+  })
 })
