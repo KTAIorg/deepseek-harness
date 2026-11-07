@@ -19,6 +19,12 @@ with the relay key derived
 from the KT Identity login; pricing comes from the shared `GET /api/pricing`, which
 needs no credential.
 
+The route reads two credential references: the relay key (`KITO_NEWAPI_API_KEY`)
+and the KT Identity session the desktop derives it from (`KITO_IDENTITY_TOKEN`).
+A stored session with no relay key fails the route instead of offering nothing,
+because the account is signed in and a derivation that silently produced no key
+would otherwise be indistinguishable from an empty catalog.
+
 ## Use this package
 
 ```ts

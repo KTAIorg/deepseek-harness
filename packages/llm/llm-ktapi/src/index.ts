@@ -10,7 +10,7 @@
 
 import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import type { AdapterRegistrationHandle } from '@deepseek-ai/dsh-llm'
+import { LlmError, type AdapterRegistrationHandle } from '@deepseek-ai/dsh-llm'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
 import { authContextFrom, credentialStoreFrom } from '@deepseek-ai/dsh-llm-pi-ai/src/auth.ts'
 import { resolveProfiles, type ResolvedPiAiProviderProfile } from '@deepseek-ai/dsh-llm-pi-ai/src/config.ts'
@@ -30,6 +30,8 @@ export const KTAI_PROVIDER = 'ktapi'
 export interface Config {
   /** Credential reference holding the relay key derived from the KT Identity login. */
   apiKeyEnv: Volatile<string>
+  /** Credential reference holding the KT Identity session the relay key is derived from. */
+  identityTokenRef: Volatile<string>
   /** Gateway origin, including its `/v1` segment. */
   baseURL: Volatile<string>
   /** Name shown in the model selector. */
@@ -42,6 +44,7 @@ export interface Config {
 
 export const Config = z.object({
   apiKeyEnv: z.string().role('credential-ref').default('KITO_NEWAPI_API_KEY').volatile(),
+  identityTokenRef: z.string().role('credential-ref').default('KITO_IDENTITY_TOKEN').volatile(),
   baseURL: z.string().default('https://ktapi.cc/v1').volatile(),
   displayName: z.string().default('KT AI').volatile(),
   modelsMaxAgeMs: z.number().min(0).default(600_000).volatile(),
@@ -51,6 +54,7 @@ export const Config = z.object({
 /** Detached configuration values for one operation. */
 interface Options {
   readonly apiKeyEnv: string
+  readonly identityTokenRef: string
   readonly baseURL: string
   readonly displayName: string
   readonly modelsMaxAgeMs: number
@@ -64,6 +68,7 @@ const BOOTSTRAP_MODEL = 'deepseek-latest'
 function optionsOf(config: Config): Options {
   return {
     apiKeyEnv: config.apiKeyEnv.get(),
+    identityTokenRef: config.identityTokenRef.get(),
     baseURL: config.baseURL.get() || 'https://ktapi.cc/v1',
     displayName: config.displayName.get(),
     modelsMaxAgeMs: config.modelsMaxAgeMs.get(),
@@ -119,6 +124,7 @@ export function apply(ctx: Context, config: Config): void {
 
   let snapshot: KtapiCatalogSnapshot | undefined
   let reading: Promise<void> | undefined
+  let revision = 0
   let registration: AdapterRegistrationHandle | undefined
 
   /** @returns whether the cached catalog still satisfies the configured lifetime. */
@@ -133,11 +139,24 @@ export function apply(ctx: Context, config: Config): void {
 
   /**
    * Resolve the relay key through the credential seam.
+   *
+   * A stored KT Identity session with no relay key is a broken state, not a
+   * signed-out one: the account is signed in and the desktop was supposed to
+   * derive the key from it. Reporting that as "no credential" leaves the model
+   * selector empty with nothing said, which is exactly how a failed derivation
+   * reads to the person looking at it, so it fails loud instead.
    * @returns the relay key, or undefined while the account is signed out.
    */
   const resolveApiKey = async (): Promise<string | undefined> => {
-    const hit = await ctx.credentials.resolve(credentialRef(optionsOf(config).apiKeyEnv))
-    return hit?.value
+    const { apiKeyEnv, identityTokenRef } = optionsOf(config)
+    const hit = await ctx.credentials.resolve(credentialRef(apiKeyEnv))
+    if (hit?.value !== undefined) return hit.value
+    const identity = await ctx.credentials.resolve(credentialRef(identityTokenRef))
+    if (identity?.value === undefined) return undefined
+    throw new LlmError(
+      `KT sign-in is stored but ${apiKeyEnv} was not derived from it; the model list stays empty until the relay key is stored`,
+      'KTAI_RELAY_KEY_MISSING',
+    )
   }
 
   const adapter = new PiAiAdapter({
@@ -150,38 +169,70 @@ export function apply(ctx: Context, config: Config): void {
    * Read the account's catalog and republish the route so selectors pick it up.
    * A refused credential or a failed read keeps the previous catalog: the route
    * continues serving what the account could already call.
+   *
+   * A request that arrives while a read is running re-runs once that read
+   * settles, because the running read may have started before the credential
+   * this request is about. Without that, a key landing mid-read would be
+   * swallowed by the in-flight read that resolved nothing.
    */
   const refresh = (): Promise<void> => {
-    reading ??= (async () => {
+    const requested = ++revision
+    if (reading !== undefined) return reading
+    reading = (async () => {
       try {
-        const key = await resolveApiKey()
-        if (key === undefined) {
-          console.info(`[llm-ktapi] no ${optionsOf(config).apiKeyEnv} yet; serving the bootstrap model`)
-          return
-        }
-        const options = optionsOf(config)
-        snapshot = await fetchKtapiCatalog({
-          apiKey: key,
-          baseUrl: options.baseURL,
-          timeoutMs: options.modelsTimeoutMs,
-        })
-        registration?.replace([KTAI_PROVIDER])
-        // An open selector caches the list it drew; the event is what makes it
-        // re-read the route instead of waiting for the next page reload.
-        ctx.emit('llm/models-updated', KTAI_PROVIDER)
-        console.info(`[llm-ktapi] catalog: ${String(snapshot.models.length)} models,`
-          + ` ${String(snapshot.models.filter(model => model.defaultVisible).length)} curated`)
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : 'unknown'
-        console.warn(`[llm-ktapi] catalog read failed; keeping the previous catalog: ${detail}`)
+        await read(requested)
       } finally {
         reading = undefined
+        if (revision !== requested) void refresh()
       }
     })()
     return reading
   }
 
+  /** @param requested - the refresh request this read answers. */
+  const read = async (requested: number): Promise<void> => {
+    try {
+      const key = await resolveApiKey()
+      if (key === undefined) {
+        console.info(`[llm-ktapi] no ${optionsOf(config).apiKeyEnv} yet; serving the bootstrap model`)
+        // A sign-out must not leave the previous account's picks in place, and
+        // the event keeps an open selector from drawing them after a key
+        // disappears.
+        snapshot = undefined
+        registration?.replace([KTAI_PROVIDER])
+        ctx.emit('llm/models-updated', KTAI_PROVIDER)
+        return
+      }
+      if (revision !== requested) return
+      const options = optionsOf(config)
+      snapshot = await fetchKtapiCatalog({
+        apiKey: key,
+        baseUrl: options.baseURL,
+        timeoutMs: options.modelsTimeoutMs,
+      })
+      registration?.replace([KTAI_PROVIDER])
+      // An open selector caches the list it drew; the event is what makes it
+      // re-read the route instead of waiting for the next page reload.
+      ctx.emit('llm/models-updated', KTAI_PROVIDER)
+      console.info(`[llm-ktapi] catalog: ${String(snapshot.models.length)} models,`
+        + ` ${String(snapshot.models.filter(model => model.defaultVisible).length)} curated`)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'unknown'
+      console.warn(`[llm-ktapi] catalog read failed; keeping the previous catalog: ${detail}`)
+    }
+  }
+
   registration = ctx.llm.registerAdapter([KTAI_PROVIDER], adapter)
+  // The relay key arrives after this plugin mounts: a fresh install signs in
+  // from the welcome window, so the mount-time read has nothing to resolve and
+  // the route offers no models. Without this listener that first empty result
+  // is final — the catalog is never read again, and the selector keeps drawing
+  // the empty list it cached. The credential seam publishes every committed
+  // write, so the key landing here is what republishes the route.
+  ctx.on('credentials/reference-updated', (ref) => {
+    if (ref !== optionsOf(config).apiKeyEnv) return
+    void refresh()
+  })
   ctx.effect(() => {
     if (!fresh()) void refresh()
     return () => { registration = undefined }
