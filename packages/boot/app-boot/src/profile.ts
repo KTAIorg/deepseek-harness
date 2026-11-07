@@ -216,6 +216,27 @@ export function initProfile(
   if (!existsSync(workspacePath)) writeFileSync(workspacePath, PROFILE_PNPM_WORKSPACE)
 }
 
+/**
+ * Merge installation-owned bundles into an existing profile manifest.
+ *
+ * The installation owns the profile it ships, but earlier releases wrote
+ * narrower bundle lists, and {@link initProfile} never rewrites an initialized
+ * manifest: a profile from before an installation added an in-box bundle kept
+ * booting without it, silently losing the surface that bundle carried. This
+ * appends the missing owned bundles after the profile's own entries (user-added
+ * bundles and their order stay untouched) and persists the manifest; a manifest
+ * already carrying every owned bundle is not rewritten.
+ * @param dir - the profile directory from {@link resolveProfileDir}.
+ * @param bundles - bundles the installation must find in the profile.
+ */
+export function ensureProfileBundles(dir: string, bundles: readonly string[]): void {
+  const manifest = readProfileManifest('dsh', dir)
+  const owned = manifest.dsh?.profile?.bundles ?? []
+  const missing = bundles.filter(bundle => !owned.includes(bundle))
+  if (missing.length === 0) return
+  writeProfileManifest(dir, withBundles(manifest, [...owned, ...missing]))
+}
+
 /** Directory where the link backend of the dsh 0.1.5 releases projected bundle-carried packages into a profile. */
 const LINK_PROJECTION_DIR = '.dsh-module-fallback'
 

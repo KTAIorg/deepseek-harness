@@ -101,12 +101,65 @@ describe('real Loader composition', () => {
     expect([...context.loader.entries()].filter(entry => entry.fiber === undefined && !entry.disabled)).toEqual([])
 
     const models = await context.llm.listModels(Ktapi.KTAI_PROVIDER)
-    // The curated picks, not the whole listing: mounting every listed id would
-    // bury them under provider duplicates.
-    expect(models.map(model => model.id)).toEqual(['grok-4.6', 'deepseek-latest'])
+    // Every id the account may call, the curated picks first; the selector
+    // groups by vendor family, so the rest of the listing stays reachable.
+    expect(models.map(model => model.id)).toEqual(['grok-4.6', 'deepseek-latest', 'deepseek-v4-flash'])
 
     const resolved = await context.llm.resolveModelInfo(Ktapi.KTAI_PROVIDER, 'deepseek-latest')
     expect(resolved.context?.contextWindow).toBe(128_000)
+  })
+
+  it('serves the curated shortlist when showAllModels is off', { timeout: 60_000 }, async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-llm-ktapi-curated-'))
+    const configPath = join(root, 'cordis.yml')
+    await writeFile(configPath, [
+      '- name: fixture-dependencies',
+      "- name: '@deepseek-ai/dsh-llm'",
+      "- name: '@deepseek-ai/dsh-llm-ktapi'",
+      '  config:',
+      "    baseURL: 'https://ktapi.example/v1'",
+      '    showAllModels: false',
+      '',
+    ].join('\n'))
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => gateway(String(input))) as typeof fetch
+
+    const dependencies = {
+      name: 'fixture-dependencies',
+      apply(ctx: Context) {
+        ctx.provide('credentials', {
+          resolve: async (ref: { value?: unknown }) => ({
+            value: 'sk-from-kito-login',
+            source: 'file',
+            ref,
+          }),
+        } as never)
+      },
+    }
+
+    context = new Context()
+    context.baseUrl = pathToFileURL(root).href + '/'
+    await context.plugin(Loader)
+    context.loader.builtins.include = Include
+    const modules = new Map<string, unknown>([
+      ['fixture-dependencies', dependencies],
+      ['@deepseek-ai/dsh-llm', LlmRuntime],
+      ['@deepseek-ai/dsh-llm-ktapi', Ktapi],
+    ])
+    context.loader.internal = {
+      version: 'v2',
+      async import(specifier: string) {
+        if (!modules.has(specifier)) throw new Error(`unexpected Loader import: ${specifier}`)
+        return modules.get(specifier)
+      },
+    } as unknown as NonNullable<typeof context.loader.internal>
+    await context.loader.create({
+      name: 'cordis:include',
+      config: { path: pathToFileURL(configPath).href },
+    })
+    await context.loader.await()
+    expect((await context.llm.listModels(Ktapi.KTAI_PROVIDER)).map(model => model.id))
+      .toEqual(['grok-4.6', 'deepseek-latest'])
   })
 
   it('publishes the account catalog when the relay key arrives after mount', { timeout: 60_000 }, async () => {
@@ -185,7 +238,7 @@ describe('real Loader composition', () => {
     await republished
 
     expect((await live.llm.listModels(Ktapi.KTAI_PROVIDER)).map(model => model.id))
-      .toEqual(['grok-4.6', 'deepseek-latest'])
+      .toEqual(['grok-4.6', 'deepseek-latest', 'deepseek-v4-flash'])
   })
 
   it('reports a stored sign-in with no relay key instead of an empty list', { timeout: 60_000 }, async () => {

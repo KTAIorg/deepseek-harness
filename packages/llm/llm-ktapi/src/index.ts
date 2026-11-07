@@ -37,6 +37,8 @@ export interface Config {
   baseURL: Volatile<string>
   /** Name shown in the model selector. */
   displayName: Volatile<string>
+  /** Whether the selector offers every model the account may call, curated picks first. */
+  showAllModels: Volatile<boolean>
   /** Catalog cache lifetime in milliseconds; `0` reads on every access. */
   modelsMaxAgeMs: Volatile<number>
   /** Deadline for one catalog request. */
@@ -48,6 +50,7 @@ export const Config = z.object({
   identityTokenRef: z.string().role('credential-ref').default('KITO_IDENTITY_TOKEN').volatile(),
   baseURL: z.string().default('https://ktapi.cc/v1').volatile(),
   displayName: z.string().default('KT AI').volatile(),
+  showAllModels: z.boolean().default(true).volatile(),
   modelsMaxAgeMs: z.number().min(0).default(600_000).volatile(),
   modelsTimeoutMs: z.number().min(1).default(CATALOG_TIMEOUT_MS).volatile(),
 })
@@ -58,6 +61,7 @@ interface Options {
   readonly identityTokenRef: string
   readonly baseURL: string
   readonly displayName: string
+  readonly showAllModels: boolean
   readonly modelsMaxAgeMs: number
   readonly modelsTimeoutMs: number
 }
@@ -72,6 +76,7 @@ function optionsOf(config: Config): Options {
     identityTokenRef: config.identityTokenRef.get(),
     baseURL: config.baseURL.get() || 'https://ktapi.cc/v1',
     displayName: config.displayName.get(),
+    showAllModels: config.showAllModels.get(),
     modelsMaxAgeMs: config.modelsMaxAgeMs.get(),
     modelsTimeoutMs: config.modelsTimeoutMs.get(),
   }
@@ -98,14 +103,15 @@ function modelRow(model: KtapiModel): Record<string, unknown> {
  * @returns the raw profile pi-ai consumes.
  */
 function profileOf(options: Options, snapshot: KtapiCatalogSnapshot | undefined): Record<string, unknown> {
-  // The route serves the curated picks, matching the Kito coding client's
-  // picker: one entry per model family the account may use. The full listing
-  // stays available to surfaces that ask for it; mounting every id would bury
-  // the picks under provider duplicates.
-  const curated = snapshot === undefined ? [] : snapshot.models.filter(model => model.defaultVisible)
-  const models = curated.length > 0
-    ? curated.map(modelRow)
-    : [{ id: BOOTSTRAP_MODEL, name: 'DeepSeek Latest', contextWindow: DEFAULT_CONTEXT, maxTokens: DEFAULT_OUTPUT, input: ['text'] }]
+  // The default serves every model the account may call, curated picks first,
+  // so a person sees the catalog their recharge actually carries; hiding rows
+  // behind a curated shortlist read as lost models. `showAllModels: false`
+  // restores the shortlist for surfaces that want one entry per family. The
+  // snapshot is already ordered curated-first, then by id
+  // (@see buildKtapiCatalog).
+  const models = snapshot === undefined
+    ? [{ id: BOOTSTRAP_MODEL, name: 'DeepSeek Latest', contextWindow: DEFAULT_CONTEXT, maxTokens: DEFAULT_OUTPUT, input: ['text'] }]
+    : (options.showAllModels ? snapshot.models : snapshot.models.filter(model => model.defaultVisible)).map(modelRow)
   return {
     displayName: options.displayName,
     apiKeyEnv: options.apiKeyEnv,
