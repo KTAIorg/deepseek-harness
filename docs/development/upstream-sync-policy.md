@@ -6,12 +6,14 @@
 
 规范来源：kt-agent-skills/oss-fork-maintenance
 
+- **当前基线**：`kito-harness-v0.2.2-rc.6`（`cc2b31b28b`，2026-11-08）。
+
 ## 仓库角色
 
 - `upstream` = <https://github.com/deepseek-ai/deepseek-harness>（只读，禁止 push）
 - `origin` = KTAIorg/deepseek-harness（KT fork，真 fork，保留完整上游历史）
 
-上游是 MIT 协议的 TypeScript pnpm monorepo，默认分支 `master`。同步检查用 `upstream/master` 与发行 tag，不用 fork 的 `main`。当前基线是发行 tag `dsh-v0.2.1-rc.2`（`687f282e8625c6b8d11ff58211a90524be2e4317`）。公共 API 仍是 pre-stable，只合已发行 tag，不追 `master` HEAD。
+上游是 MIT 协议的 TypeScript pnpm monorepo，默认分支 `master`。同步检查用 `upstream/master` 与发行 tag，不用 fork 的 `main`。当前基线是发行 tag `kito-harness-v0.2.2-rc.6`（`cc2b31b28b`，2026-11-08）；上一个上游对比点是 `66491b05`（`release: dsh@0.2.2-rc.1`）。公共 API 仍是 pre-stable，只合已发行 tag，不追 `master` HEAD。
 
 ## 分支模型
 
@@ -30,7 +32,9 @@
 4. **治理文档**：`docs/development/**`
 5. **认证门面**：上游 Web 无认证且 Agent 可执行代码，ACK 暴露前必须挂认证网关。实现在独立仓库 `KTAIorg/dsh-auth-gateway`。本仓只保留 sidecar 接线：Deployment 的 `auth-gateway` 容器、Service targetPort、`dsh-auth-secrets` 引用（值走 KTSecret，禁止入 Git）。授权策略 = kt-identity `ADMIN` 角色 ∪ 白名单，默认拒绝。公网路由资源（`gateway.yaml` / `httproute.yaml`）属于部署清单域。
 6. **Kito 桌面壳**：`apps/desktop` 中的产品名 Kito Harness、图标、欢迎页 Telegram 登录、更新源 `https://updates.ktyun.cc`，以及默认数据目录 `~/.kito-harness`。Agent loop、会话格式、工具实现留在上游。打包应用标识用 `cc.ktapi.harness`（`DSH_DESKTOP_APP_ID`）。
-7. **Kito 身份与模型路由**：`kt/kito-provider/**`。这是独立插件包，不加入 pnpm workspace，不改 agent loop。用 `dsh plugin add ./kt/kito-provider` 装进 profile，对接 KT Identity 与 `https://ktapi.cc/v1`。
+7. **Kito 身份与模型路由**：`packages/llm/llm-ktapi/**`（工作区内包，由 `packages/bundle/*/cordis.patch.yml` 挂载）与 `packages/llm/llm-pi-ai/**` 中的 live catalog 读取层。对接 KT Identity 与 `https://ktapi.cc/v1`，不改 agent loop。
+8. **Kito 品牌与账号 UI**：`packages/client/ui-brand-kito/**`、`packages/client/ui-settings-account/**`、`packages/client/ui-model-selection/**`。这三处是**有意为之的重写级定制**（模型选择器 +2,349/−885），后续上游合并按本文件的登记逐项重放，不视为漂移。
+9. **桌面壳扩展文件**：`apps/desktop/src/kito-*.ts`、`apps/desktop/src/desktop-log.ts`、`apps/desktop/tests/kito-*.spec.ts`、`apps/desktop/tests/desktop-log.spec.ts`。
 
 ## 上游特殊性（同步时必须记住）
 
@@ -76,3 +80,5 @@
 | 2026-08-14 | 无→47f94385（Day 0 fork） | 无 | 本地 build + web 200 | Hermes Agent |
 | 2026-10-17 | 47f94385→`dsh-v0.2.1-alpha.1`（`5badb15009`） | 无。KT 侧 13 个提交只新增部署/CI/治理文件，与上游路径不重叠 | merge 无冲突；fork 定制文件相对 tag 仍在 | KT |
 | 2026-10-18 | `dsh-v0.2.1-alpha.1`→`dsh-v0.2.1-rc.2`（`687f282e86`） | 桌面 README、安装文案、产物名和上传清单。上游新增目录替换文案、未公证产物后缀和 nightly-only 清单；Kito 产品名、`kito-harness` 路径和 `updates.ktyun.cc` 保留 | 本地开发客户端窗口版本 `0.2.1-rc.2`，模型菜单为 Kito 网关目录 | KT |
+| 2026-11-07 | `dsh-v0.2.1-rc.2`→`dsh@0.2.2-rc.1`（`66491b05`） | 上游主干合并；KT 侧保留品牌、桌面壳、部署清单与治理文档（白名单 1–6） | 构建 + 桌面安装包冒烟 | KT |
+| 2026-11-08 | 无新上游 tag；本仓 `0.2.2-rc.1`→`0.2.2-rc.6` | 无上游冲突。期间新增白名单 7–9（`llm-ktapi`、`llm-pi-ai` live catalog、Kito 品牌/账号/模型选择器、桌面壳扩展文件） | `pnpm run build` + 各包测试 + 桌面发布流水线 | KT |
