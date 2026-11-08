@@ -166,7 +166,7 @@ export function apply(ctx) {
     const providersResponse = await fetch(new URL('/desktop-smoke-llm-providers', ready.url), { headers: { cookie } })
     const providers = await providersResponse.json() as ReadonlyArray<{ id?: string }>
     if (!providers.some(provider => provider.id === 'ktapi')) {
-      throw new Error(`desktop runtime: the packaged ktapi model route did not register: ${JSON.stringify(providers)}`)
+      throw new Error(`desktop runtime: the packaged ktapi model route did not register: ${JSON.stringify(providers)}\nhost stderr:\n${host.diagnosticStderr}`)
     }
     console.log('desktop runtime: packaged ktapi model route registered')
     const installation = await fetch(new URL('/desktop-smoke-install', ready.url), {
@@ -200,7 +200,11 @@ export function apply(ctx) {
   } finally {
     clearTimeout(timer)
     try { await host.stop() } finally {
-      await rm(home, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+      if (process.env.DSH_DESKTOP_SMOKE_KEEP_HOME !== '1') {
+        await rm(home, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+      } else {
+        console.log(`desktop runtime: smoke home kept at ${home}`)
+      }
     }
   }
 }

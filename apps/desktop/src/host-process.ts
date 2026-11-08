@@ -167,6 +167,14 @@ export class DesktopHostProcess {
   private exitPromise: Promise<void> | undefined
   private stderr = ''
   private failureReported = false
+
+  /**
+   * Diagnostic tail of everything the Host process wrote to stderr.
+   * @returns The retained tail, capped by the same bound as the internal buffer.
+   */
+  get diagnosticStderr(): string {
+    return this.stderr
+  }
   private stopping = false
   private shutdownCompleted = false
   private nextControlId = 1
