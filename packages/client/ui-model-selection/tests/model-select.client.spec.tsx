@@ -126,10 +126,13 @@ function modelGroup(): HTMLElement {
 }
 
 /** Model rows sit in the group the search field names through aria-controls. */
+/** Every model row in the panel, excluding each vendor heading's fold control. */
 function modelRows(): HTMLElement[] {
   const controlled = searchBox().getAttribute('aria-controls')
   const group = controlled === null ? null : document.getElementById(controlled)
-  return group === null ? [] : within(group).queryAllByRole('button')
+  return group === null
+    ? []
+    : within(group).queryAllByRole('button').filter(row => !row.hasAttribute('aria-expanded'))
 }
 
 /** Resolve one model row by its accessible name. */
@@ -199,6 +202,17 @@ afterEach(() => {
   cleanup()
   localStorage.clear()
 })
+
+
+/**
+ * Rows inside one section: the fold control on a vendor heading is also a
+ * button, and these assertions list model rows.
+ * @param scope - section region.
+ * @returns its model-row buttons.
+ */
+function rowsIn(scope: HTMLElement): HTMLElement[] {
+  return within(scope).getAllByRole('button').filter(row => !row.hasAttribute('aria-expanded'))
+}
 
 describe('ModelSelect modal shell', () => {
   it('moves the trigger into dialog state and closes from the dialog close button', async () => {
@@ -356,9 +370,9 @@ describe('ModelSelect label slot', () => {
     expect(trigger.querySelector('[data-provider-id="external"][data-model-id="same-model"]')).toBeTruthy()
     // The recorded selection now leads the reopened panel as a recent row.
     fireEvent.click(trigger)
-    expect(within(screen.getByRole('region', { name: zh['menu.recent'] })).getAllByRole('button')
+    expect(rowsIn(screen.getByRole('region', { name: zh['menu.recent'] }))
       .map(row => row.textContent)).toEqual(['Same model'])
-    expect(within(screen.getByRole('region', { name: 'Other' })).getAllByRole('button')
+    expect(rowsIn(screen.getByRole('region', { name: 'Other' }))
       .map(row => row.textContent)).toEqual(['Same model', 'Same model'])
   })
 
@@ -1228,13 +1242,13 @@ describe('ModelSelect recent and frequent sections', () => {
     }))
     mountOpen({ groups, current: null })
 
-    expect(within(screen.getByRole('region', { name: zh['menu.recent'] }))
-      .getAllByRole('button').map(row => row.textContent)).toEqual(['GPT-5.2'])
-    expect(within(screen.getByRole('region', { name: zh['menu.frequent'] }))
-      .getAllByRole('button').map(row => row.textContent)).toEqual(['GPT-5.3'])
+    expect(rowsIn(screen.getByRole('region', { name: zh['menu.recent'] }))
+      .map(row => row.textContent)).toEqual(['GPT-5.2'])
+    expect(rowsIn(screen.getByRole('region', { name: zh['menu.frequent'] }))
+      .map(row => row.textContent)).toEqual(['GPT-5.3'])
     // The pinned rows do not displace the vendor section's complete listing.
-    expect(within(screen.getByRole('region', { name: 'OpenAI' }))
-      .getAllByRole('button').map(row => row.textContent))
+    expect(rowsIn(screen.getByRole('region', { name: 'OpenAI' }))
+      .map(row => row.textContent))
       .toEqual(['GPT-5.4', 'GPT-5.3', 'GPT-5.2'])
     // Pinned sections lead the panel, recent before frequent.
     const headings = screen.getAllByRole('region').map(section => section.getAttribute('aria-label'))
@@ -1259,8 +1273,8 @@ describe('ModelSelect recent and frequent sections', () => {
       .toEqual([usageKey('deepseek-official', 'gpt-5.4')])
 
     fireEvent.click(trigger)
-    expect(within(screen.getByRole('region', { name: zh['menu.recent'] }))
-      .getAllByRole('button').map(row => row.textContent)).toEqual(['GPT-5.4'])
+    expect(rowsIn(screen.getByRole('region', { name: zh['menu.recent'] }))
+      .map(row => row.textContent)).toEqual(['GPT-5.4'])
     // Frequent excludes rows already pinned as recent, so nothing repeats there yet.
     expect(screen.queryByRole('region', { name: zh['menu.frequent'] })).toBeNull()
   })
@@ -1293,11 +1307,11 @@ describe('ModelSelect vendor grouping', () => {
       expect(screen.getByRole('region', { name: label })).toBeTruthy()
     }
     const openai = screen.getByRole('region', { name: 'OpenAI' })
-    const openaiRows = within(openai).getAllByRole('button')
+    const openaiRows = rowsIn(openai)
     expect(openaiRows).toHaveLength(1)
     expect(within(openaiRows[0]!).getByText(zh['option.aliases'].replace('{count}', '2'))).toBeTruthy()
     const anthropic = screen.getByRole('region', { name: 'Anthropic' })
-    const anthropicRows = within(anthropic).getAllByRole('button')
+    const anthropicRows = rowsIn(anthropic)
     expect(anthropicRows).toHaveLength(1)
     expect(within(anthropicRows[0]!).getByText(zh['option.aliases'].replace('{count}', '1'))).toBeTruthy()
     // Ids that cannot serve a chat conversation are never offered.
@@ -1332,6 +1346,57 @@ describe('ModelSelect vendor grouping', () => {
     await waitFor(() => { expect(isPanelOpen()).toBe(false) })
     expect(select).not.toHaveBeenCalled()
     await waitFor(() => { expect(document.activeElement).toBe(trigger) })
+  })
+
+  it('folds a vendor section from its heading, keeps the heading, and ignores the fold while searching', () => {
+    mountOpen({ groups, current: null })
+    const anthropic = () => screen.getByRole('region', { name: 'Anthropic' })
+    const fold = within(anthropic()).getByRole('button', { name: 'Anthropic' })
+    expect(fold.getAttribute('aria-expanded')).toBe('true')
+    expect(rowsIn(anthropic())).toHaveLength(1)
+    fireEvent.click(fold)
+    // The heading stays as the control that reopens the section; only its rows go.
+    expect(within(anthropic()).getByRole('button', { name: 'Anthropic' }).getAttribute('aria-expanded')).toBe('false')
+    expect(rowsIn(anthropic())).toHaveLength(0)
+    // A search is already a deliberate narrowing, so it still lists folded rows.
+    fireEvent.change(searchBox(), { target: { value: 'Claude' } })
+    expect(rowsIn(screen.getByRole('region', { name: zh['search.results'] })).length).toBeGreaterThan(0)
+    fireEvent.change(searchBox(), { target: { value: '' } })
+    expect(rowsIn(anthropic())).toHaveLength(0)
+    fireEvent.click(within(anthropic()).getByRole('button', { name: 'Anthropic' }))
+    expect(rowsIn(anthropic())).toHaveLength(1)
+  })
+
+  it('checks availability for the account route on open, then offers an explicit re-check', async () => {
+    vi.stubGlobal('dshDesktop', { protocolVersion: 1 })
+    const probeFetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      probedAt: Date.now(),
+      results: [
+        { model: 'gpt-5.6', ok: true, state: 'ok', status: 200, latencyMs: 40 },
+        { model: 'gpt-5.5', ok: false, state: 'upstream_error', status: 503, message: 'No available channel', latencyMs: 50 },
+      ],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', probeFetch)
+    onTestFinished(() => { vi.unstubAllGlobals() })
+    const groups: ModelDirectoryState['groups'] = [{
+      id: 'ktapi',
+      name: 'KT AI',
+      models: [
+        { id: 'gpt-5.6', name: 'GPT-5.6' },
+        { id: 'gpt-5.5', name: 'GPT-5.5' },
+      ],
+    }]
+    mountOpen({ groups, current: null })
+    // Opening a stale panel starts one batch for the whole catalog.
+    await waitFor(() => { expect(probeFetch).toHaveBeenCalledTimes(1) })
+    expect(probeFetch.mock.calls[0]?.[0]).toBe('dsh-app://app/kito/model-probe')
+    expect(JSON.parse(String(probeFetch.mock.calls[0]?.[1]?.body))).toEqual({ models: ['gpt-5.6', 'gpt-5.5'] })
+    await waitFor(() => { expect(document.querySelectorAll('[data-state="ok"]').length).toBeGreaterThan(0) })
+    expect(document.querySelectorAll('[data-state="failed"]').length).toBeGreaterThan(0)
+    // Fresh results turn the control into an explicit re-check, which asks again.
+    const again = await screen.findByRole('button', { name: zh['probe.retry'] })
+    fireEvent.click(again)
+    await waitFor(() => { expect(probeFetch).toHaveBeenCalledTimes(2) })
   })
 
   it('never offers non-chat ids even when they are the only catalog rows', () => {
@@ -1394,7 +1459,7 @@ it('orders vendor sections and their rows deterministically', async () => {
   }
   const lines = sections.flatMap((section) => {
     const heading = within(section).getByRole('heading', { level: 3 })
-    return [heading.textContent, ...within(section).getAllByRole('button').map(row => row.textContent)]
+    return [heading.textContent, ...rowsIn(section).map(row => row.textContent)]
   })
   await expect(`${lines.join('\n')}\n`).toMatchFileSnapshot('./expected/vendor-sections.txt')
 })

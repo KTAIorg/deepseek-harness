@@ -18,6 +18,9 @@
 .action { flex: 1; min-width: 0; height: 32px; gap: 6px; line-height: 20px; }
 .action[data-collapsed='true'] { flex: 0 0 36px; }
 .action svg { flex: none; }
+/* The build version sits in the actions row's spare space: it is a label, not
+   a control, so it takes no hover surface and never looks clickable. */
+.version { flex: none; margin-inline-start: auto; padding-inline-end: 2px; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; font-variant-numeric: tabular-nums; }
 
 /* Signed-out menu card and rows; listClassName reaches the portaled card. */
 .signedOutMenu[role='menu'] {

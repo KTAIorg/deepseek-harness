@@ -1,8 +1,9 @@
 /** Compact sidebar account summary and the detailed Telegram account Settings page. */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  IconLoadingOutlineMedium, IconPaperPlaneOutlineMedium, IconUserOutlineMedium,
-  IconWarningOutlineMedium, Tooltip, writeClipboard,
+  IconApiOutlineMedium, IconCheckOutlineMedium, IconCopyOutlineMedium, IconDataOutlineMedium,
+  IconDeliverDocMedium, IconLoadingOutlineMedium, IconPaperPlaneOutlineMedium, IconPlusOutlineMedium,
+  IconRightUpOutlineMedium, IconUserOutlineMedium, IconWarningOutlineMedium, Tooltip, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ResourceSnapshot } from '@deepseek-ai/dsh-client-resources/client'
@@ -52,6 +53,22 @@ const CONSOLE_LINKS = [
   ['keys', 'tokens'],
 ] as const
 
+/** Glyph per console destination; the icon is what makes the entry read as a control. */
+const CONSOLE_ICONS: Record<ConsoleTarget, ReactNode> = {
+  wallet: <IconPlusOutlineMedium size={14} />,
+  topups: <IconDeliverDocMedium size={14} />,
+  usage: <IconDataOutlineMedium size={14} />,
+  keys: <IconApiOutlineMedium size={14} />,
+}
+
+/** Figma log-out glyph, inline so the account panel owns no extra package dependency. */
+function LogoutGlyph() {
+  return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <path d="M4 1.4v1.4c-.62 0-1.04 0-1.36.03-.31.03-.47.08-.57.14a1.4 1.4 0 0 0-.5.5c-.06.1-.11.26-.14.57-.03.32-.03.74-.03 1.36v5.6c0 .62 0 1.04.03 1.36.03.31.08.47.14.57.11.21.29.38.5.5.11.06.26.11.57.14.32.03.74.03 1.36.03H4v1.4c-.6 0-1.09 0-1.48-.04a3 3 0 0 1-1.14-.3 2.9 2.9 0 0 1-1.04-1.05c-.2-.35-.27-.72-.3-1.13C0 10.66 0 10.17 0 9.58V4c0-.6 0-1.09.03-1.48.04-.41.12-.78.31-1.13a2.9 2.9 0 0 1 1.04-1.05 3 3 0 0 1 1.14-.3C2.91 0 3.4 0 4 0v1.4Z" fill="currentColor"/>
+    <path d="M13.64 6.52a2 2 0 0 1 0 .53c-.05.33-.21.59-.39.81-.17.21-.4.44-.65.69l-3.3 3.29-.98-.99 3.29-3.29.08-.08H3.74V6.09h7.95l-.08-.08-3.29-3.29.99-.99 3.29 3.29c.25.25.48.48.65.7.18.21.34.47.39.8Z" fill="currentColor"/>
+  </svg>
+}
+
 /**
  * Open Telegram login, or one ktapi.cc console page once the account is known.
  * @param account - latest successfully read account.
@@ -93,30 +110,35 @@ function CopyLine({ label, value, copyLabel, copiedLabel }: {
     }
   }, [])
   return (
-    <div className={css.copyRow}>
-      <span className={css.copyLabel}>{label}</span>
-      <span className={css.copyValue} title={value}>{value}</span>
-      <button
-        type="button"
-        className={css.copyButton}
-        onClick={() => {
-          void writeClipboard(value).then((ok) => {
-            if (!ok || !mounted.current) return
-            setCopied(true)
-            timer.current = window.setTimeout(() => { setCopied(false) }, 1200)
-          })
-        }}
-      >
-        {copied ? copiedLabel : copyLabel}
-      </button>
+    <div className={css.factRow}>
+      <span className={css.factLabel}>{label}</span>
+      <span className={css.factValue} title={value}>{value}</span>
+      <Tooltip label={copied ? copiedLabel : copyLabel} side="left" portal>
+        <button
+          type="button"
+          className={css.factCopy}
+          data-copied={copied}
+          aria-label={copied ? copiedLabel : copyLabel}
+          onClick={() => {
+            void writeClipboard(value).then((ok) => {
+              if (!ok || !mounted.current) return
+              setCopied(true)
+              timer.current = window.setTimeout(() => { setCopied(false) }, 1200)
+            })
+          }}
+        >
+          {copied ? <IconCheckOutlineMedium size={14} /> : <IconCopyOutlineMedium size={14} />}
+        </button>
+      </Tooltip>
     </div>
   )
 }
 
 function BalanceLine({ balance, label }: { balance: number; label: (key: KitoAccountCopyKey) => string }) {
   return (
-    <div className={css.balanceLine}>
-      <span className={css.copyValue}>{label('balance')} {formatKitoBalance(balance)}</span>
+    <div className={css.balanceCard}>
+      <span className={css.balanceLabel}>{label('balance')}</span>
+      <span className={css.balanceAmount}>{formatKitoBalance(balance)}</span>
     </div>
   )
 }
@@ -129,7 +151,8 @@ function AccountLinks({ account, label }: {
     <div className={css.panelActions}>
       {CONSOLE_LINKS.map(([target, key]) => (
         <button key={target} type="button" className={css.panelButton} onClick={() => { openConsole(account, target) }}>
-          {label(key)}
+          <span className={css.panelButtonIcon}>{CONSOLE_ICONS[target]}</span>
+          <span className={css.panelButtonText}>{label(key)}</span>
         </button>
       ))}
     </div>
@@ -140,7 +163,7 @@ function AccountFacts({ account, label }: { account: KitoAccountView; label: (ke
   const name = account.displayName?.trim()
   const telegram = account.telegramUsername?.trim()
   return (
-    <div className={css.copies}>
+    <div className={css.facts}>
       {name && <CopyLine label={label('nickname')} value={name} copyLabel={label('copy')} copiedLabel={label('copied')} />}
       {account.accountNo && (
         <CopyLine label={label('accountNo')} value={account.accountNo} copyLabel={label('copy')} copiedLabel={label('copied')} />
@@ -217,16 +240,21 @@ export function KitoAccountSection({ useResource, t }: PropsRuntime<'settings.se
   const name = account?.displayName?.trim() || 'Kito'
   return (
     <section className={css.panel} aria-label={label('account')}>
-      <h2 className={css.panelTitle}>
-        {account === undefined ? label('account') : signedIn ? name : label('signedOut')}
-      </h2>
-      <p className={css.panelStatus} role="status">
-        {resource.status === 'failed' ? label('accountUnavailable')
-          : account === undefined ? label('loading') : signedIn ? label('signedIn') : label('signInHint')}
-      </p>
-      {resource.status === 'failed' && (
-        <button type="button" className={css.panelButton} onClick={refreshKitoAccount}>{label('retry')}</button>
-      )}
+      <header className={css.panelHeader}>
+        <span className={css.panelAvatar} data-signed-in={signedIn}>
+          {signedIn ? <IconUserOutlineMedium size={18} /> : <IconPaperPlaneOutlineMedium size={18} />}
+        </span>
+        <div className={css.panelIdentity}>
+          <h2 className={css.panelName}>{account === undefined ? label('account') : signedIn ? name : label('signedOut')}</h2>
+          <span className={css.panelStatus} role="status">
+            {resource.status === 'failed' ? label('accountUnavailable')
+              : account === undefined ? label('loading') : signedIn ? label('signedIn') : label('signInHint')}
+          </span>
+        </div>
+        {resource.status === 'failed' && (
+          <button type="button" className={css.panelRetry} onClick={refreshKitoAccount}>{label('retry')}</button>
+        )}
+      </header>
       {signedIn && <AccountFacts account={account} label={label} />}
       {balance !== undefined && <BalanceLine balance={balance} label={label} />}
       {account !== undefined && (
@@ -234,14 +262,17 @@ export function KitoAccountSection({ useResource, t }: PropsRuntime<'settings.se
           ? (
             <>
               <AccountLinks account={account} label={label} />
-              <button type="button" className={css.panelButton} onClick={signOut}>
-                {label('signOut')}
+              <button type="button" className={css.signOutButton} onClick={signOut}>
+                <span className={css.panelButtonIcon}><LogoutGlyph /></span>
+                <span className={css.panelButtonText}>{label('signOut')}</span>
+                <IconRightUpOutlineMedium size={12} />
               </button>
             </>
           )
           : (
             <button type="button" className={css.panelButton} onClick={() => { openConsole(account, 'wallet') }}>
-              {label('signIn')}
+              <span className={css.panelButtonIcon}><IconPaperPlaneOutlineMedium size={14} /></span>
+              <span className={css.panelButtonText}>{label('signIn')}</span>
             </button>
           )
       )}

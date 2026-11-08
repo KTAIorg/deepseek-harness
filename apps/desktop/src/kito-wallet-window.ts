@@ -16,6 +16,16 @@ const WALLET_PARTITION = 'persist:kito-wallet'
 
 let current: BrowserWindow | undefined
 let consoleRetryAt = 0
+/** When the stored console session last answered a refresh; a session older than this is revalidated before it is trusted. */
+let consoleVerifiedAt = 0
+/** Last user-initiated attempt, which is allowed to ignore the background cooldown once. */
+let consoleExplicitAt = 0
+/** A session that is merely stale is refreshed instead of being trusted until the page fails. */
+const CONSOLE_SESSION_FRESH_MS = 10 * 60 * 1000
+/** An explicit open may retry this often even while background reads are cooling down. */
+const CONSOLE_EXPLICIT_RETRY_MS = 60 * 1000
+/** Routes a console build serves when it wants a fresh login. */
+const LOGIN_PATH = /\/(?:login|signin|sign-in|auth\/login)(?:[/?#]|$)/iu
 let cachedBalance: { readonly at: number; readonly balance: number } | undefined
 let balanceBlockedUntil = 0
 /** One diagnosis per blocked window: a refused console login must not repeat in every poll. */
@@ -34,23 +44,15 @@ export async function openKitoConsole(identityToken: string, page: KitoConsolePa
     if (current.isMinimized()) current.restore()
     current.show()
     current.focus()
-    if (current.webContents.getURL() !== target) await current.loadURL(target)
+    // A reused window carries whatever session state the last page left, so it
+    // gets the same login-landing recovery as a fresh one.
+    const browser = session.fromPartition(WALLET_PARTITION)
+    await loadConsolePage(current, target, browser, new URL(target).origin, identityToken)
     return
   }
   const browser = session.fromPartition(WALLET_PARTITION)
   const origin = new URL(target).origin
-  if (!await hasRefreshCookie(browser, origin) && Date.now() >= consoleRetryAt) {
-    try {
-      const established = await establishKitoConsoleSession(identityToken)
-      await storeConsoleCookies(browser, origin, established.cookies)
-      const balance = spendableFromEnsure(established.payload)
-      if (balance !== undefined) cachedBalance = { at: Date.now(), balance }
-    } catch (error) {
-      consoleRetryAt = Date.now() + 15 * 60 * 1000
-      console.error('kito wallet login failed', failureDetail(error))
-    }
-  }
-  if (!await hasRefreshCookie(browser, origin)) {
+  if (!await ensureConsoleSession(browser, origin, identityToken)) {
     console.error('kito wallet login failed', 'opening the console page without a console session')
   }
   const window = new BrowserWindow({
@@ -75,7 +77,124 @@ export async function openKitoConsole(identityToken: string, page: KitoConsolePa
     if (!isWebUrl(url)) event.preventDefault()
   })
   window.show()
+  await loadConsolePage(window, target, browser, origin, identityToken)
+}
+
+/**
+ * Load one console page, and recover once if the site answered with its login page.
+ *
+ * A gap this closes: the stored `new_api_refresh` cookie can outlive its server
+ * session (a rotation during top-up replaces it, a session cap evicts it). The
+ * cookie's presence then proves nothing, so the window lands on the login page
+ * while the desktop believes it is signed in. One forced re-login after
+ * clearing the dead cookie turns that into a single extra navigation.
+ * @param window - console window.
+ * @param target - page to load.
+ * @param browser - partition session holding the console cookies.
+ * @param origin - console origin.
+ * @param identityToken - KT Identity access token used for the re-login.
+ */
+async function loadConsolePage(
+  window: BrowserWindow, target: string, browser: Session, origin: string, identityToken: string,
+): Promise<void> {
   await window.loadURL(target)
+  if (!isLoginLanding(window)) return
+  console.warn('kito wallet session was rejected by the console; re-establishing it')
+  await clearConsoleCookies(browser, origin)
+  consoleVerifiedAt = 0
+  if (!await ensureConsoleSession(browser, origin, identityToken, { force: true })) return
+  await window.loadURL(target)
+  if (isLoginLanding(window)) console.error('kito wallet login failed', 'console still requires a login after re-establishing the session')
+}
+
+/**
+ * @param window - console window. @returns whether the page it shows is the console's login page.
+ */
+function isLoginLanding(window: BrowserWindow): boolean {
+  try {
+    return LOGIN_PATH.test(new URL(window.webContents.getURL()).pathname)
+  } catch (_error) {
+    return false
+  }
+}
+
+/**
+ * Make sure the partition holds a console session the site will accept.
+ *
+ * A stored cookie is not proof: it may have been rotated elsewhere or evicted
+ * by the account's session cap. A session therefore has to be revalidated by
+ * its own refresh endpoint before it is trusted past {@link CONSOLE_SESSION_FRESH_MS},
+ * and a refused refresh clears it instead of letting every later page fall
+ * back to the login screen.
+ * @param browser - partition session holding the console cookies.
+ * @param origin - console origin.
+ * @param identityToken - KT Identity access token.
+ * @param options - `force` revalidates a session that is still considered fresh.
+ * @returns whether a usable session is stored afterwards.
+ */
+async function ensureConsoleSession(
+  browser: Session, origin: string, identityToken: string, options: { force?: boolean } = {},
+): Promise<boolean> {
+  const stored = await hasRefreshCookie(browser, origin)
+  if (stored && options.force !== true && Date.now() - consoleVerifiedAt < CONSOLE_SESSION_FRESH_MS) return true
+  if (stored) {
+    if (await refreshConsoleSession(browser, origin)) {
+      consoleVerifiedAt = Date.now()
+      return true
+    }
+    await clearConsoleCookies(browser, origin)
+    consoleVerifiedAt = 0
+  }
+  const cooling = Date.now() < consoleRetryAt
+  if (cooling && Date.now() - consoleExplicitAt < CONSOLE_EXPLICIT_RETRY_MS) return false
+  consoleExplicitAt = Date.now()
+  try {
+    const established = await establishKitoConsoleSession(identityToken)
+    await storeConsoleCookies(browser, origin, established.cookies)
+    const balance = spendableFromEnsure(established.payload)
+    if (balance !== undefined) cachedBalance = { at: Date.now(), balance }
+    consoleVerifiedAt = Date.now()
+    consoleRetryAt = 0
+    return true
+  } catch (error) {
+    consoleRetryAt = Date.now() + 15 * 60 * 1000
+    console.error('kito wallet login failed', failureDetail(error))
+    return false
+  }
+}
+
+/**
+ * Revalidate the stored console session through its own refresh endpoint.
+ * @param browser - partition session holding the console cookies.
+ * @param origin - console origin.
+ * @returns whether the session answered; rotated cookies are stored either way.
+ */
+async function refreshConsoleSession(browser: Session, origin: string): Promise<boolean> {
+  const stored = await browser.cookies.get({ url: `${origin}/api/user/auth`, name: KITO_CONSOLE_REFRESH_COOKIE })
+  const refreshValue = stored.find(cookie => cookie.value.length > 0)?.value
+  if (refreshValue === undefined) return false
+  const request = consoleRefreshRequest(KITO_WALLET_URL, refreshValue)
+  try {
+    const response = await kitoFetch(request.url, request.init)
+    if (!response.ok) {
+      await response.body?.cancel()
+      return false
+    }
+    await storeConsoleCookies(browser, origin, consoleCookiesFrom(response))
+    const balance = spendableFromEnsure(await readJson(response))
+    if (balance !== undefined) cachedBalance = { at: Date.now(), balance }
+    return true
+  } catch (error) {
+    console.error('kito wallet session refresh failed', failureDetail(error))
+    return false
+  }
+}
+
+/** @param browser - partition session. @param origin - console origin. */
+async function clearConsoleCookies(browser: Session, origin: string): Promise<void> {
+  for (const cookie of await browser.cookies.get({ url: origin })) {
+    await browser.cookies.remove(new URL(cookie.path || '/', origin).href, cookie.name)
+  }
 }
 
 /**
@@ -177,10 +296,10 @@ export async function signOutKitoConsole(): Promise<void> {
       console.error('kito wallet logout failed', failureDetail(error))
     }
   }
-  for (const cookie of await browser.cookies.get({ url: origin })) {
-    await browser.cookies.remove(new URL(cookie.path || '/', origin).href, cookie.name)
-  }
+  await clearConsoleCookies(browser, origin)
   consoleRetryAt = 0
+  consoleVerifiedAt = 0
+  consoleExplicitAt = 0
   balanceFailureLogged = false
   cachedBalance = undefined
   if (current !== undefined && !current.isDestroyed()) current.close()

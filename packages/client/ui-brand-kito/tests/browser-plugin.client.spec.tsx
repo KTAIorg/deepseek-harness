@@ -176,7 +176,8 @@ describe('Kito browser-brand plugin', () => {
     const view = render(<KitoAccountSection {...globals} close={() => {}} t={key => zh[key]} />)
     expect(view.getByText('KT-DEMO-001')).toBeTruthy()
     expect(view.getByText('@ada_t')).toBeTruthy()
-    expect(view.getByText('余额 (USD) $2')).toBeTruthy()
+    expect(view.getByText('余额 (USD)')).toBeTruthy()
+    expect(view.getByText('$2')).toBeTruthy()
     for (const [name, target] of [['消费记录', 'usage'], ['充值记录', 'topups'], ['Token', 'keys']] as const) {
       fireEvent.click(view.getByRole('button', { name }))
       expect(fetchMock).toHaveBeenCalledWith(`dsh-app://app/kito/open?target=${target}`, { method: 'POST' })

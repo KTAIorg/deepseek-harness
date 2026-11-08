@@ -34,6 +34,7 @@ export function AccountMenu({
     settingsWasOpen.current = settingsOpen
   }, [refreshAccount, settingsOpen])
   const account = useAccount(state => state)
+  const clientVersion = process.env.DSH_CLIENT_VERSION
   const colorScheme = useTheme(snapshot => snapshot.active.colorScheme)
   // Kito owns its Telegram entry from the first Desktop frame; provider presence
   // also covers shells without the build marker. Absence preserves the official menu.
@@ -51,6 +52,8 @@ export function AccountMenu({
   const trigger = useRef<HTMLButtonElement>(null)
   const [busy, setBusy] = useState(false)
   const [signOutImpact, setSignOutImpact] = useState<boolean | 'unknown'>()
+  // Feedback keeps a keyboard entry in the signed-out menu below, so the row
+  // itself no longer needs the control; the parameter stays part of the face.
   const requestSignOut = async () => {
     setBusy(true)
     try { setSignOutImpact(await hasRunningAccountTasks()); setOpen(false) }
@@ -73,16 +76,9 @@ export function AccountMenu({
           <IconSettingsOutlineMedium size={14} />
           {wide && <span className={css.label}>{t('settings')}</span>}
         </button>
-        {/* The paper plane opens the feedback page. Its label is the entry's own
-            name: showing the build version here made the button read as part of
-            the version display, so a click looked like it opened something
-            unexplained. The version stays where it is displayed, not on a
-            control. */}
-        <button type="button" className={css.action} data-collapsed={!wide} aria-label={t('contactUs')}
-          title={t('contactUs')} onClick={contactUs}>
-          <IconPaperPlaneOutlineMedium size={14} />
-          {wide && <span className={css.label}>{t('contactUs')}</span>}
-        </button>
+        {/* This corner carries the build version, not controls: feedback lives
+            in Settings, so the row stays a shortcut plus a label. */}
+        {wide && clientVersion !== undefined && <span className={css.version} title={`v${clientVersion}`}>{`v${clientVersion}`}</span>}
       </div>
       : <Menu open={open} side="top" portal autoFocus className={css.anchor} listClassName={signedIn ? undefined : css.signedOutMenu}
         anchor={<button ref={trigger} type="button" className={css.trigger} data-collapsed={!wide} data-signed-out={!signedIn} aria-label={t('menu')}

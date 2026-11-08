@@ -140,7 +140,6 @@
   text-align: left;
 }
 
-.copyButton,
 .language,
 .languageActive {
   border: none;
@@ -155,42 +154,74 @@
   text-align: left;
 }
 
-.copies {
+.facts {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-l1);
 }
 
-.copyRow {
+/* One fact per row: label, value, then the copy control. The label column is
+   fixed so values line up, which is what turns three loose rows into a table. */
+.factRow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   min-width: 0;
+  min-height: 28px;
 }
 
-.copyLabel {
+.factLabel {
   flex: none;
-  color: var(--dsw-alias-label-secondary);
+  width: 72px;
+  color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
   line-height: 14px;
 }
 
-.copyValue {
+.factValue {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   color: var(--dsw-alias-label-primary);
   font-family: var(--ds-font-family-code);
-  font-size: 11px;
-  line-height: 14px;
+  font-size: 12px;
+  line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.copyButton {
+/* The copy action is an icon button: a word-shaped control next to a value read
+   as part of the text. */
+.factCopy {
   flex: none;
-  padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.factCopy[data-copied='true'] {
+  color: var(--dsw-alias-state-fg-success, var(--dsw-alias-label-primary));
+}
+
+@media (hover: hover) {
+  .factCopy:hover {
+    border-color: var(--dsw-alias-border-l);
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
 }
 
 .languageDock {
@@ -286,43 +317,166 @@
   padding: 8px 4px 24px;
 }
 
-.panelTitle {
-  margin: 0;
+.panelHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.panelAvatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-bg-skeleton);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.panelAvatar[data-signed-in='true'] {
   color: var(--dsw-alias-label-primary);
-  font-size: 16px;
+}
+
+.panelIdentity {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.panelName {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-size: 15px;
   font-weight: 500;
-  line-height: 22px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .panelStatus {
   margin: 0;
   color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.panelRetry {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--dsw-alias-border-l);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-interactive-bg);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.balanceCard {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-l1);
+}
+
+.balanceLabel {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.balanceAmount {
+  color: var(--dsw-alias-label-primary);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Two columns of icon + label: the glyph is what separates these from body
+   copy, and the centered alignment keeps an icon-only and a text row apart. */
+.panelActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.panelActions .panelButton {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.panelButtonIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.panelButtonText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signOutButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-start;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font: inherit;
   font-size: 13px;
   line-height: 18px;
 }
 
-.balanceLine {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
+.signOutButton > svg {
+  margin-inline-start: auto;
+  color: var(--dsw-alias-label-tertiary);
 }
 
-.panelActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+@media (hover: hover) {
+  .signOutButton:hover {
+    border-color: var(--dsw-alias-border-l);
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
 }
 
-.panelActions .panelButton {
-  flex: 1 1 calc(50% - 6px);
-  text-align: center;
+.signOutButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-border-inverted);
+  outline-offset: 2px;
 }
 
 /* A control that only differs from body text by a near-invisible surface reads
    as text. Give it an edge, a press state, and a visible focus ring so the
    account section's entries look like what they do. */
 .panelButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   border: 1px solid var(--dsw-alias-border-l);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-interactive-bg);

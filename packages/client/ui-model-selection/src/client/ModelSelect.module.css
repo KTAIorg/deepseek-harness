@@ -664,3 +664,110 @@
   height: 14px;
   transform: rotate(180deg);
 }
+
+/* Availability dot beside a model name. It sits on the name's baseline so a
+   long, truncating name never pushes it out of the row. */
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.probeDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-label-tertiary);
+}
+
+.probeDot[data-state='ok'] { background: var(--dsw-alias-state-fg-success, #2f9e44); }
+.probeDot[data-state='limited'] { background: var(--dsw-alias-state-fg-warning, #e8a33d); }
+.probeDot[data-state='failed'] { background: var(--dsw-alias-state-fg-danger, #e03131); }
+
+/* A probe in flight reads as a pulse rather than a spinner: the row keeps its
+   layout and the dot does not compete with the selection check mark. */
+.probeDot[data-state='probing'] {
+  background: transparent;
+  border: 1.5px solid var(--dsw-alias-label-tertiary);
+  border-top-color: transparent;
+  animation: probeSpin 700ms linear infinite;
+}
+
+@keyframes probeSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Vendor heading doubles as the fold control: the whole row is the target, so
+   folding a 100-model family is one click on a label people already read. */
+.sectionToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 2px 0;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+@media (hover: hover) {
+  .sectionToggle:hover { background: var(--dsw-alias-interactive-bg-hover); }
+  .sectionToggle:hover .sectionChevron { color: var(--dsw-alias-label-secondary); }
+}
+
+.sectionToggle:focus-visible {
+  outline: 2px solid var(--dsw-alias-border-inverted);
+  outline-offset: 1px;
+}
+
+.sectionChevron {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 120ms ease;
+}
+
+.sectionChevronFolded { transform: rotate(-90deg); }
+
+.sectionName { white-space: nowrap; }
+
+/* Manual availability check: a chip beside the effort control, muted until the
+   person asks for it, with progress text while a batch is running. */
+.probeAction {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-l);
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.probeAction:disabled { cursor: default; }
+
+@media (hover: hover) {
+  .probeAction:not(:disabled):hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.probeAction:focus-visible {
+  outline: 2px solid var(--dsw-alias-border-inverted);
+  outline-offset: 2px;
+}
