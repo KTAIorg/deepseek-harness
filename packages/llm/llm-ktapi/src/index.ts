@@ -18,6 +18,7 @@ import {
 import z from '@deepseek-ai/schemastery'
 import { DEFAULT_CONTEXT, DEFAULT_OUTPUT, type KtapiModel } from './catalog.ts'
 import { CATALOG_TIMEOUT_MS, fetchKtapiCatalog, type KtapiCatalogSnapshot } from './discovery.ts'
+import { registerProbeRoute } from './probe-route.ts'
 
 /** Cordis plugin name. */
 export const name = 'llm-ktapi'
@@ -230,6 +231,16 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   registration = ctx.llm.registerAdapter([KTAI_PROVIDER], adapter)
+  // Model health is an HTTP surface, not part of the model seam: the selector
+  // asks for it only while it is open, and profiles without a web server (the
+  // CLI, headless runs) keep the route unmounted instead of failing to load.
+  ctx.inject(['webServer'], (scope) => {
+    registerProbeRoute(scope, {
+      resolveApiKey,
+      baseURL: () => optionsOf(config).baseURL,
+      models: () => (snapshot?.models ?? []).map(model => model.id),
+    })
+  })
   // The relay key arrives after this plugin mounts: a fresh install signs in
   // from the welcome window, so the mount-time read has nothing to resolve and
   // the route offers no models. Without this listener that first empty result

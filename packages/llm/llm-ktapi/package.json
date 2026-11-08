@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-llm-ktapi",
-  "version": "0.2.2-rc.9",
+  "version": "0.2.2-rc.10",
   "description": "The ktapi model catalog: normalizes the gateway listing, applies the curated Kito picks, and attaches pricing.",
   "type": "module",
   "main": "lib/index.js",

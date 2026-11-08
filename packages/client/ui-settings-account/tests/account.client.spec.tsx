@@ -229,13 +229,10 @@ it('keeps direct Kito launcher actions free of a second login from the first fra
   expect(settings.getAttribute('aria-keyshortcuts')).toBe('Meta+,')
   fireEvent.click(settings)
   expect(openSettings).toHaveBeenCalledOnce()
-  // The feedback entry carries its own name: showing the build version here
-  // read as part of the version display rather than as a control.
-  const feedbackButton = screen.getByRole('button', { name: zh.contactUs })
-  expect(feedbackButton.textContent).toBe(zh.contactUs)
-  expect(feedbackButton.textContent).not.toContain('v0.2.2')
-  fireEvent.click(feedbackButton)
-  expect(operations.contactUs).toHaveBeenCalledOnce()
+  // The row carries the build version and no second control: feedback moved to
+  // Settings, so nothing here can be mistaken for a version button.
+  expect(screen.queryByRole('button', { name: zh.contactUs })).toBeNull()
+  expect(screen.getByText('v0.2.2-rc.1')).toBeTruthy()
   expect(screen.queryByRole('button', { name: zh.signIn })).toBeNull()
   expect(fetchAccount).not.toHaveBeenCalled()
 })
@@ -256,7 +253,8 @@ it('separates Kito launcher actions from official account notices', async () => 
   await vi.waitFor(() => { expect(screen.getByRole('status').textContent).toBe(`${zh.bonusNoticeTitle}Official award`) })
   expect(screen.queryByRole('button', { name: zh.menu })).toBeNull()
   expect(screen.getByRole('button', { name: zh.settings }).textContent).toBe('')
-  expect(screen.getByRole('button', { name: zh.contactUs }).textContent).toBe('')
+  // Feedback left this row for Settings, so the launcher holds one control.
+  expect(screen.queryByRole('button', { name: zh.contactUs })).toBeNull()
   expect(document.body.textContent).not.toContain('Official account')
   expect(screen.queryByRole('menu')).toBeNull()
   expect(screen.queryByRole('button', { name: zh.signIn })).toBeNull()

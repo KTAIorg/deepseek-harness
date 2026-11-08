@@ -47,6 +47,8 @@ import {
 import { VendorIcon } from './VendorIcon.tsx'
 import { loadModelUsage, modelUsageKey, rememberModelUse, type ModelUsage } from './model-usage.ts'
 import { orderModelProviders } from './provider-order.ts'
+import { freshOutcome, modelProbe, probeIsStale, type ProbeOutcome } from './model-probe.ts'
+import { loadCollapsedSections, saveCollapsedSections } from './model-collapse.ts'
 
 /** Which pane the dropdown shows: the grouped model panel or its effort list. */
 type Pane = 'model' | 'effort'
@@ -56,6 +58,14 @@ interface EffortChoice {
   key: string
   effort: string | undefined
   label: string
+}
+
+/** Availability dot: green answers, amber rate-limited, red refused, spinner while checking. */
+function ProbeBadge({ outcome, probing }: { outcome: ProbeOutcome | undefined; probing: boolean }) {
+  if (probing) return <span className={css.probeDot} data-state="probing" aria-hidden="true" />
+  if (outcome === undefined) return null
+  const state = outcome.ok ? 'ok' : outcome.state === 'rate_limited' ? 'limited' : 'failed'
+  return <span className={css.probeDot} data-state={state} aria-hidden="true" title={outcome.message} />
 }
 
 /**
@@ -73,6 +83,7 @@ export function ModelSelect(
     fn => directory.subscribe(fn),
     () => directory.getSnapshot(),
   )
+  const probe = useSyncExternalStore(modelProbe.subscribe, modelProbe.getSnapshot)
   const [open, setOpen] = useState(false)
   const [pane, setPane] = useState<Pane>('model')
   const [query, setQuery] = useState('')
@@ -99,9 +110,30 @@ export function ModelSelect(
     name: group.id === 'deepseek-account' ? accountProviderName : group.name,
   })), [state.groups, accountProviderName])
   const [usage, setUsage] = useState<ModelUsage>(loadModelUsage)
+  const [collapsed, setCollapsed] = useState<readonly string[]>(loadCollapsedSections)
   const choices = useMemo(() => modelChoices(groups), [groups])
+  // Only the account-backed route has a probe endpoint; other providers keep no control.
+  const probed = choices.some(choice => choice.provider === 'ktapi')
   const sections = useMemo(() => buildModelSections(choices, usage, query), [choices, usage, query])
-  const visibleChoices = useMemo(() => sections.flatMap(section => section.choices), [sections])
+  // A vendor section folds to its heading. Search ignores folding: a query is
+  // already a deliberate narrowing, and results hidden behind a fold would look
+  // like no match.
+  const folded = (section: ModelSection): boolean => section.kind === 'vendor'
+    && query === '' && collapsed.includes(section.id)
+  const visibleChoices = useMemo(
+    () => sections.filter(section => !folded(section)).flatMap(section => section.choices),
+    [sections, collapsed, query],
+  )
+  const toggleFolded = (section: ModelSection): void => {
+    setCollapsed((current) => {
+      const next = current.includes(section.id)
+        ? current.filter(id => id !== section.id)
+        : [...current, section.id]
+      saveCollapsedSections(next)
+      return next
+    })
+    setHighlightedIndex(null)
+  }
   const currentVisibleIndex = visibleChoices.findIndex(choice =>
     state.current !== null && choiceMatches(choice, state.current.provider, state.current.model))
   const activeModelIndex = visibleChoices.length === 0
@@ -153,6 +185,14 @@ export function ModelSelect(
     // The dialog's own mask keeps the page inert, so search owns the keyboard.
     if (!isMobileDevice()) searchRef.current?.focus()
   }, [open, pane])
+
+  // Opening the selector is the only moment probed availability is asked for:
+  // a fresh batch is reused, and a stale one refreshes quietly in the
+  // background while the list is already interactive.
+  useEffect(() => {
+    if (!open || !probeIsStale(probe)) return
+    void modelProbe.run(choices.map(choice => ({ provider: choice.provider, model: choice.model.id })))
+  }, [open, probe, choices])
 
   useLayoutEffect(() => {
     if (open && pane === 'model' && activeModelIndex >= 0) {
@@ -410,7 +450,11 @@ export function ModelSelect(
         onClick={() => { choose(choice) }}
       >
         <span className={css.choiceText}>
-          <span className={css.modelName}>{label}</span>
+          <span className={css.nameRow}>
+            <span className={css.modelName}>{label}</span>
+            <ProbeBadge outcome={freshOutcome(probe, choice.provider, choice.model.id)}
+              probing={probe.pending[`${choice.provider}:${choice.model.id}`] === true} />
+          </span>
           {choice.aliases.length > 0 && (
             <span className={css.aliasBadge}>{t('option.aliases', { count: choice.aliases.length })}</span>
           )}
@@ -516,6 +560,22 @@ export function ModelSelect(
                   </button>
                 )}
               </div>
+              {probed && (
+                <button type="button" className={css.probeAction} disabled={busy || probe.running}
+                  onClick={() => {
+                    void modelProbe.run(
+                      choices.map(choice => ({ provider: choice.provider, model: choice.model.id })),
+                      { force: true },
+                    )
+                  }}>
+                  {probe.running
+                    ? <>
+                      <StateDot state="ongoing" />
+                      <span>{t('probe.running', { done: probe.done, total: probe.total })}</span>
+                    </>
+                    : <span>{probe.probedAt === null ? t('probe.action') : t('probe.retry')}</span>}
+                </button>
+              )}
               {reasoning !== undefined && (
                 <button type="button" className={css.effortChip} disabled={busy} onClick={showEfforts}>
                   <span className={css.effortChipLabel}>{t('menu.effort')}</span>
@@ -550,12 +610,25 @@ export function ModelSelect(
               {sections.map(section => (
                 <section className={css.section} key={section.id} aria-label={sectionLabel(section)}>
                   <h3 className={css.sectionTitle}>
-                    {section.vendor !== undefined && <VendorIcon vendor={section.vendor} />}
-                    {sectionLabel(section)}
+                    {section.kind === 'vendor'
+                      ? <button type="button" className={css.sectionToggle}
+                        aria-expanded={!folded(section)} aria-controls={`${id}-section-${section.id}`}
+                        onClick={() => { toggleFolded(section) }}>
+                        <IconChevronDownOutlineRegular
+                          className={clsx(css.sectionChevron, folded(section) && css.sectionChevronFolded)} />
+                        {section.vendor !== undefined && <VendorIcon vendor={section.vendor} />}
+                        <span className={css.sectionName}>{sectionLabel(section)}</span>
+                      </button>
+                      : <>
+                        {section.vendor !== undefined && <VendorIcon vendor={section.vendor} />}
+                        {sectionLabel(section)}
+                      </>}
                   </h3>
-                  {section.kind === 'recent' || section.kind === 'frequent'
-                    ? <div className={css.chipRow}>{section.choices.map(choice => renderChoice(choice, true))}</div>
-                    : <div className={css.grid}>{section.choices.map(choice => renderChoice(choice, false))}</div>}
+                  {folded(section)
+                    ? null
+                    : section.kind === 'recent' || section.kind === 'frequent'
+                      ? <div id={`${id}-section-${section.id}`} className={css.chipRow}>{section.choices.map(choice => renderChoice(choice, true))}</div>
+                      : <div id={`${id}-section-${section.id}`} className={css.grid}>{section.choices.map(choice => renderChoice(choice, false))}</div>}
                 </section>
               ))}
             </div>

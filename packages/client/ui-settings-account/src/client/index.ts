@@ -20,6 +20,7 @@ import { BrowserLogin } from './browser-login.ts'
 import { AccountOnboarding } from './AccountOnboarding.tsx'
 import { AccountPlatformHost, type AccountPlatformHostInjected } from './AccountPlatformHost.tsx'
 import { AccountMenu } from './AccountMenu.tsx'
+import { ContactRow, type ContactRowInjected } from './ContactRow.tsx'
 import { createPlatformPages, type PlatformPages } from './platform-pages.ts'
 import { AccountSection, type AccountSnapshot, type AccountSectionInjected } from './AccountSection.tsx'
 import { createBonusNoticeController } from './bonus-notices.ts'
@@ -335,6 +336,12 @@ export function apply(ctx: Context): void {
       }),
     }, AccountPlatformHost))
   }
+  // The sidebar keeps only the settings shortcut and the build version, so the
+  // feedback form lives where the rest of the product's settings rows do.
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item', id: 'account-feedback', order: 90, locale: 'settings.account',
+    inject: (): ContactRowInjected => ({ contactUs: () => { operations.contactUs() } }),
+  }, ContactRow))
   ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.launcher', () => ctx.slots.register({
     name: 'settings.launcher', locale: 'settings.account', inject: () => operations,
   }, AccountMenu)))
