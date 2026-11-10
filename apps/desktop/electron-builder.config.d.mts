@@ -5,7 +5,7 @@ export interface DesktopElectronBuilderConfig {
   readonly appId: string
   readonly copyright: string
   readonly artifactName: string
-  readonly protocols: readonly [{ readonly name: 'Kito Harness'; readonly schemes: readonly ['dsh', 'kito-harness'] }]
+  readonly protocols: readonly [{ readonly name: 'Kito Harness'; readonly schemes: readonly ['kito-harness'] }]
   readonly directories: {
     readonly output: string
   }

@@ -64,11 +64,11 @@ async function launchElectron(): Promise<void> {
   const mainPort = debugPort('DSH_DESKTOP_MAIN_INSPECT_PORT', 9229)
   const rendererPort = debugPort('DSH_DESKTOP_RENDERER_DEBUG_PORT', 9222)
   const hostPort = debugPort('DSH_DESKTOP_HOST_INSPECT_PORT', 9230)
-  const home = resolve(process.env.DSH_HOME ?? join(DEVELOPMENT_ROOT, 'home'))
+  const home = resolve(process.env.KITO_HARNESS_HOME ?? join(DEVELOPMENT_ROOT, 'home'))
   const userData = resolve(process.env.DSH_DESKTOP_USER_DATA_DIR ?? join(DEVELOPMENT_ROOT, 'electron-user-data'))
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
-    DSH_HOME: home,
+    KITO_HARNESS_HOME: home,
     DSH_DESKTOP_PRIMARY_RUNTIME_DIR: process.env.DSH_DESKTOP_PRIMARY_RUNTIME_DIR ?? developmentRuntimeDirectory(),
     DSH_DESKTOP_HOST_INSPECT_PORT: String(hostPort),
     DSH_DESKTOP_OPEN_DEVTOOLS: process.env.DSH_DESKTOP_OPEN_DEVTOOLS ?? '1',
@@ -76,7 +76,7 @@ async function launchElectron(): Promise<void> {
   }
   const localEnv = join(APP_ROOT, '.env')
   if (existsSync(localEnv)) applyEnvFile(readFileSync(localEnv, 'utf8'), environment)
-  console.log(`desktop development: DSH_HOME=${home}`)
+  console.log(`desktop development: KITO_HARNESS_HOME=${home}`)
   console.log(`desktop development: sentry=${environment.DSH_SENTRY_DSN ? 'on' : 'off'}`)
   console.log(`desktop development: userData=${userData}`)
   console.log(`desktop development: inspectors main=${String(mainPort)}, renderer=${String(rendererPort)}, host=${String(hostPort)}`)

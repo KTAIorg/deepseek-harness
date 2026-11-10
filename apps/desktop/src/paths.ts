@@ -11,7 +11,7 @@ export interface DesktopPaths {
 
 /**
  * Resolve every Electron-owned path under the Kito Harness home.
- * @param dshHome - explicit home; otherwise `DSH_HOME` or `~/.kito-harness`.
+ * @param dshHome - explicit home; otherwise `KITO_HARNESS_HOME` or `~/.kito-harness`.
  * @returns immutable desktop path set.
  */
 export function resolveDesktopPaths(dshHome: string = ensureKitoHarnessHome()): DesktopPaths {

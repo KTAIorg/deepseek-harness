@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.10/kito-desktop-home/guide.md
+/:
+  en: 1a54ca42a2053abb
+  zh: cd408b2eb144cef8
+/kito-desktop-home-variable:
+  en: 4eb71f97805edb19
+  zh: 80d3ce2496a77b1a
+/kito-desktop-home-variable/change:
+  en: 8bfedeca76416eb5
+  zh: caae22ecc2b8dcc4
+/kito-desktop-home-variable/migration:
+  en: 636a5c27184514a0
+  zh: d76be58fd4c1c922

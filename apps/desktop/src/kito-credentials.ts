@@ -9,7 +9,7 @@ import { resolveKitoHarnessHome } from './kito-home.ts'
  * Read one reference from `$DSH_HOME/.credentials.yaml`.
  * Failsafe YAML keeps every scalar as text, so a numeric-looking token is not coerced.
  * @param ref - credential reference name.
- * @param home - harness home. Defaults to `DSH_HOME` or `~/.kito-harness`.
+ * @param home - harness home. Defaults to `KITO_HARNESS_HOME` or `~/.kito-harness`.
  * @returns the stored value, or undefined when the file or reference is absent.
  */
 export async function readStoredCredential(ref: string, home = resolveKitoHarnessHome()): Promise<string | undefined> {

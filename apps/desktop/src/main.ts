@@ -25,6 +25,7 @@ import {
   type MenuItemConstructorOptions,
 } from 'electron'
 import { resolveDesktopPaths } from './paths.ts'
+import { ensureKitoHarnessHome } from './kito-home.ts'
 import { DesktopProjectManager } from './project-manager.ts'
 import { DesktopHostFatalError, DesktopHostProcess, DesktopHostUncleanExitError } from './host-process.ts'
 import { DesktopPlatformView, PLATFORM_IPC, platformBounds } from './platform-view.ts'
@@ -87,7 +88,7 @@ let deliverHarnessLogin = (url: string): void => {
 }
 app.on('open-url', (event, url) => {
   event.preventDefault()
-  if (url === 'dsh://open' || url === 'dsh://open/') focusPrimaryWindow()
+  if (url === 'kito-harness://open' || url === 'kito-harness://open/') focusPrimaryWindow()
   deliverHarnessLogin(url)
 })
 let stopForRecovery = async (): Promise<void> => { await stopOperationReports() }
@@ -122,6 +123,10 @@ let windowsLanguage: string | undefined = readDesktopLocaleCache(app.getPath('us
 let backendReady = false
 /** Error-level console output of the primary window, attached to crash reports. */
 const rendererConsole = new RendererConsoleTail()
+
+// Every later `DSH_HOME` reader in this process and in the Host child must see the Kito home,
+// not a DeepSeek Harness home inherited from the launch environment.
+ensureKitoHarnessHome()
 
 // Packaged Kito must not share Electron's userData with DeepSeek Harness.
 // The single-instance lock lives in that directory, so a shared path makes the
@@ -1454,7 +1459,9 @@ async function main(): Promise<void> {
   }
 
   if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') {
-    app.setAsDefaultProtocolClient('dsh')
+    // `dsh` is DeepSeek Harness's scheme. Kito releases through 0.2.2-rc.10 registered it;
+    // this returns it when the operating system still routes it here.
+    app.removeAsDefaultProtocolClient('dsh')
     app.setAsDefaultProtocolClient('kito-harness')
   }
   const seenHarnessLogins = new Set<string>()

@@ -53,6 +53,7 @@ vi.mock('electron', () => ({
     name: 'Harness',
     requestSingleInstanceLock: () => true,
     setAsDefaultProtocolClient: vi.fn(),
+    removeAsDefaultProtocolClient: vi.fn(),
     whenReady: () => Promise.resolve(),
     getLocale: () => 'en',
     getVersion: () => '1.0.0',
@@ -198,7 +199,7 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
   state.beforeWelcome.mockReturnValueOnce(loading.promise)
   const activate = () => {
     state.appListeners.get('second-instance')!()
-    state.appListeners.get('open-url')!({ preventDefault: vi.fn() }, 'dsh://open')
+    state.appListeners.get('open-url')!({ preventDefault: vi.fn() }, 'kito-harness://open')
   }
   await import('../src/main.ts')
   await vi.waitFor(() => { expect(state.beforeRead).toHaveBeenCalledOnce() })
@@ -296,7 +297,7 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
   expect(state.focusWorkspace).not.toHaveBeenCalled()
   expect(state.moveTopWorkspace).not.toHaveBeenCalled()
   expect(state.openDevTools).not.toHaveBeenCalled()
-  state.appListeners.get('open-url')!({ preventDefault: vi.fn() }, 'dsh://open')
+  state.appListeners.get('open-url')!({ preventDefault: vi.fn() }, 'kito-harness://open')
   expect(state.showWorkspace).toHaveBeenCalledOnce()
   expect(state.focusWorkspace).toHaveBeenCalledOnce()
 

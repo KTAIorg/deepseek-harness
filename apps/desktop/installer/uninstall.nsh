@@ -20,8 +20,8 @@ Function un.CleanData
   ${IfNot} ${Errors}
     Return
   ${EndIf}
-  ; Only a DSH_HOME published as a Windows environment variable is visible here.
-  ReadEnvStr $UnHome DSH_HOME
+  ; Only a KITO_HARNESS_HOME published as a Windows environment variable is visible here.
+  ReadEnvStr $UnHome KITO_HARNESS_HOME
   ClearErrors
   StrCpy $UnTarget "$APPDATA\${PRODUCT_FILENAME}"
   Call un.RemoveData

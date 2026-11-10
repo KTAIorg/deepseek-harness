@@ -106,7 +106,7 @@ export function createElectronBuilderConfig(
   const packaged = resolveDesktopBuildCommit(env)
   return {
     appId,
-    protocols: [{ name: 'Kito Harness', schemes: ['dsh', 'kito-harness'] }],
+    protocols: [{ name: 'Kito Harness', schemes: ['kito-harness'] }],
     extraMetadata: {
       dshDesktopAppId: appId,
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
