@@ -66,7 +66,8 @@ Kito Harness 和官方 DeepSeek Harness 可以装在同一台机器上。ADR 000
 
 ## 待定问题
 
-- 版本号和 tag：fork 自增根 `package.json` 的版本号，并为打包工作流推送 `dsh-v*` tag，这两者都落在上游的命名空间里，ADR 0001 规定只打 `kito-harness-v*`。`docs/upgrade-guide/v<版本>/` 目录跟着同一个版本号。
+版本号、tag 和升级指南目录已由 [ADR 0005](0005-kito-harness-version-line.md) 决定。
+
 - 命令名：桌面可以把自带的命令安装成 PATH 上的 `dsh`，和官方 CLI 同名。改名会影响已经写好的脚本和文档。
 - 包名和目录：`@deepseek-ai/dsh-llm-ktapi`、`@deepseek-ai/dsh-client-ui-brand-kito` 在上游的 npm scope 和 `packages/` 目录树里。改名要迁移已安装 profile 里产品写入的 bundle 名。
 - 同一个 profile 里，用户手写的 `llm-pi-ai` provider 与随包 provider 同名（都叫 `ktapi`）时的行为没有验证。

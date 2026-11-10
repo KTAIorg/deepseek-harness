@@ -1,6 +1,7 @@
 /**
  * Enforce the `docs/upgrade-guide/v<version>/<item>/guide.md` layout, metadata,
  * sections, and word ceiling defined by the `dsh-create-upgrade-guide` skill.
+ * `docs/kito-upgrade-guide` holds the guides of Kito Harness releases under the same rules.
  * `verify-translation-pairing` owns the Chinese sibling's pairing record.
  * @module scripts/verify-upgrade-guides
  */
@@ -11,7 +12,8 @@ import { JSON_SCHEMA, load } from 'js-yaml'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 
 const ROOT = resolve(import.meta.dirname, '..')
-const GUIDE_ROOT = 'docs/upgrade-guide'
+/** The upstream tree, then the tree for changes that exist only in Kito Harness. */
+const GUIDE_ROOTS = ['docs/upgrade-guide', 'docs/kito-upgrade-guide'] as const
 const FRONTMATTER_KEYS = ['description', 'kind']
 /** Required `##` sections for each guide language; the word ceiling applies to the English source. */
 const LANGUAGES = {
@@ -49,11 +51,16 @@ function guideViolations(source: string, language: typeof LANGUAGES[keyof typeof
 
 /**
  * Report upgrade-guide tree violations.
- * @param root - Repository root containing `docs/upgrade-guide`.
- * @returns diagnostics prefixed by the repository-relative file path; empty when the tree is absent.
+ * @param root - Repository root containing `docs/upgrade-guide` and `docs/kito-upgrade-guide`.
+ * @returns diagnostics prefixed by the repository-relative file path; empty when both trees are absent.
  */
 export function collectUpgradeGuideViolations(root: string): string[] {
-  const directory = join(root, GUIDE_ROOT)
+  return GUIDE_ROOTS.flatMap(guideRoot => collectTreeViolations(root, guideRoot))
+}
+
+/** Return the violations of one guide tree; empty when the tree is absent. */
+function collectTreeViolations(root: string, guideRoot: string): string[] {
+  const directory = join(root, guideRoot)
   if (!existsSync(directory)) return []
   const violations: string[] = []
   const files = readdirSync(directory, { recursive: true, withFileTypes: true })
@@ -61,10 +68,10 @@ export function collectUpgradeGuideViolations(root: string): string[] {
     .map(entry => join(entry.parentPath, entry.name).slice(directory.length + 1).replaceAll('\\', '/'))
     .sort()
   for (const file of files) {
-    const path = `${GUIDE_ROOT}/${file}`
+    const path = `${guideRoot}/${file}`
     const name = GUIDE_PATH.exec(file)?.[1]
     if (name === undefined) {
-      violations.push(`${path}: only v<semver>/<kebab-case-item>/guide.{md,zh.md,i18n.yaml} files belong in ${GUIDE_ROOT}`)
+      violations.push(`${path}: only v<semver>/<kebab-case-item>/guide.{md,zh.md,i18n.yaml} files belong in ${guideRoot}`)
       continue
     }
     if (name === 'guide.md' || name === 'guide.zh.md') {

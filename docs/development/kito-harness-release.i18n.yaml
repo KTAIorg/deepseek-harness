@@ -6,8 +6,8 @@
   en: 9e5785203f6c9fdb
   zh: d8e34174abb13267
 /kito-harness-release-and-operations-runbook/scope-and-release-boundaries:
-  en: c3a4acc4112c6ce1
-  zh: 495a9194f8bfd63f
+  en: c4ace2facdde5133
+  zh: 0b257e738a481ba5
 /kito-harness-release-and-operations-runbook/custom-feature-map:
   en: 668a3e2c6b06b4f7
   zh: 64af704ba3bb47e2
@@ -18,8 +18,8 @@
   en: 0b3cd8ffeefd36a9
   zh: ed11143a4be1b029
 /kito-harness-release-and-operations-runbook/standard-release-flow/2-bump-the-version-and-merge-into-main:
-  en: 1520e8cf0a7b61af
-  zh: c1f157ad3880bd43
+  en: d636ddbaf0092f0a
+  zh: c80054fd6429825b
 /kito-harness-release-and-operations-runbook/standard-release-flow/3-build-natively-on-both-platforms:
   en: b3a14be2ca92d127
   zh: 3500656954ddf455
@@ -33,11 +33,11 @@
   en: f73613f6180fe902
   zh: 6da8df1e0bfb846e
 /kito-harness-release-and-operations-runbook/recurring-failures-and-their-fixes:
-  en: c6ab0dea99417298
-  zh: 7a330eff60e4e441
+  en: 5f8f5f85ad766283
+  zh: f2f2d8072e212177
 /kito-harness-release-and-operations-runbook/rollback:
   en: 34c69c332d8fcf20
   zh: f90cf69ef211628e
 /kito-harness-release-and-operations-runbook/handoff-checklist:
-  en: 5e4f845898e81cf6
-  zh: 7c4b6fc09d434303
+  en: 54188bb571fb57ea
+  zh: addbc8f932c07520

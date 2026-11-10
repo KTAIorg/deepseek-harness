@@ -8,6 +8,8 @@
 
 Kito Harness 是 `deepseek-ai/deepseek-harness` 的 KT fork。生产代码事实源是 `kt-aihub/deepseek-harness` 的 `main`；上游使用 `deepseek-ai/deepseek-harness` 的 `master` 和 `dsh-v*` tag。
 
+Kito Harness 的发布版本和上游分开编号。所有 `package.json` 保持已合并的上游发行版的 dsh 版本，`kt/kito-harness/version.json` 保存安装包、应用和更新源携带的 Kito Harness 发布版本。fork 发版时不运行 `pnpm release:dsh`，也不推送 `dsh-v*` tag。
+
 当前分发方式：
 
 - macOS Apple Silicon：PKG（推荐）与 DMG。
@@ -49,13 +51,14 @@ pnpm exec vitest run apps/desktop/tests/main-startup.spec.ts
 ### 2. 提升版本并合入 main
 
 ```sh
-VERSION=0.2.2-rc.2
+VERSION=1.0.0-rc.1
 git checkout -b release/kito-$VERSION
-pnpm release:dsh "$VERSION"
+printf '{\n  "version": "%s"\n}\n' "$VERSION" > kt/kito-harness/version.json
+git commit -am "release(kito): $VERSION"
 git push -u ktaiorg "release/kito-$VERSION"
 ```
 
-通过 PR 合入 `main`。版本提交必须先于构建；禁止未提交源码直接打正式发布包。发生版本不一致时先修复清单，不要用绕过检查的参数提交。
+通过 PR 合入 `main`。版本提交必须先于构建；禁止未提交源码直接打正式发布包。新版本必须大于所有已发布的版本，因为已安装的应用只向上更新。各 `package.json` 的版本保持不变。
 
 ### 3. 原生双平台构建
 
@@ -85,7 +88,7 @@ TAG="kito-harness-v$VERSION"
 kt gh --owner kt-aihub --repo deepseek-harness release create "$TAG" \
   --target <full-main-commit-sha> \
   --title "Kito Harness $VERSION" \
-  --notes "Kito Harness $VERSION: upstream sync plus Kito customizations. Apple Silicon PKG/DMG and Windows EXE, unsigned internal builds."
+  --notes "Kito Harness $VERSION, based on DeepSeek Harness $(node -p "require('./package.json').version"). Apple Silicon PKG/DMG and Windows EXE, unsigned internal builds."
 ```
 
 获取 release id 并上传三个安装包：
@@ -109,7 +112,7 @@ python3 scripts/release/github_release_artifacts.py upload "$RELEASE_ID" \
 ```json
 {
   "name": "kito-harness-desktop",
-  "version": "0.2.2-rc.2",
+  "version": "1.0.0-rc.1",
   "downloads": {
     "windows-x64": { "versionedUrl": "<exe-url>", "filename": "<exe>", "sha256": "<sha256>", "size": 0 },
     "macos-arm64": { "versionedUrl": "<pkg-url>", "filename": "<pkg>", "sha256": "<sha256>", "size": 0 },
@@ -123,7 +126,7 @@ python3 scripts/release/github_release_artifacts.py upload "$RELEASE_ID" \
 ### 6. 线上验收
 
 ```sh
-curl -s https://kito.ktai.im/ | grep -E 'Kito Harness|0.2.2-rc.2|unsigned.(pkg|dmg|exe)'
+curl -s https://kito.ktai.im/ | grep -E 'Kito Harness|1.0.0-rc.1|unsigned.(pkg|dmg|exe)'
 ```
 
 必须同时确认：
@@ -141,7 +144,7 @@ curl -s https://kito.ktai.im/ | grep -E 'Kito Harness|0.2.2-rc.2|unsigned.(pkg|d
 | 用户名、余额、语言切换全消失 | `packages/bundle/web-app/package.json` 缺少 `@deepseek-ai/dsh-client-ui-brand-kito`；恢复依赖并重建，不要只改 CSS |
 | `Command "build:kito" not found` | 根 `package.json` 丢失 `build:kito`；恢复 `tsx scripts/build.ts --profile kito` |
 | `Could not resolve "./assets/...svg"` | `ui-model-selection/package.json` 缺少 `"./assets/*": "./lib/assets/*"` 导出及 `lib/assets` files |
-| `dsh release members must share one version` | 新 Kito 包仍停留在旧版本；统一 `pnpm release:dsh <version>`，不要逐包随意改号 |
+| `dsh release members must share one version`，或 `package.json version must match root version` | 合并上游后 fork 自有的包仍停留在上一个 dsh 版本；把 `packages/llm/llm-ktapi` 和 `packages/client/ui-brand-kito` 的 `version` 改成根 `package.json` 的版本。不要用 `pnpm release:dsh` 给 Kito 发版编号 |
 | `Node-API headers missing` | 当前 Node 是 Codex/DSH 内置运行时而无头文件；使用带 `include/node/node_api.h` 的 Node 24 |
 | Electron 下载超时 | 使用 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`，重试原构建命令 |
 | `DSH_CLIENT_COMMIT_HASH must match` | 构建与提交并发竞争；等 commit 固定后重新打包 |
@@ -157,7 +160,7 @@ curl -s https://kito.ktai.im/ | grep -E 'Kito Harness|0.2.2-rc.2|unsigned.(pkg|d
 
 ## 交接检查
 
-- [ ] `main` 上的版本、tag 和构建 commit 一致。
+- [ ] `kt/kito-harness/version.json`、`kito-harness-v*` tag 和 `main` 上的构建 commit 一致；没有推送 `dsh-v*` tag。
 - [ ] CI 的 macOS 与 Windows 产物来自同一个 run，且上传的是该 run 的字节。
 - [ ] Release、SHA256SUMS 和 latest.json 的版本/大小/哈希一致。
 - [ ] 下载页、公开下载和实际启动验收通过。

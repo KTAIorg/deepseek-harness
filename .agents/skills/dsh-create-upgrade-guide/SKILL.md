@@ -25,6 +25,7 @@ Pre-stable internal APIs whose consumers are all updated in the same change need
 
 - `<version>` is the `version` field of the root `package.json` when you write the guide, for example `v0.1.7-rc.2`. The guide describes the upgrade from that release to the next one.
 - `<item>` is a kebab-case name of the changed surface, for example `profile-flag-rename`.
+- A break that exists only in the Kito Harness fork goes under `docs/kito-upgrade-guide/v<version>/<item>/` instead, where `<version>` is the `version` field of `kt/kito-harness/version.json`. `docs/upgrade-guide/` holds only guides merged from upstream, and every rule below applies to both trees.
 - Each item directory holds exactly `guide.md`, its Chinese counterpart `guide.zh.md`, and the pairing record `guide.i18n.yaml`: no index, no attachments.
 
 ## Maintenance

@@ -40,6 +40,8 @@ Set `DSH_DESKTOP_PACKAGE_CACHE_DIR` to an absolute build-cache directory for reu
 
 Before each Desktop packaging run, first confirm the complete version string with the current user. Check the selected deployment, dsh base version, retained release records, and published objects, then propose the exact version for approval. Do not start packaging until the user confirms that version; the deployment setting alone does not authorize a version choice.
 
+In this fork the base is the Kito Harness version in `kt/kito-harness/version.json`, not the dsh version: `package-target.ts` and the electron-builder configuration publish that version or a build version extending it, while the bundled runtime still declares the dsh version (ADR 0005, `docs/development/adr/0005-kito-harness-version-line.md`). The rules below apply with that base.
+
 Record the current dsh version as the base. A production Desktop release uses that exact version, including any `alpha`, `beta`, or `rc` identifiers. A test release preserves the complete prerelease base and appends `.YYYYMMDD.index`; a stable base uses `-test.YYYYMMDD.index` instead.
 
 | dsh base | Production Desktop | Test Desktop example |
