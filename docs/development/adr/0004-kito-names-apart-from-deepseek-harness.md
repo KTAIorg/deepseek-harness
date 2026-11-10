@@ -63,6 +63,7 @@ Kito Harness 和官方 DeepSeek Harness 可以装在同一台机器上。ADR 000
 | `apps/cli/package.json`、`packages/bundle/web-app/package.json`、`packages/bundle/web-app/cordis.patch.yml`、`tsconfig.base.json` | 引用的是 `@kito/dsh-llm-ktapi`、`@kito/dsh-client-ui-brand-kito` |
 | `tsconfig.base.json` | 生成区之外手写的 `@kito/dsh-llm-ktapi` 源码别名 |
 | `scripts/release/families.ts` | dsh 发行族的成员允许 `@kito` scope；桌面打包按这个成员表打包随包运行时 |
+| `scripts/verify-npm-install-layout.ts` | `@kito/dsh-*` 和 `@deepseek-ai/dsh-*` 一样拆成两个不兼容版本 |
 
 ## 非目标
 
