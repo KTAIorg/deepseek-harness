@@ -21,6 +21,7 @@ import { packagingErrorDetails, packagingStep } from './packaging-step.mjs'
 import { notarizeMacOS } from './notarize-macos.mjs'
 import { resolveMacOSNotarizationEnvironment } from './desktop-release-environment.mjs'
 import { DESKTOP_BUILD_VERSION_ENV, resolveDesktopBuildVersion, validateDesktopBuildVersion } from './desktop-build-version.mjs'
+import { kitoHarnessVersion } from '../../../scripts/kito-harness-version.mjs'
 import { suggestDesktopBuildVersion } from './desktop-build-version-discovery.ts'
 import { desktopBuildCommitEnvironment, readDesktopBuildCommit, resolveDesktopBuildCommit } from './desktop-build-commit.mjs'
 import { requireDesktopToolchain } from './desktop-toolchain-preflight.ts'
@@ -144,7 +145,7 @@ function writeReleaseRecord(
   if (desktopVersion !== dshVersion) {
     throw new Error(`desktop package: desktop version ${desktopVersion} does not match dsh version ${dshVersion}`)
   }
-  const buildVersion = resolveDesktopBuildVersion(environment, dshVersion)
+  const buildVersion = resolveDesktopBuildVersion(environment, kitoHarnessVersion())
   const packaged = resolveDesktopBuildCommit(environment)
   const update = resolveDesktopAutoUpdateConfig(environment, target.platform, target.arch)
   const recordPath = join(artifactsRoot, desktopBuildRecordFilename(target.name))
@@ -353,7 +354,8 @@ async function main(): Promise<void> {
   const productVersion = packageVersion(join(APP_ROOT, 'package.json'), 'desktop package')
   // Release settings come from the selected configuration files, so the version this run publishes is an
   // argument; the environment variable below only carries it to the child processes that build.
-  const buildVersion = await resolveRequestedBuildVersion(invocation, productVersion, environment)
+  // A build version extends the Kito Harness version; productVersion is the dsh version of the bundled runtime.
+  const buildVersion = await resolveRequestedBuildVersion(invocation, kitoHarnessVersion(), environment)
   environment[DESKTOP_BUILD_VERSION_ENV] = buildVersion
   if (invocation.check) {
     validateDesktopPackageEnvironment(environment, target, invocation)
@@ -543,7 +545,7 @@ export async function packageTarget(
     await withMacOSNotarizationProxy(mac?.notarizationProxy, () => packageMacOSArtifacts({
       arch: target.arch,
       // electron-builder named these artifacts after the published version, so locating them uses the same identifier.
-      version: resolveDesktopBuildVersion(environment, packageVersion(join(APP_ROOT, 'package.json'), 'desktop package')),
+      version: resolveDesktopBuildVersion(environment, kitoHarnessVersion()),
       artifactsRoot: buildPaths.artifacts,
       environment: electronBuilderEnv,
     }, buildMacArtifact), undefined, undefined, proxyEvent)
