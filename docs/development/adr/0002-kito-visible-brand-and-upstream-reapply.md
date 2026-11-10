@@ -27,8 +27,8 @@ Kito Harness 跟着 DeepSeek Harness 的发行 tag 合并。可见名称如果�
 |---|---|---|
 | 侧栏品牌 | `ui-brand-kito` 仍挂在 `packages/bundle/web-app/cordis.patch.yml`，依赖仍在该包的 `package.json` | 官方 `ui-brand-official` 的 `official` 分支 |
 | 窗口标题 | 开发构建写入 `DSH_CLIENT_TITLE=Kito Harness`；打包构建使用 `kito` profile | `scripts/client-build-environment.ts` 里的 `OFFICIAL_CLIENT_BUILD_ENVIRONMENT` |
-| 桌面壳 | 产品名 Kito Harness、图标、欢迎页、`~/.kito-harness`、更新源 `https://updates.ktyun.cc` | 上游安装器里与产品名无关的新检查 |
-| 身份与模型 | `kt/kito-provider` 和桌面登录仍指向 KT Identity 与 `https://ktapi.cc/v1` | 官方模型目录 `deepseek-flash` / `deepseek-v4-pro` |
+| 桌面壳 | 产品名 Kito Harness、图标、欢迎页、`~/.kito-harness`、更新源 `https://updates.ktyun.cc`；数据目录覆盖和 URL 协议按 [ADR 0004](0004-kito-names-apart-from-deepseek-harness.md) | 上游安装器里与产品名无关的新检查；`DSH_HOME` 覆盖入口和 `dsh` 协议 |
+| 身份与模型 | 桌面由 `apps/desktop/src/project-manager.ts` 挂载随包的 `packages/llm/llm-ktapi`，桌面登录仍指向 KT Identity 与 `https://ktapi.cc/v1`；`kt/kito-provider` 只用于非桌面 profile | 官方模型目录 `deepseek-flash` / `deepseek-v4-pro` |
 | 账号与充值 | 侧栏和设置里的账号页显示 Telegram 昵称、KT 账号编号、Telegram 用户名和 NewAPI 可花余额，编号和用户名可以复制；余额打开 `https://www.ktapi.cc/wallet`。登录过期时用 `KITO_IDENTITY_REFRESH_TOKEN` 续期；没有登录但模型密钥有效时显示余额和登录按钮；退出删除 Identity 凭据、保留模型密钥。语言切换在侧栏账号下方，写入现有界面语言偏好 | 不另建一套账本，不另做一套语言包 |
 | 开发错误收集 | `apps/desktop/src/kito-sentry.ts` 在致命失败时上报；DSN 只来自 `DSH_SENTRY_DSN` | 不把 DSN 写进仓库，不挂 Telegram 或分派 hook |
 | 网页版 | 镜像用 `pnpm run build:kito` 构建，侧栏品牌和语言切换与打包桌面一致；Telegram 账号入口只在桌面壳（`dshDesktop`）登记，网页由 `dsh-auth-gateway` 登录 | 不在网页显示 Telegram 登录和 `dsh-app://` 账号入口 |

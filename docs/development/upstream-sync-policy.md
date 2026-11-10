@@ -31,7 +31,7 @@
 3. **CI/交付**：`.github/workflows/release-ack.yml`、`.github/workflows/mirror-running-tag-to-zot.yml`、`.github/scripts/**`
 4. **治理文档**：`docs/development/**`
 5. **认证门面**：上游 Web 无认证且 Agent 可执行代码，ACK 暴露前必须挂认证网关。实现在独立仓库 `KTAIorg/dsh-auth-gateway`。本仓只保留 sidecar 接线：Deployment 的 `auth-gateway` 容器、Service targetPort、`dsh-auth-secrets` 引用（值走 KTSecret，禁止入 Git）。授权策略 = kt-identity `ADMIN` 角色 ∪ 白名单，默认拒绝。公网路由资源（`gateway.yaml` / `httproute.yaml`）属于部署清单域。
-6. **Kito 桌面壳**：`apps/desktop` 中的产品名 Kito Harness、图标、欢迎页 Telegram 登录、更新源 `https://updates.ktyun.cc`，以及默认数据目录 `~/.kito-harness`。Agent loop、会话格式、工具实现留在上游。打包应用标识用 `cc.ktapi.harness`（`DSH_DESKTOP_APP_ID`）。
+6. **Kito 桌面壳**：`apps/desktop` 中的产品名 Kito Harness、图标、欢迎页 Telegram 登录、更新源 `https://updates.ktyun.cc`，以及默认数据目录 `~/.kito-harness`（覆盖入口 `KITO_HARNESS_HOME`）和 URL 协议 `kito-harness`。Agent loop、会话格式、工具实现留在上游。打包应用标识用 `cc.ktapi.harness`（`DSH_DESKTOP_APP_ID`）。
 7. **Kito 身份与模型路由**：`packages/llm/llm-ktapi/**`（工作区内包，由 `packages/bundle/*/cordis.patch.yml` 挂载）与 `packages/llm/llm-pi-ai/**` 中的 live catalog 读取层。对接 KT Identity 与 `https://ktapi.cc/v1`，不改 agent loop。
 8. **Kito 品牌与账号 UI**：`packages/client/ui-brand-kito/**`、`packages/client/ui-settings-account/**`、`packages/client/ui-model-selection/**`。这三处是**有意为之的重写级定制**（模型选择器 +2,349/−885），后续上游合并按本文件的登记逐项重放，不视为漂移。
 9. **桌面壳扩展文件**：`apps/desktop/src/kito-*.ts`、`apps/desktop/src/desktop-log.ts`、`apps/desktop/tests/kito-*.spec.ts`、`apps/desktop/tests/desktop-log.spec.ts`。
@@ -40,7 +40,7 @@
 
 - 上游默认分支是 `master`。落后量用 `git rev-list --count main..upstream/<tag>` 对发行 tag 计算，并单独对 `gitops-prod` 再算一次，避免只推进部署分支。
 - 上游安全设计：`dsh web` 拒绝绑定 `0.0.0.0`。KT 容器内绑 `127.0.0.1:3080`，由 nginx sidecar 暴露 Pod 端口。禁止改用 `::` 或去掉该检查。
-- 数据目录 `DSH_HOME`（默认 `~/.dsh`）承载会话与存储，容器内挂 PVC。桌面产品使用独立 home，不和官方 DeepSeek Harness 抢 `profiles/desktop`。
+- 数据目录 `DSH_HOME`（默认 `~/.dsh`）承载会话与存储，容器内挂 PVC。桌面产品使用独立 home，不读取继承来的 `DSH_HOME`，不和官方 DeepSeek Harness 抢 `profiles/desktop`；名字划分见 [ADR 0004](adr/0004-kito-names-apart-from-deepseek-harness.md)。
 - `/api` 按请求 Host 判定信任：loopback 放行，公网域名必须在 `--trusted-host` 登记。现状 TEST/PROD 为 `dsh-test.ktyun.cc` / `dsh.ktyun.cc`。新增域名必须同步追加该参数。
 - 桌面壳、Web 客户端、dsh 运行时按同一个版本一起发布。KT 桌面产品跟随上游发行 tag，不把壳和运行时拆开升级。
 
@@ -58,7 +58,7 @@
 
 ## 每次合并后核对
 
-可见品牌和登录路由的重放清单在 [ADR 0002](adr/0002-kito-visible-brand-and-upstream-reapply.md)。合并完成后按那张表核对，不另建 Skill。缺一项就补回，并写入下面的同步记录。
+可见品牌和登录路由的重放清单在 [ADR 0002](adr/0002-kito-visible-brand-and-upstream-reapply.md)，数据目录和 URL 协议的重放清单在 [ADR 0004](adr/0004-kito-names-apart-from-deepseek-harness.md)。合并完成后按这两张表核对，不另建 Skill。缺一项就补回，并写入下面的同步记录。
 
 ## 验证清单
 
