@@ -3,7 +3,7 @@ description: "Kito Harness brand occupants for the sidebar. Official DeepSeek bu
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-client-ui-brand-kito
+# @kito/dsh-client-ui-brand-kito
 
 ## Summary
 

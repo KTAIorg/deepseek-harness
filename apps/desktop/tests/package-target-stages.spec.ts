@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { setImmediate } from 'node:timers/promises'
 import { afterEach, expect, it, vi } from 'vitest'
 import { packageTarget, parseDesktopPackageInvocation } from '../scripts/package-target.ts'
+import { kitoHarnessVersion } from '../../../scripts/kito-harness-version.mjs'
 import { withMacOSNotarizationProxy } from '../scripts/macos-notarization-proxy.ts'
 import { packageMacOSArtifacts } from '../scripts/package-macos.ts'
 import { withWindowsSigningStage } from '../scripts/windows-signing-stage.mjs'
@@ -169,8 +170,10 @@ it('requires one signing preflight before building, then records only the comple
     }
   }
   expect(writeFileSync).toHaveBeenCalledOnce()
-  const record = JSON.parse(vi.mocked(writeFileSync).mock.calls[0]![1] as string) as { publicUrl: string }
+  const record = JSON.parse(vi.mocked(writeFileSync).mock.calls[0]![1] as string) as { publicUrl: string; version: string }
   expect(record.publicUrl).toBe('https://updates.example.com/kito-harness/0123456789abcdef0123456789abcdef/feeds/win-x64/')
+  // The record names the Kito Harness version the installers carry, not the dsh version in the manifests.
+  expect(record.version).toBe(kitoHarnessVersion())
 })
 
 it('initializes shared storage only after acquiring the preflight stage lock', async () => {

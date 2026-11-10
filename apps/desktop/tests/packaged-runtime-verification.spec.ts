@@ -53,11 +53,30 @@ describe('packaged runtime verification', () => {
       await import('node:fs/promises').then(async fs => fs.readFile(new URL('../package.json', import.meta.url), 'utf8')),
     ) as { version: string }).version
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+    const { kitoHarnessVersion } = await import('../../../scripts/kito-harness-version.mjs')
     verifyDesktopRuntime.mockClear()
     const config = createElectronBuilderConfig(
-      { ...ENVIRONMENT, DSH_DESKTOP_BUILD_VERSION: `${productVersion}.20260921.1` }, 'win32', 'x64')
-    expect(config.extraMetadata).toMatchObject({ version: `${productVersion}.20260921.1` })
+      { ...ENVIRONMENT, DSH_DESKTOP_BUILD_VERSION: `${kitoHarnessVersion()}.20260921.1` }, 'win32', 'x64')
+    expect(config.extraMetadata).toMatchObject({ version: `${kitoHarnessVersion()}.20260921.1` })
     await config.afterPack(CONTEXT as never)
     expect(verifyDesktopRuntime.mock.calls[0]?.[1]).toBe(productVersion)
+  })
+
+  it('publishes the Kito Harness version while the bundled runtime declares the dsh version', async () => {
+    const productVersion = (JSON.parse(
+      await import('node:fs/promises').then(async fs => fs.readFile(new URL('../package.json', import.meta.url), 'utf8')),
+    ) as { version: string }).version
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+    const { kitoHarnessVersion } = await import('../../../scripts/kito-harness-version.mjs')
+    expect(kitoHarnessVersion()).not.toBe(productVersion)
+    verifyDesktopRuntime.mockClear()
+    const config = createElectronBuilderConfig(ENVIRONMENT, 'win32', 'x64')
+    expect(config.extraMetadata).toMatchObject({ version: kitoHarnessVersion() })
+    await config.afterPack(CONTEXT as never)
+    expect(verifyDesktopRuntime.mock.calls[0]?.[1]).toBe(productVersion)
+    // A build version must extend the Kito Harness version, so one that extends the dsh version is refused.
+    expect(() => createElectronBuilderConfig(
+      { ...ENVIRONMENT, DSH_DESKTOP_BUILD_VERSION: `${productVersion}.20260921.1` }, 'win32', 'x64'))
+      .toThrow(/must extend/)
   })
 })

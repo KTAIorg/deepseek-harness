@@ -69,8 +69,16 @@ export interface DshInstallLayoutSummary {
   readonly checkedDshEdges: number
 }
 
+/**
+ * A package published inside one DSH release, so the two synthetic releases must
+ * not share it. `@kito/dsh-*` ships in that release under the fork's scope; leaving
+ * its range as `*` makes npm place one copy against both releases.
+ * @param name - package name from a manifest or an installed path.
+ * @returns whether the dual-release check isolates this package.
+ */
 function isDshPackage(name: string): boolean {
   return name === DSH_PACKAGE || name.startsWith(`${DSH_PACKAGE}-`)
+    || name === '@kito/dsh' || name.startsWith('@kito/dsh-')
 }
 
 function cloneForVersion(manifest: object, version: string): MutableRegistryManifest {

@@ -186,6 +186,7 @@ const harness = await vi.hoisted(async () => {
     setAboutPanelOptions: vi.fn<(options: Electron.AboutPanelOptionsOptions) => void>(),
     requestSingleInstanceLock: () => true,
     setAsDefaultProtocolClient: vi.fn(),
+    removeAsDefaultProtocolClient: vi.fn(),
     exit: vi.fn(),
     relaunch: vi.fn(),
     focus: vi.fn(),
@@ -1276,6 +1277,25 @@ describe('desktop main startup', () => {
     await harness.navigated.promise
     return harness.hosts[0]!
   }
+
+  it('registers only the Kito URL scheme and reopens the window for kito-harness://open', async () => {
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    const window = harness.windows[0]!
+    harness.prepared.resolve()
+    await harness.hostStarted.promise
+    harness.hosts[0]!.ready.resolve()
+    await window.shown.promise
+    expect(harness.app.setAsDefaultProtocolClient.mock.calls).toEqual([['kito-harness']])
+    expect(harness.app.removeAsDefaultProtocolClient.mock.calls).toEqual([['dsh']])
+    window.destroy()
+    // `dsh://open` belongs to DeepSeek Harness; a delivery of it must not open a Kito window.
+    harness.app.emit('open-url', { preventDefault: vi.fn() }, 'dsh://open')
+    expect(harness.windows).toHaveLength(1)
+    harness.app.emit('open-url', { preventDefault: vi.fn() }, 'kito-harness://open')
+    await harness.windows[1]!.shown.promise
+    expect(harness.windows).toHaveLength(2)
+  })
 
   it.each([
     ['win32', ['--updated'], true],

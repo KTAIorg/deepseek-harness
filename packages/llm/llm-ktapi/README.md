@@ -3,7 +3,7 @@ description: "The ktapi model catalog: normalizes the gateway listing, orders th
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-llm-ktapi
+# @kito/dsh-llm-ktapi
 
 ## Summary
 
@@ -29,7 +29,7 @@ would otherwise be indistinguishable from an empty catalog.
 ## Use this package
 
 ```ts
-import { buildKtapiCatalog } from '@deepseek-ai/dsh-llm-ktapi'
+import { buildKtapiCatalog } from '@kito/dsh-llm-ktapi'
 
 const catalog = buildKtapiCatalog(await fetchLiveCatalog(modelsUrl, apiKey), await pricingResponse.json())
 // catalog[0] === { id: 'deepseek-latest', name: 'DeepSeek-Latest', defaultVisible: true, … }

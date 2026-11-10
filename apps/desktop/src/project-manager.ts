@@ -19,18 +19,12 @@ import {
   desktopCorePackageOverrides,
   verifyDesktopCorePackageSet,
 } from './core-package-set.ts'
+import { KITO_BUNDLE, renameRetiredKitoBundle } from './kito-profile-bundles.ts'
 import type { DesktopPaths } from './paths.ts'
 import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { ensureProfileBundles, initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
-
-/**
- * Bundle that makes the account-derived ktapi model route part of every Kito
- * desktop profile. It ships inside the application, so resolving it needs no
- * network and no user configuration.
- */
-const KITO_BUNDLE = '@deepseek-ai/dsh-llm-ktapi'
 
 /** @returns the bundled profile list for a Kito desktop profile. */
 function kitoBundles(): string[] {
@@ -101,6 +95,7 @@ export class DesktopProjectManager {
       // list, and `initProfile` never rewrites an initialized manifest: this
       // is what actually upgrades the profile to the shipped bundles instead
       // of only seeding a fresh one.
+      renameRetiredKitoBundle(this.paths.profile)
       ensureProfileBundles(this.paths.profile, kitoBundles())
       removeLinkProjections(this.paths.profile)
     })

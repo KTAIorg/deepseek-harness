@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+import { kitoHarnessVersion } from './kito-harness-version.mjs'
 
 /** Prefix reserved for build-time values that may be embedded in browser artifacts. */
 const CLIENT_BUILD_ENV_PREFIX = 'DSH_CLIENT_'
@@ -159,6 +160,7 @@ export function officialClientBuildEnvironment(
 
 /**
  * Resolve the public environment embedded in a packaged Kito Harness client.
+ * Its version is the Kito Harness release version, not the dsh version in `package.json`.
  * @param root - repository root whose HEAD must match the built source.
  * @param environment - optional explicit commit source for non-Git build environments.
  * @returns complete Kito client environment.
@@ -169,7 +171,7 @@ export function kitoClientBuildEnvironment(
 ): Readonly<Record<`DSH_CLIENT_${string}`, string>> {
   return {
     DSH_CLIENT_COMMIT_HASH: repositoryCommitHash(root, environment),
-    DSH_CLIENT_VERSION: repositoryVersion(root),
+    DSH_CLIENT_VERSION: kitoHarnessVersion(root),
     ...KITO_CLIENT_BUILD_ENVIRONMENT,
   }
 }
@@ -207,13 +209,16 @@ function clientBuildEnvironment(environment: NodeJS.ProcessEnv): ClientBuildEnvi
  * Resolve the exact public environment selected for a complete client build.
  * Named profiles discard inherited public overrides. Local builds retain the supplied
  * commit, version, and true dirty marker; repositoryClientBuildEnvironment supplies that metadata.
+ * The `kito` profile replaces the supplied version with the Kito Harness release version.
  * @param environment - parent process environment.
  * @param profile - explicit profile, or the non-public selector when omitted.
+ * @param root - repository root whose `kt/kito-harness/version.json` versions the `kito` profile; defaults to this repository.
  * @returns the inherited public values when no profile is selected, otherwise the named profile.
  */
 export function resolveClientBuildEnvironment(
   environment: NodeJS.ProcessEnv,
   profile: string | undefined = environment[CLIENT_BUILD_PROFILE_SELECTOR],
+  root: string = resolve(import.meta.dirname, '..'),
 ): ClientBuildEnvironment {
   if (profile === undefined) return clientBuildEnvironment(environment)
   if (profile === 'official' || profile === 'kito' || profile === 'local') {
@@ -227,7 +232,7 @@ export function resolveClientBuildEnvironment(
     }
     return {
       DSH_CLIENT_COMMIT_HASH: commitHash,
-      DSH_CLIENT_VERSION: version,
+      DSH_CLIENT_VERSION: profile === 'kito' ? kitoHarnessVersion(root) : version,
       ...(profile === 'official' ? OFFICIAL_CLIENT_BUILD_ENVIRONMENT : profile === 'kito' ? KITO_CLIENT_BUILD_ENVIRONMENT : {
         DSH_CLIENT_BUILD_PROFILE: 'local',
         DSH_CLIENT_FEEDBACK_URL: KITO_CLIENT_BUILD_ENVIRONMENT.DSH_CLIENT_FEEDBACK_URL,

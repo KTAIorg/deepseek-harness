@@ -49,7 +49,7 @@ export function prepareDevelopmentApp(options: DevelopmentAppOptions): string {
       CFBundleDisplayName: 'Kito Harness Dev',
       CFBundleExecutable: 'HarnessDev',
       ...(iconBytes === undefined ? {} : { CFBundleIconFile: 'dsh-dev.icns' }),
-      CFBundleURLTypes: [{ CFBundleURLName: 'Kito Harness', CFBundleURLSchemes: ['dsh', 'kito-harness'], CFBundleTypeRole: 'Viewer' }],
+      CFBundleURLTypes: [{ CFBundleURLName: 'Kito Harness', CFBundleURLSchemes: ['kito-harness'], CFBundleTypeRole: 'Viewer' }],
     }
     for (const [key, value] of Object.entries(values)) {
       execFileSync('/usr/bin/plutil', ['-replace', key, '-json', JSON.stringify(value), plist])
@@ -76,7 +76,7 @@ export function prepareDevelopmentApp(options: DevelopmentAppOptions): string {
  */
 export function developmentLauncher(options: DevelopmentAppOptions, bundle: string): string {
   const environment = {
-    DSH_HOME: options.home,
+    KITO_HARNESS_HOME: options.home,
     DSH_DESKTOP_DEV_APP: '1',
     DSH_DESKTOP_HOST_INSPECT_PORT: String(options.hostPort),
     DSH_DESKTOP_OPEN_DEVTOOLS: options.openDevtools,

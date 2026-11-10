@@ -22,6 +22,8 @@ export function configureInstalledUpdateIdentity(app, run, metadata, environment
   app.setPath('userData', paths.userData)
   app.setPath('sessionData', paths.userData)
   environment.DSH_HOME = paths.harnessHome
+  // The Kito main entry resolves its home from this variable and ignores an inherited DSH_HOME.
+  environment.KITO_HARNESS_HOME = paths.harnessHome
   environment.DSH_DESKTOP_UPDATE_JOURNAL_DIR = paths.journals
   return paths
 }

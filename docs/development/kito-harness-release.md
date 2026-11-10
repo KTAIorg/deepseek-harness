@@ -8,6 +8,8 @@ This is the operational source of truth for Kito Harness: upstream synchronizati
 
 Kito Harness is the KT fork of `deepseek-ai/deepseek-harness`. The production source of truth is `main` in `kt-aihub/deepseek-harness`; upstream follows `master` and `dsh-v*` tags in `deepseek-ai/deepseek-harness`.
 
+Kito Harness numbers its releases apart from upstream. Every `package.json` keeps the dsh version of the merged upstream release, and `kt/kito-harness/version.json` holds the Kito Harness release version that installers, the application, and the update feed carry. The fork does not run `pnpm release:dsh` for a release and does not push `dsh-v*` tags.
+
 Current distribution:
 
 - macOS Apple Silicon: PKG (recommended) and DMG.
@@ -49,13 +51,14 @@ Do not replace Kito interaction tests with upstream's old menu model. The curren
 ### 2. Bump the version and merge into main
 
 ```sh
-VERSION=0.2.2-rc.2
+VERSION=1.0.0-rc.1
 git checkout -b release/kito-$VERSION
-pnpm release:dsh "$VERSION"
+printf '{\n  "version": "%s"\n}\n' "$VERSION" > kt/kito-harness/version.json
+git commit -am "release(kito): $VERSION"
 git push -u ktaiorg "release/kito-$VERSION"
 ```
 
-Merge through a PR into `main`. The version commit must exist before building. Never create a production package from uncommitted source. If versions diverge, fix the manifests instead of bypassing the check.
+Merge through a PR into `main`. The version commit must exist before building. Never create a production package from uncommitted source. The new version must be greater than every released one, because installed applications only update upward. Leave the `package.json` versions unchanged.
 
 ### 3. Build natively on both platforms
 
@@ -85,7 +88,7 @@ TAG="kito-harness-v$VERSION"
 kt gh --owner kt-aihub --repo deepseek-harness release create "$TAG" \
   --target <full-main-commit-sha> \
   --title "Kito Harness $VERSION" \
-  --notes "Kito Harness $VERSION: upstream sync plus Kito customizations. Apple Silicon PKG/DMG and Windows EXE, unsigned internal builds."
+  --notes "Kito Harness $VERSION, based on DeepSeek Harness $(node -p "require('./package.json').version"). Apple Silicon PKG/DMG and Windows EXE, unsigned internal builds."
 ```
 
 Resolve the release id and upload all three installers:
@@ -109,7 +112,7 @@ The fixed metadata URL is `https://github.com/kt-aihub/deepseek-harness/releases
 ```json
 {
   "name": "kito-harness-desktop",
-  "version": "0.2.2-rc.2",
+  "version": "1.0.0-rc.1",
   "downloads": {
     "windows-x64": { "versionedUrl": "<exe-url>", "filename": "<exe>", "sha256": "<sha256>", "size": 0 },
     "macos-arm64": { "versionedUrl": "<pkg-url>", "filename": "<pkg>", "sha256": "<sha256>", "size": 0 },
@@ -123,7 +126,7 @@ Find the old `latest.json` asset ID in the `kito-harness-latest` Release asset l
 ### 6. Production acceptance
 
 ```sh
-curl -s https://kito.ktai.im/ | grep -E 'Kito Harness|0.2.2-rc.2|unsigned.(pkg|dmg|exe)'
+curl -s https://kito.ktai.im/ | grep -E 'Kito Harness|1.0.0-rc.1|unsigned.(pkg|dmg|exe)'
 ```
 
 Verify all of the following:
@@ -138,10 +141,10 @@ Verify all of the following:
 
 | Symptom / error | Cause and required action |
 |---|---|
-| Username, balance, and language selector disappear | `packages/bundle/web-app/package.json` is missing `@deepseek-ai/dsh-client-ui-brand-kito`; restore the dependency and rebuild instead of editing CSS |
+| Username, balance, and language selector disappear | `packages/bundle/web-app/package.json` is missing `@kito/dsh-client-ui-brand-kito`; restore the dependency and rebuild instead of editing CSS |
 | `Command "build:kito" not found` | Root `build:kito` was lost during a merge; restore `tsx scripts/build.ts --profile kito` |
 | `Could not resolve "./assets/...svg"` | `ui-model-selection/package.json` lacks the `"./assets/*": "./lib/assets/*"` export and `lib/assets` in `files` |
-| `dsh release members must share one version` | New Kito packages still carry an older version; align with `pnpm release:dsh <version>` rather than editing versions ad hoc |
+| `dsh release members must share one version`, or `package.json version must match root version` | A fork-owned package kept the previous dsh version after an upstream merge; set the `version` of `packages/llm/llm-ktapi` and `packages/client/ui-brand-kito` to the root `package.json` version. Do not use `pnpm release:dsh` to number a Kito release |
 | `Node-API headers missing` | The selected Codex/DSH Node runtime lacks headers; use Node 24 with `include/node/node_api.h` |
 | Electron download timeout | Set `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` and rerun the same build |
 | `DSH_CLIENT_COMMIT_HASH must match` | A commit raced the build; let the commit settle and package again |
@@ -157,7 +160,7 @@ Keep old Releases. Restore the previous verified version in `kito-harness-latest
 
 ## Handoff checklist
 
-- [ ] Version, tag, and build commit on `main` agree.
+- [ ] `kt/kito-harness/version.json`, the `kito-harness-v*` tag, and the build commit on `main` agree; no `dsh-v*` tag was pushed.
 - [ ] macOS and Windows artifacts come from one CI run, and only that run's bytes are uploaded.
 - [ ] Release, SHA256SUMS, and latest.json agree on version, size, and hash.
 - [ ] The download page, public downloads, and a real application launch all pass acceptance.

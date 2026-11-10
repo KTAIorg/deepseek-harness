@@ -40,6 +40,8 @@ description: "在本地或 Windows／macOS Actions 中生成 Desktop 安装包�
 
 每次 Desktop 打包前，第一步都要与当前用户确认完整版本号。检查所选部署环境、dsh 基础版本、保留的发布记录和已发布对象，再提出准确版本供用户确认。用户确认前不得启动打包；仅选择部署环境不代表用户已认可版本号。
 
+在这个 fork 里，基础版本是 `kt/kito-harness/version.json` 里的 Kito Harness 版本，而不是 dsh 版本：`package-target.ts` 和 electron-builder 配置发布这个版本或以它为前缀的构建版本，随包运行时仍声明 dsh 版本（ADR 0005，`docs/development/adr/0005-kito-harness-version-line.md`）。下面的规则以它为基础版本适用。
+
 记录当前 dsh 版本作为基础版本。production Desktop 使用完全相同的版本，包括其中的 `alpha`、`beta` 或 `rc` 标识。test 发布保留完整的预发布基础版本并追加 `.YYYYMMDD.index`；稳定基础版本则追加 `-test.YYYYMMDD.index`。
 
 | dsh 基础版本 | production Desktop | test Desktop 示例 |

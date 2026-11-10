@@ -24,6 +24,8 @@ import { clientBundle } from '../packages/client/tsdown.client.ts'
 const root = resolve(import.meta.dirname, '..')
 const PROBE_NAME = 'DSH_CLIENT_BUILD_TEST'
 const COMMIT_HASH = '0123456789abcdef0123456789abcdef01234567'
+/** Kito Harness release version of the fixture repository, distinct from its package.json version. */
+const KITO_VERSION = '9.8.7-rc.6'
 const PROBE_KEY = `process.env.${PROBE_NAME}`
 const originalProbe = process.env[PROBE_NAME]
 const roots: string[] = []
@@ -71,12 +73,13 @@ function repositoryFixture(version = '1.2.3-rc.4'): string {
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'dsh-client-build-repository-'))
   roots.push(fixtureRoot)
   write(join(fixtureRoot, 'package.json'), `${JSON.stringify({ version })}\n`)
+  write(join(fixtureRoot, 'kt', 'kito-harness', 'version.json'), `${JSON.stringify({ version: KITO_VERSION })}\n`)
   write(join(fixtureRoot, 'tracked.txt'), 'committed\n')
   git(fixtureRoot, ['init'])
   git(fixtureRoot, ['config', 'user.name', 'DSH test'])
   git(fixtureRoot, ['config', 'user.email', 'dsh-test@example.invalid'])
   git(fixtureRoot, ['config', 'commit.gpgsign', 'false'])
-  git(fixtureRoot, ['add', 'package.json', 'tracked.txt'])
+  git(fixtureRoot, ['add', 'package.json', 'kt', 'tracked.txt'])
   git(fixtureRoot, ['commit', '-m', 'fixture'])
   return fixtureRoot
 }
@@ -206,19 +209,19 @@ describe('client build environment', () => {
       DSH_CLIENT_FEEDBACK_URL: 'https://www.ktapi.cc/',
       DSH_CLIENT_COMMIT_HASH: commit,
       DSH_CLIENT_TITLE: 'Kito Harness',
-      DSH_CLIENT_VERSION: '1.2.3-rc.4',
+      DSH_CLIENT_VERSION: KITO_VERSION,
     })
     expect(resolveClientBuildEnvironment({
       DSH_BUILD_CLIENT_PROFILE: 'kito',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_TITLE: 'Local title',
       DSH_CLIENT_VERSION: '1.2.3',
-    })).toEqual({
+    }, undefined, fixtureRoot)).toEqual({
       DSH_CLIENT_BUILD_PROFILE: 'kito',
       DSH_CLIENT_FEEDBACK_URL: 'https://www.ktapi.cc/',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
       DSH_CLIENT_TITLE: 'Kito Harness',
-      DSH_CLIENT_VERSION: '1.2.3',
+      DSH_CLIENT_VERSION: KITO_VERSION,
     })
 
     write(join(fixtureRoot, '.gitignore'), 'ignored.txt\n')

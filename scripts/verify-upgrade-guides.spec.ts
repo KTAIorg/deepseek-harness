@@ -39,11 +39,11 @@ const VALID_ZH = VALID
   .replace('## Change', '## 变更')
   .replace('## Migration', '## 迁移')
 
-function fixtureRoot(files: Record<string, string>): string {
+function fixtureRoot(files: Record<string, string>, guideRoot = 'docs/upgrade-guide'): string {
   const root = mkdtempSync(join(tmpdir(), 'dsh-upgrade-guides-'))
   roots.push(root)
   for (const [file, source] of Object.entries(files)) {
-    const path = join(root, 'docs/upgrade-guide', file)
+    const path = join(root, guideRoot, file)
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, source)
   }
@@ -127,4 +127,19 @@ describe('upgrade guide gate', () => {
       'v0.1.7/over-limit/guide.zh.md': `${VALID_ZH}${'词 '.repeat(600)}\n`,
     }))).toEqual(['docs/upgrade-guide/v0.1.7/over-limit/guide.md: 501 words exceeds the 500-word ceiling'])
   })
+
+  it('applies the same rules to the Kito Harness guide tree', () => {
+    expect(collectUpgradeGuideViolations(fixtureRoot({
+      'v1.0.0-rc.1/version-line/guide.md': VALID,
+      'v1.0.0-rc.1/version-line/guide.zh.md': VALID_ZH,
+    }, 'docs/kito-upgrade-guide'))).toEqual([])
+    expect(collectUpgradeGuideViolations(fixtureRoot({
+      'v1.0.0-rc.1/version-line/guide.md': VALID.replace('## Migration', '## Steps'),
+      'notes.md': VALID,
+    }, 'docs/kito-upgrade-guide'))).toEqual([
+      expect.stringMatching(/^docs\/kito-upgrade-guide\/notes\.md: only v<semver>/),
+      expect.stringMatching(/^docs\/kito-upgrade-guide\/v1\.0\.0-rc\.1\/version-line\/guide\.md: headings must be/),
+    ])
+  })
+
 })

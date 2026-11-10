@@ -34,19 +34,21 @@ function fixture() {
   writeFileSync(entry, [
     'const chunks = []',
     'for await (const chunk of process.stdin) chunks.push(chunk)',
-    "process.stdout.write(JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), value: process.env.DSH_CLI_TEST_VALUE, nodeMode: process.env.ELECTRON_RUN_AS_NODE, input: Buffer.concat(chunks).toString('hex') }))",
+    "process.stdout.write(JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), value: process.env.DSH_CLI_TEST_VALUE, home: process.env.DSH_HOME, nodeMode: process.env.ELECTRON_RUN_AS_NODE, input: Buffer.concat(chunks).toString('hex') }))",
     "process.stderr.write('separate stderr\\n')",
     'process.exitCode = 23',
     '',
   ].join('\n'))
   const command = join(cli, 'bin', platform === 'win32' ? 'dsh.cmd' : 'dsh')
-  function start(args: string[], executable = command) {
+  const userHome = join(root, 'user home')
+  function start(args: string[], executable = command, environment: NodeJS.ProcessEnv = {}) {
+    const env = { ...process.env, DSH_CLI_TEST_VALUE: 'kept', HOME: userHome, USERPROFILE: userHome, DSH_HOME: join(root, 'deepseek home'), KITO_HARNESS_HOME: undefined, ...environment }
     // cmd fixture inputs contain no metacharacters; POSIX cases exercise literal expansion characters separately.
     const child = platform === 'win32'
       ? spawn(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `""${executable}" ${args.map(value => `"${value}"`).join(' ')}"`], {
-        cwd: root, env: { ...process.env, DSH_CLI_TEST_VALUE: 'kept' }, stdio: 'pipe', windowsVerbatimArguments: true,
+        cwd: root, env, stdio: 'pipe', windowsVerbatimArguments: true,
       })
-      : spawn(executable, args, { cwd: root, env: { ...process.env, DSH_CLI_TEST_VALUE: 'kept' }, stdio: 'pipe' })
+      : spawn(executable, args, { cwd: root, env, stdio: 'pipe' })
     children.push(child)
     const closed = new Promise<number | null>((resolve, reject) => {
       child.once('error', reject)
@@ -59,7 +61,7 @@ function fixture() {
     child.stderr.setEncoding('utf8').on('data', (text: string) => { stderr += text })
     return { child, closed, stdout: () => stdout, stderr: () => stderr }
   }
-  return { root, command, start }
+  return { root, command, userHome, start }
 }
 
 it('preserves common arguments, cwd, environment, binary input, stderr and exit status', async () => {
@@ -69,7 +71,7 @@ it('preserves common arguments, cwd, environment, binary input, stderr and exit 
   const input = Buffer.from([0, 1, 10, 255])
   run.child.stdin.end(input)
   expect(await run.closed, run.stderr()).toBe(23)
-  expect(JSON.parse(run.stdout())).toEqual({ args, cwd: f.root, value: 'kept', nodeMode: '1', input: input.toString('hex') })
+  expect(JSON.parse(run.stdout())).toEqual({ args, cwd: f.root, value: 'kept', home: join(f.userHome, '.kito-harness'), nodeMode: '1', input: input.toString('hex') })
   expect(run.stderr()).toBe('separate stderr\n')
 })
 
@@ -84,4 +86,13 @@ it.skipIf(process.platform === 'win32')('resolves chained command symlinks witho
   run.child.stdin.end()
   expect(await run.closed, run.stderr()).toBe(23)
   expect(JSON.parse(run.stdout())).toMatchObject({ args, cwd: f.root, nodeMode: '1' })
+})
+
+it('uses KITO_HARNESS_HOME as the home and never an inherited DSH_HOME', async () => {
+  const f = fixture()
+  const relocated = join(f.root, 'kito home')
+  const run = f.start([], f.command, { KITO_HARNESS_HOME: relocated })
+  run.child.stdin.end()
+  expect(await run.closed, run.stderr()).toBe(23)
+  expect(JSON.parse(run.stdout())).toMatchObject({ home: relocated })
 })
