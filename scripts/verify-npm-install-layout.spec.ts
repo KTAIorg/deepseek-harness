@@ -72,6 +72,33 @@ describe('npm install layout verifier', () => {
     expect(dual.get('@deepseek-ai/cordis')).toBe(index.get('@deepseek-ai/cordis'))
   })
 
+  it('versions a @kito package with the DSH release it ships in', () => {
+    const index: RegistryIndex = new Map([
+      ['@deepseek-ai/dsh', new Map([['0.2.2-rc.1', {
+        name: '@deepseek-ai/dsh',
+        version: '0.2.2-rc.1',
+        dependencies: { '@kito/dsh-llm-ktapi': '*' },
+      }]])],
+      ['@kito/dsh-llm-ktapi', new Map([['0.2.2-rc.1', {
+        name: '@kito/dsh-llm-ktapi',
+        version: '0.2.2-rc.1',
+        peerDependencies: { '@deepseek-ai/dsh-llm': '*' },
+      }]])],
+      ['left-alone', new Map([['1.0.0', { name: 'left-alone', version: '1.0.0' }]])],
+    ])
+
+    const dual = buildDualDshRegistry(index, '0.2.2-rc.1')
+
+    expect([...dual.get('@kito/dsh-llm-ktapi')?.keys() ?? []]).toEqual(['0.1.0', '0.2.0'])
+    expect(dual.get('@deepseek-ai/dsh')?.get('0.2.0')).toMatchObject({
+      dependencies: { '@kito/dsh-llm-ktapi': '^0.2.0' },
+    })
+    expect(dual.get('@kito/dsh-llm-ktapi')?.get('0.1.0')).toMatchObject({
+      peerDependencies: { '@deepseek-ai/dsh-llm': '^0.1.0' },
+    })
+    expect(dual.get('left-alone')).toBe(index.get('left-alone'))
+  })
+
   it('accepts isolated DSH releases with one shared Cordis installation', () => {
     expect(assertDualDshInstallLayout(validLayout())).toEqual({
       dshPackagesPerVersion: 3,
