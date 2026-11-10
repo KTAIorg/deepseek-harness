@@ -37,15 +37,22 @@ const NON_CHAT_ID = /(^|[-_/.])(image|dall-e|imagen|flux|seedream|embedding|embe
 const DISPLAY_ACRONYMS: Readonly<Record<string, string>> = { gpt: 'GPT', glm: 'GLM', ai: 'AI' }
 /** Function words that stay lowercase inside a derived name. */
 const DISPLAY_STOP_WORDS = new Set(['for', 'of', 'the', 'and', 'in', 'on', 'to', 'via'])
+/**
+ * A two-part version written with a hyphen after a word (`opus-4-8`). Each part
+ * is at most two digits, so a date (`2025-11-01`) or a size (`2-22m`) does not match.
+ */
+const HYPHENATED_VERSION = /(?<=[a-z][-_])(\d{1,2})-(\d{1,2})(?=$|[-_])/gi
 
 /**
  * Derive a readable name from a catalog id that repeats itself as its name.
- * `moonshotai/kimi-k3.1-pro` reads as `Kimi K3.1 Pro`, `gpt-5.6` as `GPT-5.6`.
+ * `moonshotai/kimi-k3.1-pro` reads as `Kimi K3.1 Pro`, `gpt-5.6` as `GPT-5.6`,
+ * and `claude-opus-4-8` as `Claude Opus 4.8`.
  * @param modelId - catalog model id.
  * @returns a display name; the original id when no word survives.
  */
 export function displayNameOf(modelId: string): string {
-  const segments = normalizedModelId(modelId).split(/[-_]+/).filter(segment => segment.length > 0)
+  const segments = normalizedModelId(modelId).replace(HYPHENATED_VERSION, '$1.$2')
+    .split(/[-_]+/).filter(segment => segment.length > 0)
   if (segments.length === 0) return modelId
   const words = segments.map((segment, at) => {
     const lower = segment.toLowerCase()
