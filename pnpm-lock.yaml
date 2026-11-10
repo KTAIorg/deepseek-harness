@@ -405,9 +405,6 @@ importers:
       '@deepseek-ai/dsh-launch-environment':
         specifier: workspace:*
         version: link:../../packages/util/launch-environment
-      '@deepseek-ai/dsh-llm-ktapi':
-        specifier: workspace:*
-        version: link:../../packages/llm/llm-ktapi
       '@deepseek-ai/dsh-mcp-client':
         specifier: workspace:*
         version: link:../../packages/mcp/mcp-client
@@ -543,6 +540,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery
+      '@kito/dsh-llm-ktapi':
+        specifier: workspace:*
+        version: link:../../packages/llm/llm-ktapi
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -3002,9 +3002,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-attachment':
         specifier: workspace:*
         version: link:../../client/ui-attachment
-      '@deepseek-ai/dsh-client-ui-brand-kito':
-        specifier: workspace:*
-        version: link:../../client/ui-brand-kito
       '@deepseek-ai/dsh-client-ui-brand-official':
         specifier: workspace:*
         version: link:../../client/ui-brand-official
@@ -3347,6 +3344,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      '@kito/dsh-client-ui-brand-kito':
+        specifier: workspace:*
+        version: link:../../client/ui-brand-kito
       commander:
         specifier: ^15.0.0
         version: 15.0.0

@@ -126,6 +126,19 @@ describe('release families', () => {
     expect(releaseFamily('dsh').members(root).map(entry => entry.name)).toEqual(['@deepseek-ai/dsh-public'])
   })
 
+  it('accepts Kito Harness packages beside dsh packages and rejects every other scope', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-release-scope-'))
+    roots.push(root)
+    write(join(root, 'packages/llm/llm-public/package.json'), '{"name":"@deepseek-ai/dsh-llm-public","version":"0.0.1"}\n')
+    write(join(root, 'packages/llm/llm-ktapi/package.json'), '{"name":"@kito/dsh-llm-ktapi","version":"0.0.1"}\n')
+
+    expect(releaseFamily('dsh').members(root).map(entry => entry.name)).toEqual(['@kito/dsh-llm-ktapi', '@deepseek-ai/dsh-llm-public'])
+
+    write(join(root, 'packages/llm/llm-other/package.json'), '{"name":"@other/dsh-llm-other","version":"0.0.1"}\n')
+    expect(() => releaseFamily('dsh').members(root))
+      .toThrow('packages/llm/llm-other/package.json must name an @deepseek-ai or @kito package')
+  })
+
   it('publishes unlisted experimental packages while retaining private exclusions', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-release-experimental-'))
     roots.push(root)

@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/dsh-client-ui-brand-kito",
+  "name": "@kito/dsh-client-ui-brand-kito",
   "description": "Kito Harness brand occupants for the Web client's sidebar slots",
   "version": "0.2.2-rc.1",
   "publishConfig": {

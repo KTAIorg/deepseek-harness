@@ -56,7 +56,7 @@ describe('real Loader composition', () => {
     await writeFile(configPath, [
       '- name: fixture-dependencies',
       "- name: '@deepseek-ai/dsh-llm'",
-      "- name: '@deepseek-ai/dsh-llm-ktapi'",
+      "- name: '@kito/dsh-llm-ktapi'",
       '  config:',
       "    baseURL: 'https://ktapi.example/v1'",
       '',
@@ -84,7 +84,7 @@ describe('real Loader composition', () => {
     const modules = new Map<string, unknown>([
       ['fixture-dependencies', dependencies],
       ['@deepseek-ai/dsh-llm', LlmRuntime],
-      ['@deepseek-ai/dsh-llm-ktapi', Ktapi],
+      ['@kito/dsh-llm-ktapi', Ktapi],
     ])
     context.loader.internal = {
       version: 'v2',
@@ -115,7 +115,7 @@ describe('real Loader composition', () => {
     await writeFile(configPath, [
       '- name: fixture-dependencies',
       "- name: '@deepseek-ai/dsh-llm'",
-      "- name: '@deepseek-ai/dsh-llm-ktapi'",
+      "- name: '@kito/dsh-llm-ktapi'",
       '  config:',
       "    baseURL: 'https://ktapi.example/v1'",
       '    showAllModels: false',
@@ -144,7 +144,7 @@ describe('real Loader composition', () => {
     const modules = new Map<string, unknown>([
       ['fixture-dependencies', dependencies],
       ['@deepseek-ai/dsh-llm', LlmRuntime],
-      ['@deepseek-ai/dsh-llm-ktapi', Ktapi],
+      ['@kito/dsh-llm-ktapi', Ktapi],
     ])
     context.loader.internal = {
       version: 'v2',
@@ -171,7 +171,7 @@ describe('real Loader composition', () => {
     await writeFile(configPath, [
       '- name: fixture-dependencies',
       "- name: '@deepseek-ai/dsh-llm'",
-      "- name: '@deepseek-ai/dsh-llm-ktapi'",
+      "- name: '@kito/dsh-llm-ktapi'",
       '  config:',
       "    baseURL: 'https://ktapi.example/v1'",
       '',
@@ -204,7 +204,7 @@ describe('real Loader composition', () => {
     const modules = new Map<string, unknown>([
       ['fixture-dependencies', dependencies],
       ['@deepseek-ai/dsh-llm', LlmRuntime],
-      ['@deepseek-ai/dsh-llm-ktapi', Ktapi],
+      ['@kito/dsh-llm-ktapi', Ktapi],
     ])
     context.loader.internal = {
       version: 'v2',
@@ -250,7 +250,7 @@ describe('real Loader composition', () => {
     await writeFile(configPath, [
       '- name: fixture-dependencies',
       "- name: '@deepseek-ai/dsh-llm'",
-      "- name: '@deepseek-ai/dsh-llm-ktapi'",
+      "- name: '@kito/dsh-llm-ktapi'",
       '  config:',
       "    baseURL: 'https://ktapi.example/v1'",
       '',
@@ -275,7 +275,7 @@ describe('real Loader composition', () => {
     const modules = new Map<string, unknown>([
       ['fixture-dependencies', dependencies],
       ['@deepseek-ai/dsh-llm', LlmRuntime],
-      ['@deepseek-ai/dsh-llm-ktapi', Ktapi],
+      ['@kito/dsh-llm-ktapi', Ktapi],
     ])
     context.loader.internal = {
       version: 'v2',

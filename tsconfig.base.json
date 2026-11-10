@@ -304,8 +304,8 @@
       "@deepseek-ai/dsh-client-ui-layout": ["./packages/client/ui-layout/src"],
       "@deepseek-ai/dsh-client-ui-sidebar": ["./packages/client/ui-sidebar/src"],
       "@deepseek-ai/dsh-client-ui-brand-official": ["./packages/client/ui-brand-official/src"],
-      "@deepseek-ai/dsh-client-ui-brand-kito": ["./packages/client/ui-brand-kito/src"],
-      "@deepseek-ai/dsh-client-ui-brand-kito/client": ["./packages/client/ui-brand-kito/src/client/index.ts"],
+      "@kito/dsh-client-ui-brand-kito": ["./packages/client/ui-brand-kito/src"],
+      "@kito/dsh-client-ui-brand-kito/client": ["./packages/client/ui-brand-kito/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-approval": ["./packages/client/ui-approval/src"],
       "@deepseek-ai/dsh-client-ui-approval/client": ["./packages/client/ui-approval/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-chat": ["./packages/client/ui-chat/src"],
@@ -414,6 +414,8 @@
       "@deepseek-ai/dsh-native-command/types": ["./packages/util/native-command/src/types.ts"],
       "@deepseek-ai/dsh-message-quotes/client": ["./packages/session/message-quotes/src/client/index.ts"],
       "@deepseek-ai/dsh-ptc-runtime-node/configuration": ["./packages/ptc-runtime/ptc-runtime-node/src/configuration.ts"],
+      // Kito Harness packages sit outside the @deepseek-ai scope the generated aliases cover.
+      "@kito/dsh-llm-ktapi": ["./packages/llm/llm-ktapi/src"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],
