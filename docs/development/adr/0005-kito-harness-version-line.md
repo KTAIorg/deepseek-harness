@@ -59,4 +59,4 @@ ADR 0004 把它列为待定问题。
 ## 非目标
 
 - “关于”窗口不显示上游基线版本。基线版本是发布 tag 处根 `package.json` 的 `version`，写进 Release 说明。
-- 不移动 `packages/llm/llm-ktapi` 和 `packages/client/ui-brand-kito`，不改它们的 `@deepseek-ai` 包名。这仍是 ADR 0004 的待定问题。
+- 不移动 `packages/llm/llm-ktapi` 和 `packages/client/ui-brand-kito`。它们的包名由 ADR 0004 决定。

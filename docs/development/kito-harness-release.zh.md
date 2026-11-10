@@ -141,7 +141,7 @@ curl -s https://kito.ktai.im/ | grep -E 'Kito Harness|1.0.0-rc.1|unsigned.(pkg|d
 
 | 症状 / 错误 | 根因与处理 |
 |---|---|
-| 用户名、余额、语言切换全消失 | `packages/bundle/web-app/package.json` 缺少 `@deepseek-ai/dsh-client-ui-brand-kito`；恢复依赖并重建，不要只改 CSS |
+| 用户名、余额、语言切换全消失 | `packages/bundle/web-app/package.json` 缺少 `@kito/dsh-client-ui-brand-kito`；恢复依赖并重建，不要只改 CSS |
 | `Command "build:kito" not found` | 根 `package.json` 丢失 `build:kito`；恢复 `tsx scripts/build.ts --profile kito` |
 | `Could not resolve "./assets/...svg"` | `ui-model-selection/package.json` 缺少 `"./assets/*": "./lib/assets/*"` 导出及 `lib/assets` files |
 | `dsh release members must share one version`，或 `package.json version must match root version` | 合并上游后 fork 自有的包仍停留在上一个 dsh 版本；把 `packages/llm/llm-ktapi` 和 `packages/client/ui-brand-kito` 的 `version` 改成根 `package.json` 的版本。不要用 `pnpm release:dsh` 给 Kito 发版编号 |

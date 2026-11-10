@@ -26,15 +26,17 @@ Kito Harness 和官方 DeepSeek Harness 可以装在同一台机器上。ADR 000
 | URL 协议 | `dsh` | `kito-harness` |
 | Electron userData | `@deepseek-ai/dsh-desktop` | `Kito Harness` |
 | 应用标识 | `com.deepseek.dsh` | `cc.ktapi.harness` |
+| 随包的 fork 自有包 | `@deepseek-ai/*` | `@kito/dsh-llm-ktapi`、`@kito/dsh-client-ui-brand-kito` |
 
 - 桌面主进程不读取继承来的 `DSH_HOME`。它解析出自己的主目录后写回 `DSH_HOME`，Host 子进程和各个 Harness 包照旧读这个变量。
 - 桌面自带的终端命令在启动 CLI 之前把 `DSH_HOME` 设成 `KITO_HARNESS_HOME`，没有时设成 `~/.kito-harness`。
 - 桌面只注册 `kito-harness` 协议，并在启动时交还以前登记的 `dsh`。找回窗口的链接是 `kito-harness://open`。
 - Windows 卸载程序保护的是 `KITO_HARNESS_HOME`。
+- fork 自有的包用 `@kito` scope，不在 `@deepseek-ai` 下起名。目录仍在 `packages/<group>/<pkg>`：workspace、构建、覆盖率和各个门都按这个位置找包，搬出去要另建一套构建。
 
 **配置。** profile 里的内容分两层，产品只动自己那层。
 
-- 产品层：随包携带的 bundle。桌面启动时用 `ensureProfileBundles` 把缺少的随包 bundle 补进 `dsh.profile.bundles`。产品以后要撤回或改名的，只能是产品自己写进去的条目。
+- 产品层：随包携带的 bundle。桌面启动时用 `ensureProfileBundles` 把缺少的随包 bundle 补进 `dsh.profile.bundles`。产品以后要撤回或改名的，只能是产品自己写进去的条目。到 0.2.2-rc.10 为止，产品写入的 Kito bundle 名是 `@deepseek-ai/dsh-llm-ktapi`；桌面启动时 `renameRetiredKitoBundle` 把它原位改成 `@kito/dsh-llm-ktapi`，其它条目不动。
 - 用户层：用户安装的插件和 `cordis.patch.yml`。产品不删除、不改写。和随包路由重复的用户配置由文档说明怎么移除，不做自动迁移。
 
 `kt/kito-provider` 不再用于 `desktop` profile。
@@ -57,6 +59,10 @@ Kito Harness 和官方 DeepSeek Harness 可以装在同一台机器上。ADR 000
 | `apps/desktop/scripts/dev.ts` | 开发主目录的覆盖入口是 `KITO_HARNESS_HOME` |
 | `apps/desktop/scripts/installed-update-identity.mjs` | 同时设置 `KITO_HARNESS_HOME` |
 | `apps/desktop/installer/uninstall.nsh`、`apps/desktop/tests/windows-uninstall-smoke.ps1` | 读取 `KITO_HARNESS_HOME` |
+| `apps/desktop/src/project-manager.ts` | bundle 名取自 `kito-profile-bundles.ts`；`ensureProfileBundles` 之前调用 `renameRetiredKitoBundle` |
+| `apps/cli/package.json`、`packages/bundle/web-app/package.json`、`packages/bundle/web-app/cordis.patch.yml`、`tsconfig.base.json` | 引用的是 `@kito/dsh-llm-ktapi`、`@kito/dsh-client-ui-brand-kito` |
+| `tsconfig.base.json` | 生成区之外手写的 `@kito/dsh-llm-ktapi` 源码别名 |
+| `scripts/release/families.ts` | dsh 发行族的成员允许 `@kito` scope；桌面打包按这个成员表打包随包运行时 |
 
 ## 非目标
 
@@ -69,5 +75,4 @@ Kito Harness 和官方 DeepSeek Harness 可以装在同一台机器上。ADR 000
 版本号、tag 和升级指南目录已由 [ADR 0005](0005-kito-harness-version-line.md) 决定。
 
 - 命令名：桌面可以把自带的命令安装成 PATH 上的 `dsh`，和官方 CLI 同名。改名会影响已经写好的脚本和文档。
-- 包名和目录：`@deepseek-ai/dsh-llm-ktapi`、`@deepseek-ai/dsh-client-ui-brand-kito` 在上游的 npm scope 和 `packages/` 目录树里。改名要迁移已安装 profile 里产品写入的 bundle 名。
 - 同一个 profile 里，用户手写的 `llm-pi-ai` provider 与随包 provider 同名（都叫 `ktapi`）时的行为没有验证。

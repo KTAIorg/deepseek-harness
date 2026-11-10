@@ -141,7 +141,7 @@ Verify all of the following:
 
 | Symptom / error | Cause and required action |
 |---|---|
-| Username, balance, and language selector disappear | `packages/bundle/web-app/package.json` is missing `@deepseek-ai/dsh-client-ui-brand-kito`; restore the dependency and rebuild instead of editing CSS |
+| Username, balance, and language selector disappear | `packages/bundle/web-app/package.json` is missing `@kito/dsh-client-ui-brand-kito`; restore the dependency and rebuild instead of editing CSS |
 | `Command "build:kito" not found` | Root `build:kito` was lost during a merge; restore `tsx scripts/build.ts --profile kito` |
 | `Could not resolve "./assets/...svg"` | `ui-model-selection/package.json` lacks the `"./assets/*": "./lib/assets/*"` export and `lib/assets` in `files` |
 | `dsh release members must share one version`, or `package.json version must match root version` | A fork-owned package kept the previous dsh version after an upstream merge; set the `version` of `packages/llm/llm-ktapi` and `packages/client/ui-brand-kito` to the root `package.json` version. Do not use `pnpm release:dsh` to number a Kito release |
