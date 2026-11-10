@@ -1,16 +1,21 @@
 /**
- * ktapi model catalog: normalizing the gateway's listing into one entry per
- * model, intersecting it with the curated Kito picks, and attaching the pricing
- * a selector shows.
+ * ktapi model catalog: folding the gateway's listing into one entry per model,
+ * marking the curated Kito picks, and attaching the pricing a selector shows.
  *
  * The listing itself is read by the shared pi-ai live-catalog reader, so this
  * module starts from rows that already passed the chat-capability filter and
  * carry whatever reasoning capability the gateway declared for them. What is
- * left here is ktapi's own concern: the gateway exposes each model under
- * several spellings (`DeepSeek Latest`, `DeepSeek-Latest`,
- * `deepseek/deepseek-latest`, `deepseek-latest`), all routing to the same
- * upstream, so a catalog keyed by the raw listing would show duplicates; every
- * id is normalized to one lowercase request id here.
+ * left here is ktapi's own concern: the gateway lists one model under several
+ * ids. Some differ in spelling (`DeepSeek Latest`, `deepseek/deepseek-latest`,
+ * `deepseek-latest`), some in how the version is written (`claude-opus-4.8`,
+ * `claude-opus-4-8`), and a dated snapshot (`claude-opus-4-5-20251101`) sits
+ * beside the undated id that names it. A catalog keyed by the raw listing shows
+ * one model up to six times, so every such group folds into one entry.
+ *
+ * An entry's request id is always an id the gateway listed. The gateway routes
+ * and prices each listed id on its own, so an id rebuilt from another spelling
+ * may name nothing there, and a price read from another spelling may not be the
+ * price charged.
  */
 
 import type { LiveCatalogModel, LiveModelReasoning } from '@deepseek-ai/dsh-llm-pi-ai/host'
@@ -23,7 +28,7 @@ export const DEFAULT_OUTPUT = 32_768
 /**
  * Curated Kito defaults for new accounts, in product priority order.
  *
- * Each group contributes at most one id: the first alias the account's own
+ * Each group contributes at most one entry: the first alias the account's own
  * listing carries. The table is shared with the Kito coding client so both
  * products show the same picker.
  */
@@ -58,29 +63,34 @@ export const KTAI_DEFAULT_VISIBLE_PICKS: readonly (readonly string[])[] = [
   ['MiniMax-M2.7', 'minimax/minimax-m2.7', 'MiniMax-M3', 'minimax/minimax-m3', 'MiniMax-M2.5', 'MiniMax-M2.1'],
 ]
 
-/** One selectable model, already normalized. */
+/** One selectable model: every listed id of it folded into one entry. */
 export interface KtapiModel {
-  /** Request id sent to the gateway. */
+  /** Request id sent to the gateway; always one of the ids the listing carries. */
   readonly id: string
   /** Name shown in the selector. */
   readonly name: string
+  /** Other listed ids of the same model, which this entry stands for. */
+  readonly aliases: readonly string[]
   /** Context window in tokens. */
   readonly contextWindow: number
   /** Output cap in tokens. */
   readonly maxTokens: number
   /** Whether the curated table picks this entry for new accounts. */
   readonly defaultVisible: boolean
-  /** Input price per million tokens, when the pricing row reports a ratio. */
+  /** Input price per million tokens, when the pricing row of the request id reports a ratio. */
   readonly inputRatio?: number
-  /** Output price per million tokens, when the pricing row reports a ratio. */
+  /** Output price per million tokens, when the pricing row of the request id reports a ratio. */
   readonly outputRatio?: number
-  /** Groups the model is enabled for, as the pricing row declares them. */
+  /** Groups the request id is enabled for, as its pricing row declares them. */
   readonly groups?: readonly string[]
-  /** Reasoning capability the gateway declared for this model, when it declared one. */
+  /** Reasoning capability the gateway declared for the request id, when it declared one. */
   readonly reasoning?: LiveModelReasoning
 }
 
 type JsonRecord = Record<string, unknown>
+
+/** Dated snapshot suffix of a fold key: `-20251101` or `-2025-11-01`. */
+const SNAPSHOT_SUFFIX = /-20\d{2}-?(?:0[1-9]|1[0-2])-?(?:0[1-9]|[12]\d|3[01])$/u
 
 function asRecord(value: unknown): JsonRecord | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as JsonRecord : undefined
@@ -101,7 +111,8 @@ function finiteNumber(value: unknown): number | undefined {
 }
 
 /**
- * Reduce every listing spelling of one model to a single request id.
+ * Reduce one spelling of a model id to the form spellings are compared in.
+ * The result is a comparison form, not a request id: the gateway may not list it.
  * @param raw - an id or display name as the gateway spells it.
  * @returns the lowercase id with vendor prefixes, spaces, and underscores folded to hyphens.
  */
@@ -116,17 +127,52 @@ export function normalizeModelId(raw: string): string {
 }
 
 /**
- * Pick the curated defaults the account's own listing carries.
- * @param available - normalized ids the account may use.
- * @returns the picked ids, one per curated group at most.
+ * Key shared by every listed id of one model version.
+ * @param raw - an id as the gateway spells it.
+ * @returns the normalized id with a version's `.` written as `-`, so
+ * `claude-opus-4.8` and `claude-opus-4-8` share one key.
  */
-export function pickDefaultVisibleModelIds(available: Iterable<string>): Set<string> {
+export function modelFoldKey(raw: string): string {
+  return normalizeModelId(raw).replace(/(?<=\d)\.(?=\d)/gu, '-')
+}
+
+/**
+ * Order two listed ids of one model by which of them the entry sends.
+ *
+ * An undated id precedes a dated snapshot, an id whose model part is already
+ * in normalized form precedes a display spelling (`DeepSeek Chat`), and a bare
+ * id precedes a vendor-prefixed one. The shorter id and then code-unit order
+ * settle what remains, so the choice depends on the listed ids alone and not on
+ * the order the gateway lists them.
+ * @param left - one listed id.
+ * @param right - another listed id of the same model.
+ * @returns negative when `left` is preferred, positive when `right` is.
+ */
+function compareSpellings(left: string, right: string): number {
+  return Number(SNAPSHOT_SUFFIX.test(modelFoldKey(left))) - Number(SNAPSHOT_SUFFIX.test(modelFoldKey(right)))
+    || Number(isDisplaySpelling(left)) - Number(isDisplaySpelling(right))
+    || Number(left.includes('/')) - Number(right.includes('/'))
+    || left.length - right.length
+    || (left < right ? -1 : 1)
+}
+
+/** @param id - a listed id. @returns whether its model part is written other than in normalized form. */
+function isDisplaySpelling(id: string): boolean {
+  return id.slice(id.lastIndexOf('/') + 1) !== normalizeModelId(id)
+}
+
+/**
+ * Pick the curated defaults the account's own listing carries.
+ * @param available - fold keys of the models the account may use.
+ * @returns the picked fold keys with their curated priority, one per curated group at most.
+ */
+export function pickDefaultVisibleKeys(available: Iterable<string>): Map<string, number> {
   const present = new Set(available)
-  const picked = new Set<string>()
-  for (const group of KTAI_DEFAULT_VISIBLE_PICKS) {
-    const hit = group.map(normalizeModelId).find(id => present.has(id))
-    if (hit !== undefined) picked.add(hit)
-  }
+  const picked = new Map<string, number>()
+  KTAI_DEFAULT_VISIBLE_PICKS.forEach((group, priority) => {
+    const hit = group.map(modelFoldKey).find(key => present.has(key))
+    if (hit !== undefined) picked.set(hit, priority)
+  })
   return picked
 }
 
@@ -143,30 +189,51 @@ export function contextFromTags(tags: string | undefined): number {
 }
 
 /**
- * Fold the listing onto one row per normalized id, keeping the first spelling.
+ * Fold the listing onto one entry per model.
+ *
+ * Ids that share a fold key are one model. A dated snapshot joins its undated
+ * id only when the listing carries that id: two snapshots listed without it
+ * stay separate entries, because neither one names the other.
  * @param listed - chat-capable rows from the shared live-catalog reader.
- * @returns one row per normalized id.
+ * @returns one entry per model, keyed by fold key, in first-listed order.
  */
-export function normalizeListing(listed: readonly LiveCatalogModel[]): Map<string, KtapiModel> {
-  const byId = new Map<string, KtapiModel>()
+export function foldListing(listed: readonly LiveCatalogModel[]): Map<string, KtapiModel> {
+  const groups = new Map<string, LiveCatalogModel[]>()
   for (const row of listed) {
-    const id = normalizeModelId(row.id)
-    if (!id || byId.has(id)) continue
-    byId.set(id, {
-      id,
-      name: row.name ?? row.id,
+    const key = modelFoldKey(row.id)
+    if (!key) continue
+    const group = groups.get(key)
+    if (group === undefined) groups.set(key, [row])
+    else if (!group.some(member => member.id === row.id)) group.push(row)
+  }
+  for (const [key, group] of [...groups]) {
+    const undated = groups.get(key.replace(SNAPSHOT_SUFFIX, ''))
+    if (undated === undefined || undated === group) continue
+    undated.push(...group)
+    groups.delete(key)
+  }
+  const folded = new Map<string, KtapiModel>()
+  for (const [key, group] of groups) {
+    const chosen = group.reduce((best, row) => compareSpellings(row.id, best.id) < 0 ? row : best)
+    const aliases = group.map(row => row.id).filter(id => id !== chosen.id).toSorted(compareSpellings)
+    // The gateway writes a display spelling with spaces (`DeepSeek Latest`); it
+    // names the model better than a request id does.
+    const spelled = [chosen.id, ...aliases].find(id => /\s/u.test(id))
+    folded.set(key, {
+      id: chosen.id,
+      name: chosen.name ?? spelled?.slice(spelled.lastIndexOf('/') + 1) ?? chosen.id,
+      aliases,
       contextWindow: DEFAULT_CONTEXT,
       maxTokens: DEFAULT_OUTPUT,
       defaultVisible: false,
-      ...row.reasoning === undefined ? {} : { reasoning: row.reasoning },
+      ...chosen.reasoning === undefined ? {} : { reasoning: chosen.reasoning },
     })
   }
-  return byId
+  return folded
 }
 
-/** One row's pricing facts, keyed by normalized model id. */
+/** One listed id's pricing facts. */
 export interface KtapiPricing {
-  readonly name?: string
   readonly inputRatio?: number
   readonly outputRatio?: number
   readonly groups?: readonly string[]
@@ -174,15 +241,15 @@ export interface KtapiPricing {
 }
 
 /**
+ * Read the pricing rows of a `GET /api/pricing` body, skipping rows without an id.
  * @param payload - `GET /api/pricing` body.
- * @returns pricing facts keyed by normalized model id; the first row for an id wins.
+ * @returns pricing facts keyed by the exact id each row prices; the first row for an id wins.
  */
 export function parsePricingPayload(payload: unknown): Map<string, KtapiPricing> {
   const byId = new Map<string, KtapiPricing>()
   for (const row of asRows(payload)) {
     const raw = typeof row.model_name === 'string' ? row.model_name : typeof row.name === 'string' ? row.name : ''
-    if (!raw.trim()) continue
-    const id = normalizeModelId(raw)
+    const id = raw.trim()
     if (!id || byId.has(id)) continue
     const tags = typeof row.tags === 'string' ? row.tags : undefined
     const groups = Array.isArray(row.enable_groups)
@@ -191,9 +258,7 @@ export function parsePricingPayload(payload: unknown): Map<string, KtapiPricing>
     const ratio = finiteNumber(row.model_ratio)
     const completion = finiteNumber(row.completion_ratio)
     byId.set(id, {
-      name: raw,
-      ...ratio === undefined ? {} : { inputRatio: ratio },
-      ...ratio === undefined ? {} : { outputRatio: ratio * (completion ?? 1) },
+      ...ratio === undefined ? {} : { inputRatio: ratio, outputRatio: ratio * (completion ?? 1) },
       ...groups === undefined || groups.length === 0 ? {} : { groups },
       ...tags === undefined ? {} : { contextWindow: contextFromTags(tags) },
     })
@@ -203,41 +268,33 @@ export function parsePricingPayload(payload: unknown): Map<string, KtapiPricing>
 
 /**
  * Join the account's listing with the shared pricing into the selector's catalog.
+ *
+ * Each entry carries the pricing row of its own request id. A sibling id's row
+ * is never borrowed: the gateway prices listed ids of one model differently.
  * @param models - chat-capable rows the shared live-catalog reader returned for this account.
  * @param pricing - `GET /api/pricing` body, shared by every account.
  * @returns the catalog in curated order first, then the rest by id.
  */
 export function buildKtapiCatalog(models: readonly LiveCatalogModel[], pricing: unknown): KtapiModel[] {
-  const listed = normalizeListing(models)
+  const folded = foldListing(models)
   const priced = parsePricingPayload(pricing)
-  const picked = pickDefaultVisibleModelIds(listed.keys())
-  const entries: KtapiModel[] = []
-  for (const [id, listedEntry] of listed) {
-    const row = priced.get(id)
-    entries.push({
-      id,
-      name: row?.name ?? listedEntry.name,
-      contextWindow: row?.contextWindow ?? DEFAULT_CONTEXT,
-      maxTokens: DEFAULT_OUTPUT,
-      defaultVisible: picked.has(id),
-      ...row?.inputRatio === undefined ? {} : { inputRatio: row.inputRatio },
-      ...row?.outputRatio === undefined ? {} : { outputRatio: row.outputRatio },
-      ...row?.groups === undefined ? {} : { groups: row.groups },
-      ...listedEntry.reasoning === undefined ? {} : { reasoning: listedEntry.reasoning },
+  const picked = pickDefaultVisibleKeys(folded.keys())
+  return [...folded]
+    .map(([key, entry]) => {
+      const row = priced.get(entry.id)
+      const priority = picked.get(key)
+      return {
+        priority: priority ?? Number.MAX_SAFE_INTEGER,
+        entry: {
+          ...entry,
+          defaultVisible: priority !== undefined,
+          ...row?.contextWindow === undefined ? {} : { contextWindow: row.contextWindow },
+          ...row?.inputRatio === undefined ? {} : { inputRatio: row.inputRatio },
+          ...row?.outputRatio === undefined ? {} : { outputRatio: row.outputRatio },
+          ...row?.groups === undefined ? {} : { groups: row.groups },
+        },
+      }
     })
-  }
-  const curatedOrder = new Map<string, number>()
-  let rank = 0
-  for (const group of KTAI_DEFAULT_VISIBLE_PICKS) {
-    for (const alias of group) {
-      const id = normalizeModelId(alias)
-      if (!curatedOrder.has(id)) curatedOrder.set(id, rank)
-    }
-    rank += 1
-  }
-  return entries.sort((left, right) => {
-    const leftRank = left.defaultVisible ? curatedOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER
-    const rightRank = right.defaultVisible ? curatedOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER
-    return leftRank === rightRank ? left.id.localeCompare(right.id) : leftRank - rightRank
-  })
+    .sort((left, right) => left.priority - right.priority || left.entry.id.localeCompare(right.entry.id))
+    .map(ranked => ranked.entry)
 }

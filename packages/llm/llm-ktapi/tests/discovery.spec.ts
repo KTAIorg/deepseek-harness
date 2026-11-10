@@ -11,7 +11,7 @@ const listing = {
 
 const pricing = {
   data: [
-    { model_name: 'DeepSeek-Latest', model_ratio: 0.075, completion_ratio: 4, enable_groups: ['ktai', 'default'] },
+    { model_name: 'deepseek-latest', model_ratio: 0.075, completion_ratio: 4, enable_groups: ['ktai', 'default'] },
     { model_name: 'deepseek-v4-flash', model_ratio: 0.07, enable_groups: ['ktai'] },
   ],
 }

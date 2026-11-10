@@ -56,6 +56,16 @@ describe('model vendor grouping', () => {
     expect(choices[1]?.aliases).toEqual(['sub2api-grok-4.6'])
   })
 
+  it('derives a readable name from an id that repeats itself as its name', () => {
+    const names = (ids: readonly string[]): string[] =>
+      modelChoices([group(ids.map(id => [id, id] as const))]).map(choice => choice.displayName)
+    expect(names(['claude-opus-4-8', 'gpt-5-1', 'gpt-5.6', 'moonshotai/kimi-k3.1-pro']))
+      .toEqual(['Claude Opus 4.8', 'GPT-5.1', 'GPT-5.6', 'Kimi K3.1 Pro'])
+    // Only a two-part version after a word reads as one number; dates, sizes, and `v4-1` keep their parts.
+    expect(names(['claude-haiku-4-5-20251001', 'o3-2025-04-16', 'llama-prompt-guard-2-22m', 'deepseek-v4-1-flash']))
+      .toEqual(['Claude Haiku 4.5 20251001', 'O3 2025 04 16', 'Llama Prompt Guard 2 22m', 'Deepseek V4 1 Flash'])
+  })
+
   it('orders newer versions and latest tags before older releases', () => {
     expect(compareModelVersions('claude-opus-5', 'claude-opus-4.8')).toBeGreaterThan(0)
     expect(compareModelVersions('claude-opus-latest', 'claude-opus-5')).toBeGreaterThan(0)
