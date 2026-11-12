@@ -1262,7 +1262,7 @@ async function main(): Promise<void> {
       const now = Date.now()
       if (now - catalogRefreshAt < 2_000) return
       catalogRefreshAt = now
-      void net.fetch(new URL('/kito/catalog-refresh', hostUrl), {
+      void net.fetch(new URL('/kito/catalog-refresh', hostUrl).toString(), {
         method: 'POST',
         headers: { cookie: hostCookie },
       }).catch(() => undefined)
