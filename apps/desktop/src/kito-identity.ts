@@ -74,6 +74,8 @@ export interface KitoAccountView {
   readonly accountNo?: string
   /** Telegram username without a leading `@`, when this account has one. */
   readonly telegramUsername?: string
+  /** Profile image saved from the last successful login. */
+  readonly avatarUrl?: string
   readonly balance?: number
 }
 
@@ -82,6 +84,8 @@ interface FetchInit {
   readonly signal?: AbortSignal
   readonly fetchImpl?: typeof fetch
   readonly deviceLabel?: string
+  /** Telegram username or KT account number. `@` is optional. */
+  readonly hint?: string
 }
 
 function stringField(value: unknown): string | undefined {
@@ -106,6 +110,7 @@ export async function startKitoDeviceLogin(input: FetchInit = {}): Promise<KitoD
       client_type: KITO_DEVICE_CLIENT_TYPE,
       client_id: KITO_DEVICE_CLIENT_ID,
       device_name: input.deviceLabel ?? 'Kito Harness',
+      ...(input.hint === undefined || input.hint === '' ? {} : { telegram_account: input.hint }),
     }),
     signal: withTimeout(input.signal),
   })
@@ -127,6 +132,38 @@ export async function startKitoDeviceLogin(input: FetchInit = {}): Promise<KitoD
     sessionId, userCode, opaqueCode, loginUrl, loginDeeplink, expiresAt,
     interval: typeof interval === 'number' && interval > 0 ? interval : 5,
   }
+}
+
+/** Result of asking Identity to deliver the same confirmation again. */
+export type KitoPushResult = 'accepted' | 'rate-limited' | 'expired' | 'busy'
+
+/**
+ * Ask Identity to deliver the existing confirmation to a Telegram username.
+ * The verification code does not change. The reply does not say whether the username exists.
+ * @param input - session proof and the hint to deliver.
+ * @returns how the welcome window should treat the attempt.
+ */
+export async function pushKitoDeviceLoginHint(input: FetchInit & {
+  sessionId: string
+  opaqueCode: string
+  hint: string
+}): Promise<KitoPushResult> {
+  const fetchImpl = input.fetchImpl ?? kitoFetch
+  const response = await fetchImpl(
+    `${input.baseUrl ?? identityBaseUrl()}/identity/v1/device/sessions/${encodeURIComponent(input.sessionId)}/hint`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify({ opaque_code: input.opaqueCode, telegram_account: input.hint }),
+      signal: withTimeout(input.signal),
+    },
+  )
+  if (response.status === 202) return 'accepted'
+  if (response.status === 429) return 'rate-limited'
+  // 409 is a session that is no longer waiting. 404 is an older server without
+  // this route; the original confirmation is still valid, so it stays on screen.
+  if (response.status === 401 || response.status === 409) return 'expired'
+  return 'busy'
 }
 
 /**
@@ -266,11 +303,13 @@ export function kitoAccountView(profilePayload: unknown, balance: number | undef
   const displayName = displayNameFrom(profilePayload)
   const accountNo = accountNoFrom(profilePayload)
   const telegramUsername = telegramUsernameFrom(profilePayload)
+  const avatarUrl = avatarUrlFrom(profilePayload)
   return {
     signedIn: true,
     ...(displayName === undefined ? {} : { displayName }),
     ...(accountNo === undefined ? {} : { accountNo }),
     ...(telegramUsername === undefined ? {} : { telegramUsername }),
+    ...(avatarUrl === undefined ? {} : { avatarUrl }),
     ...(balance === undefined ? {} : { balance }),
   }
 }
@@ -296,6 +335,16 @@ function telegramUsernameFrom(payload: unknown): string | undefined {
     if (username) return username
   }
   return undefined
+}
+
+function avatarUrlFrom(payload: unknown): string | undefined {
+  const record = asRecord(payload)
+  const account = asRecord(record?.account) ?? asRecord(record?.data) ?? record
+  const profile = asRecord(record?.profile) ?? asRecord(account?.profile)
+  const nested = asRecord(account?.account) ?? account
+  return [nested?.avatarUrl, nested?.avatar_url, profile?.avatarUrl, profile?.avatar_url]
+    .map(item => stringField(item)?.trim())
+    .find((item): item is string => Boolean(item && /^https:\/\//u.test(item)))
 }
 
 function displayNameFrom(payload: unknown): string | undefined {

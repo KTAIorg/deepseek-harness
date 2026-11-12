@@ -102,7 +102,27 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
     assertSender(event)
     await operations.skip()
   })
-  ipcMain.handle(WELCOME_IPC.start, async (event) => { assertSender(event); return operations.startSignIn() })
+  ipcMain.handle(WELCOME_IPC.start, async (event, hint: unknown) => {
+    assertSender(event)
+    if (hint !== undefined && typeof hint !== 'string') throw new Error('desktop welcome: invalid hint')
+    return operations.startSignIn(hint)
+  })
+  ipcMain.handle(WELCOME_IPC.resend, async (event, id: unknown) => {
+    assertSender(event)
+    if (typeof id !== 'string') throw new Error('desktop welcome: invalid attempt')
+    return operations.resendSignIn(id as SignInAttemptId)
+  })
+  ipcMain.handle(WELCOME_IPC.openQr, async (event, id: unknown) => {
+    assertSender(event)
+    if (typeof id !== 'string') throw new Error('desktop welcome: invalid attempt')
+    await operations.openSignIn(id as SignInAttemptId)
+  })
+  ipcMain.handle(WELCOME_IPC.recent, async (event) => { assertSender(event); return operations.recentAccounts() })
+  ipcMain.handle(WELCOME_IPC.forgetRecent, async (event, accountNo: unknown) => {
+    assertSender(event)
+    if (typeof accountNo !== 'string') throw new Error('desktop welcome: invalid account')
+    return operations.forgetRecentAccount(accountNo)
+  })
   ipcMain.handle(WELCOME_IPC.cancel, async (event, id: unknown) => {
     assertSender(event)
     if (typeof id !== 'string') throw new Error('desktop welcome: invalid attempt')

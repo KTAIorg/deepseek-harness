@@ -1,7 +1,8 @@
 Kito Harness
 Kito Harness
-没有自动打开浏览器？
+请在手机上确认
 复制登录链接
 正在完成登录… [disabled]
+改用二维码
 取消
-复制登录链接，用浏览器手动打开完成登录
+在手机 Telegram 里打开官方 Bot，核对校验码后点确认。这台电脑不必登录 Telegram。

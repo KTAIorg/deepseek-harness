@@ -3,6 +3,7 @@
 import type { AccountView, SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
 import type { ProductEventMap } from '@deepseek-ai/dsh-client-product-analytics/types'
 import type { DesktopLocale } from './locale.ts'
+import type { RecentAccount } from './kito-login.ts'
 
 /** Private native welcome channels, installed only while its window exists. */
 export const WELCOME_IPC = {
@@ -11,6 +12,10 @@ export const WELCOME_IPC = {
   analyticsEnabled: 'dsh-welcome:analytics-enabled',
   skip: 'dsh-welcome:skip',
   start: 'dsh-welcome:start',
+  resend: 'dsh-welcome:resend',
+  openQr: 'dsh-welcome:open-qr',
+  recent: 'dsh-welcome:recent',
+  forgetRecent: 'dsh-welcome:forget-recent',
   cancel: 'dsh-welcome:cancel',
   copyLink: 'dsh-welcome:copy-link',
   state: 'dsh-welcome:state',
@@ -33,8 +38,19 @@ export interface WelcomeOperations {
   analyticsEnabled(): Promise<boolean>
   /** @returns the pending notification, clearing it before another renderer can receive it. */
   takeNotice(): Promise<WelcomeNotice | undefined>
-  /** @returns account state after starting a login attempt. */
-  startSignIn(): Promise<AccountView>
+  /**
+   * @param hint - Telegram username or KT account number. Empty starts a code without a push.
+   * @returns account state after starting a login attempt.
+   */
+  startSignIn(hint?: string): Promise<AccountView>
+  /** @param id - waiting attempt to deliver again. @returns the same confirmation. */
+  resendSignIn(id: SignInAttemptId): Promise<AccountView>
+  /** @param id - waiting attempt whose https login page should open. */
+  openSignIn(id: SignInAttemptId): Promise<void>
+  /** @returns accounts that signed in on this computer, newest first. */
+  recentAccounts(): Promise<readonly RecentAccount[]>
+  /** @param accountNo - local row to drop. @returns the remaining rows. */
+  forgetRecentAccount(accountNo: string): Promise<readonly RecentAccount[]>
   /** @param id - attempt to cancel. @returns the settled state. */
   cancelSignIn(id: SignInAttemptId): Promise<AccountView>
   /** @param id - current waiting attempt whose authorization URL is copied to the system clipboard. */

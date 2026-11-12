@@ -1,7 +1,8 @@
 Kito Harness
 Kito Harness
-Browser didn’t open automatically?
+Confirm on your phone
 Copy sign-in link
 Completing sign in… [disabled]
+Use a QR code
 Cancel
-Copy the sign-in link and open it in your browser to sign in.
+Open the official bot in Telegram on your phone and confirm the code. This computer does not need Telegram.

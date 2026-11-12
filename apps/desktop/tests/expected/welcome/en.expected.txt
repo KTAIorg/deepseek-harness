@@ -3,3 +3,4 @@ Kito Harness
 Welcome to Kito Harness
 Build potential. Explore intelligence.
 Sign in with Telegram
+Use a QR code

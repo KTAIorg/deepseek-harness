@@ -1,4 +1,5 @@
 import type { AccountView, SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
+import type { RecentAccount } from './kito-login.ts'
 /** Localized welcome copy and write-only credential actions. */
 
 import { contextBridge, ipcRenderer } from 'electron'
@@ -15,7 +16,11 @@ const api: WelcomeApi = {
   },
   analyticsEnabled: () => ipcRenderer.invoke(WELCOME_IPC.analyticsEnabled) as Promise<boolean>,
   takeNotice: () => ipcRenderer.invoke(WELCOME_IPC.takeNotice) as Promise<WelcomeNotice | undefined>,
-  startSignIn: () => ipcRenderer.invoke(WELCOME_IPC.start) as Promise<AccountView>,
+  startSignIn: (hint?: string) => ipcRenderer.invoke(WELCOME_IPC.start, hint) as Promise<AccountView>,
+  resendSignIn: (id: SignInAttemptId) => ipcRenderer.invoke(WELCOME_IPC.resend, id) as Promise<AccountView>,
+  openSignIn: (id: SignInAttemptId) => ipcRenderer.invoke(WELCOME_IPC.openQr, id) as Promise<void>,
+  recentAccounts: () => ipcRenderer.invoke(WELCOME_IPC.recent) as Promise<readonly RecentAccount[]>,
+  forgetRecentAccount: (accountNo: string) => ipcRenderer.invoke(WELCOME_IPC.forgetRecent, accountNo) as Promise<readonly RecentAccount[]>,
   cancelSignIn: (id: SignInAttemptId) => ipcRenderer.invoke(WELCOME_IPC.cancel, id) as Promise<AccountView>,
   copySignInLink: (id: SignInAttemptId) => ipcRenderer.invoke(WELCOME_IPC.copyLink, id) as Promise<void>,
   onAccountState: (listener) => {

@@ -262,6 +262,33 @@ body {
   letter-spacing: 0.02em;
 }
 
+.hint-note,
+#hint-note {
+  margin: 6px 0 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.recent-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.recent-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dsw-alias-button-floating-hover);
+}
+
 .key-field {
   position: relative;
   width: 100%;
