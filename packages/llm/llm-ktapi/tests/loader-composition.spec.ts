@@ -39,7 +39,7 @@ const listing = {
 
 const pricing = {
   data: [
-    { model_name: 'DeepSeek-Latest', model_ratio: 0.075, completion_ratio: 4, tags: '128K' },
+    { model_name: 'deepseek-latest', model_ratio: 0.075, completion_ratio: 4, tags: '128K' },
   ],
 }
 
@@ -107,6 +107,8 @@ describe('real Loader composition', () => {
 
     const resolved = await context.llm.resolveModelInfo(Ktapi.KTAI_PROVIDER, 'deepseek-latest')
     expect(resolved.context?.contextWindow).toBe(128_000)
+    expect(resolved.reasoning?.efforts.map(level => level.id)).toEqual(['off', 'low', 'medium', 'high', 'max'])
+    expect(resolved.reasoning?.defaultEffort).toBeUndefined()
   })
 
   it('serves the curated shortlist when showAllModels is off', { timeout: 60_000 }, async () => {

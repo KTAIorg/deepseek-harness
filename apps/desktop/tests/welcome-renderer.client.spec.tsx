@@ -20,6 +20,10 @@ function mount(language = 'zh-CN', takeNotice = vi.fn<() => Promise<WelcomeNotic
     analyticsEnabled: async () => true,
     onAccountState: vi.fn((_listener: (state: AccountView) => void) => stopAccount),
     startSignIn: vi.fn(async (): Promise<AccountView> => ({ links: { usageUrl: 'http://localhost/usage', topUpUrl: 'http://localhost/top_up' }, status: 'signed-out', attempt: null })),
+    resendSignIn: vi.fn(async (): Promise<AccountView> => ({ links: { usageUrl: 'http://localhost/usage', topUpUrl: 'http://localhost/top_up' }, status: 'signed-out', attempt: null })),
+    openSignIn: vi.fn(async () => undefined),
+    recentAccounts: vi.fn(async () => []),
+    forgetRecentAccount: vi.fn(async () => []),
     cancelSignIn: vi.fn(async (): Promise<AccountView> => ({ links: { usageUrl: 'http://localhost/usage', topUpUrl: 'http://localhost/top_up' }, status: 'signed-out', attempt: null })),
     copySignInLink: vi.fn(async () => undefined),
     ...resolveDesktopLocale(language),
@@ -27,7 +31,7 @@ function mount(language = 'zh-CN', takeNotice = vi.fn<() => Promise<WelcomeNotic
     skip: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
   }
   const mounted = render(<Welcome api={api} />)
-  const input = document.querySelector('input')!
+  const input = document.querySelector<HTMLInputElement>('#key-input')!
   const button = (id: string) => document.querySelector<HTMLButtonElement>(id)!
   const enterKey = (value: string) => {
     fireEvent.change(input, { target: { value } })
@@ -196,6 +200,7 @@ it('keeps a newer account notification when the start response arrives late', as
   const view = mount()
   const started = Promise.withResolvers<AccountView>()
   view.api.startSignIn.mockReturnValueOnce(started.promise)
+  fireEvent.change(view.document.querySelector('#telegram-user')!, { target: { value: '@ada' } })
   fireEvent.click(view.button('#sign-in'))
   expect(view.button('#auth-cancel').disabled).toBe(true)
   const state: AccountView = { status: 'signed-out', links: { usageUrl: '', topUpUrl: '' },
@@ -337,6 +342,7 @@ it('reports each return to the welcome entry once, including account cancellatio
   expect(view.api.analytics.mock.calls.map(([action]) => action)).toEqual(['auth_page_click', 'auth_page_view'])
   const pending = Promise.withResolvers<AccountView>()
   view.api.startSignIn.mockReturnValueOnce(pending.promise)
+  fireEvent.change(view.document.querySelector('#telegram-user')!, { target: { value: 'ada' } })
   fireEvent.click(view.button('#sign-in'))
   await act(async () => { pending.resolve({ links: { usageUrl: 'http://localhost/usage', topUpUrl: 'http://localhost/top_up' }, status: 'signed-out', attempt: null }) })
   expect(view.api.analytics.mock.calls.map(([action]) => action)).toEqual(['auth_page_click', 'auth_page_view', 'auth_page_click', 'auth_page_view'])

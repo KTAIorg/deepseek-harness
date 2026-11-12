@@ -9,7 +9,6 @@ import {
   type KitoConsolePage,
 } from './kito-identity.ts'
 import { loadKitoProfile } from './kito-wallet.ts'
-import { probeKitoModels } from './kito-model-probe.ts'
 
 export interface KitoRouteOptions {
   readonly showWelcome: () => void
@@ -51,16 +50,6 @@ export async function handleKitoAppRoute(request: Request, options: KitoRouteOpt
   }
   if (url.pathname === '/kito/topup' && request.method === 'POST') {
     return openConsolePage(options, 'wallet')
-  }
-  if (url.pathname === '/kito/model-probe' && request.method === 'POST') {
-    // Bounded by the same request size the rest of this origin accepts; the
-    // probe itself caps how many models one call may name.
-    const body = await request.json().catch(() => undefined) as { models?: unknown } | undefined
-    const models = Array.isArray(body?.models) ? body.models.filter((id): id is string => typeof id === 'string') : []
-    if (models.length === 0) return Response.json({ error: 'no-models' }, { status: 400 })
-    const probed = await probeKitoModels(models)
-    if (probed === undefined) return Response.json({ error: 'signed-out' }, { status: 401 })
-    return Response.json(probed)
   }
   if (url.pathname === '/kito/open' && request.method === 'POST') {
     const page = url.searchParams.get('target')

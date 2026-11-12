@@ -18,7 +18,7 @@ import {
 import z from '@deepseek-ai/schemastery'
 import { DEFAULT_CONTEXT, DEFAULT_OUTPUT, type KtapiModel } from './catalog.ts'
 import { CATALOG_TIMEOUT_MS, fetchKtapiCatalog, type KtapiCatalogSnapshot } from './discovery.ts'
-import { registerProbeRoute } from './probe-route.ts'
+import { registerCatalogRefreshRoute, registerProbeRoute } from './probe-route.ts'
 
 /** Cordis plugin name. */
 export const name = 'llm-ktapi'
@@ -70,6 +70,21 @@ interface Options {
 /** The model the route serves before its first successful catalog read. */
 const BOOTSTRAP_MODEL = 'deepseek-latest'
 
+/**
+ * Levels offered when the gateway lists a chat model without a `reasoning`
+ * object. DeepSeek and GLM rows are in that set, and `chat/completions` still
+ * accepts `reasoning_effort` for them. A row that sets `efforts: false` stays
+ * non-reasoning. No default is declared, so a request keeps the provider's own
+ * effort until a person picks one.
+ */
+const UNDECLARED_REASONING_EFFORTS = {
+  off: null,
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  max: 'max',
+} as const
+
 /** @param config - live plugin configuration. @returns detached values for one operation. */
 function optionsOf(config: Config): Options {
   return {
@@ -91,9 +106,9 @@ function modelRow(model: KtapiModel): Record<string, unknown> {
     contextWindow: model.contextWindow > 0 ? model.contextWindow : DEFAULT_CONTEXT,
     maxTokens: DEFAULT_OUTPUT,
     input: ['text'],
-    // The gateway states each model's reasoning levels itself; a row without
-    // one describes a model that reads no reasoning parameter.
-    ...model.reasoning === undefined ? {} : { reasoningEfforts: model.reasoning.efforts },
+    reasoningEfforts: model.reasoning === undefined
+      ? UNDECLARED_REASONING_EFFORTS
+      : model.reasoning.efforts,
   }
 }
 
@@ -111,7 +126,7 @@ function profileOf(options: Options, snapshot: KtapiCatalogSnapshot | undefined)
   // snapshot is already ordered curated-first, then by id
   // (@see buildKtapiCatalog).
   const models = snapshot === undefined
-    ? [{ id: BOOTSTRAP_MODEL, name: 'DeepSeek Latest', contextWindow: DEFAULT_CONTEXT, maxTokens: DEFAULT_OUTPUT, input: ['text'] }]
+    ? [{ id: BOOTSTRAP_MODEL, name: 'DeepSeek Latest', contextWindow: DEFAULT_CONTEXT, maxTokens: DEFAULT_OUTPUT, input: ['text'], reasoningEfforts: UNDECLARED_REASONING_EFFORTS }]
     : (options.showAllModels ? snapshot.models : snapshot.models.filter(model => model.defaultVisible)).map(modelRow)
   return {
     displayName: options.displayName,
@@ -240,6 +255,7 @@ export function apply(ctx: Context, config: Config): void {
       baseURL: () => optionsOf(config).baseURL,
       models: () => (snapshot?.models ?? []).map(model => model.id),
     })
+    registerCatalogRefreshRoute(scope, refresh)
   })
   // The relay key arrives after this plugin mounts: a fresh install signs in
   // from the welcome window, so the mount-time read has nothing to resolve and

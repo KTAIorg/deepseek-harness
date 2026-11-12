@@ -78,6 +78,9 @@ import { createKitoIdentityRefresher } from './kito-identity-refresh.ts'
 import { createKitoIdentityKeepalive } from './kito-identity-keepalive.ts'
 import { ensureKitoModelKeyWithRefresh } from './kito-model-credential.ts'
 import { createKitoSignIn, type KitoSignIn } from './kito-sign-in.ts'
+import { fetchKitoAccount } from './kito-identity.ts'
+import { resolveKitoHarnessHome } from './kito-home.ts'
+import { dropRecentAccount, readRecentAccounts, storeRecentAccount } from './kito-recent-accounts.ts'
 import { readStoredCredential } from './kito-credentials.ts'
 import { runKitoDesktopLink } from './kito-desktop-link.ts'
 
@@ -1253,6 +1256,19 @@ async function main(): Promise<void> {
     shortcuts.attach(window)
     window.on('focus', automaticCheck)
     window.on('focus', () => { kitoIdentityKeepalive.poke() })
+    let catalogRefreshAt = 0
+    const refreshCatalog = (): void => {
+      if (hostUrl === undefined || hostCookie === undefined) return
+      const now = Date.now()
+      if (now - catalogRefreshAt < 2_000) return
+      catalogRefreshAt = now
+      void net.fetch(new URL('/kito/catalog-refresh', hostUrl).toString(), {
+        method: 'POST',
+        headers: { cookie: hostCookie },
+      }).catch(() => undefined)
+    }
+    window.on('show', refreshCatalog)
+    window.on('focus', refreshCatalog)
     // Closing hides: the page and the Host keep running, and the next show resumes the same document.
     window.on('close', (event) => {
       if (quitting || shellInstallerOwnsQuit || sessionEnding) return
@@ -1360,7 +1376,7 @@ async function main(): Promise<void> {
           pendingWelcomeNotice = undefined
           return Promise.resolve(notice)
         },
-        startSignIn: async () => {
+        startSignIn: async (hint?: string) => {
           kitoSignIn ??= createKitoSignIn({
             publish: (state) => {
               if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
@@ -1376,10 +1392,29 @@ async function main(): Promise<void> {
             onSuccess: () => {
               void enterWorkspace({ activate: false }).then(() => { publishKitoAccount() }).catch(() => undefined)
             },
+            remember: async (token) => {
+              const account = await fetchKitoAccount(token)
+              if (!account.signedIn || account.accountNo === undefined) return
+              await storeRecentAccount(resolveKitoHarnessHome(), {
+                accountNo: account.accountNo,
+                ...(account.displayName === undefined ? {} : { displayName: account.displayName }),
+                ...(account.telegramUsername === undefined ? {} : { telegramUsername: account.telegramUsername }),
+                ...(account.avatarUrl === undefined ? {} : { avatarUrl: account.avatarUrl }),
+              })
+            },
             openLogin: (url) => { void shell.openExternal(url).catch(() => undefined) },
           })
-          return kitoSignIn.start()
+          return kitoSignIn.start(hint)
         },
+        resendSignIn: async (id) => {
+          if (kitoSignIn === undefined) throw new Error('desktop welcome: backend unavailable')
+          return kitoSignIn.resend(id)
+        },
+        openSignIn: async (id) => {
+          kitoSignIn?.openQr(id)
+        },
+        recentAccounts: () => readRecentAccounts(resolveKitoHarnessHome()),
+        forgetRecentAccount: accountNo => dropRecentAccount(resolveKitoHarnessHome(), accountNo),
         cancelSignIn: async (id) => {
           if (kitoSignIn === undefined) throw new Error('desktop welcome: backend unavailable')
           return kitoSignIn.cancel(id)

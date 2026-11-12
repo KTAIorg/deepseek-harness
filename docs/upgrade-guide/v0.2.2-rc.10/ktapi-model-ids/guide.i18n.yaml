@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.10/ktapi-model-ids/guide.md
+/:
+  en: d859773830652511
+  zh: 21858ee660853c3c
+/ktapi-model-ids:
+  en: 323f818ddd09eb67
+  zh: 2011ed605f8bd978
+/ktapi-model-ids/change:
+  en: 4f4bdafd3987a06f
+  zh: f81177127a316774
+/ktapi-model-ids/migration:
+  en: 60f4077093b6df69
+  zh: 9b0356cb3caff740

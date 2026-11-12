@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { finishKitoDeviceLogin } from '../src/kito-identity.ts'
 import { createKitoSignIn } from '../src/kito-sign-in.ts'
 
@@ -39,7 +39,7 @@ describe('Kito welcome sign-in', () => {
       },
     })
     const state = await signIn.start()
-    expect(opened).toBe('https://login.ktyun.cc/device')
+    expect(opened).toBe('')
     expect(identities).toEqual(['identity-token'])
     expect(refreshTokens).toEqual(['refresh-1'])
     expect(succeeded).toBe(true)
@@ -101,5 +101,44 @@ describe('Kito welcome sign-in', () => {
     const state = await signIn.start()
     expect(newapiCalls).toBe(0)
     expect(state.status).toBe('credential-stored')
+  })
+
+  it('pushes a username without opening Telegram, then resends the same code', async () => {
+    const bodies: unknown[] = []
+    let opened = ''
+    const signIn = createKitoSignIn({
+      publish: () => undefined,
+      saveIdentity: () => Promise.resolve({ ok: true }),
+      onSuccess: () => undefined,
+      openLogin: (url) => { opened = url },
+      fetchImpl: async (url, init) => {
+        const target = String(url)
+        if (init?.method === 'POST') bodies.push(JSON.parse(String(init.body)))
+        if (target.endsWith('/identity/v1/device/sessions') && init?.method === 'POST') {
+          return new Response(JSON.stringify({
+            session_id: 'sess', user_code: 'K7Q2', opaque_code: 'opaque',
+            login_url: 'https://t.me/bot?start=login_x', login_deeplink: 'tg://resolve?domain=bot',
+            expires_at: '2099-01-01T00:00:00Z', interval: 60,
+          }), { status: 200 })
+        }
+        if (target.endsWith('/hint')) return new Response('{}', { status: 202 })
+        if (target.endsWith('/identity/v1/device/sessions/sess')) {
+          return new Response(JSON.stringify({ status: 'pending' }), { status: 200 })
+        }
+        return new Response('unexpected', { status: 500 })
+      },
+    })
+    const started = signIn.start('@Ada_T')
+    await vi.waitFor(() => { expect(signIn.state().attempt?.userCode).toBe('K7Q2') })
+    expect(opened).toBe('')
+    expect(bodies[0]).toMatchObject({ telegram_account: 'ada_t' })
+    expect(signIn.state().attempt?.push).toBe('accepted')
+    const early = await signIn.resend(signIn.state().attempt!.id)
+    expect(early.attempt?.push).toBe('accepted')
+    expect(bodies).toHaveLength(1)
+    signIn.openQr(signIn.state().attempt!.id)
+    expect(opened).toBe('https://t.me/bot?start=login_x')
+    signIn.cancel(signIn.state().attempt!.id)
+    await started
   })
 })

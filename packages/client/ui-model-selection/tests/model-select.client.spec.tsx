@@ -440,6 +440,32 @@ describe('ModelSelect catalog badges', () => {
 })
 
 describe('ModelSelect reasoning effort', () => {
+  it('changes the effort from the composer control without opening the model dialog', async () => {
+    const select = vi.fn().mockResolvedValue({ ok: true, value: undefined })
+    render(<ModelSelect renderSlot={renderLabel}
+      locked={false}
+      available
+      directory={createSnapshotStore(state())}
+      load={vi.fn()} resolveText={resolveText}
+      select={select}
+      t={t}
+    />)
+
+    const effort = screen.getByRole('button', { name: '推理等级，当前 High' })
+    expect(isPanelOpen()).toBe(false)
+    fireEvent.click(effort)
+    expect(isPanelOpen()).toBe(false)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Max' }))
+    await waitFor(() => {
+      expect(select).toHaveBeenCalledWith({
+        provider: 'deepseek-official',
+        model: 'deepseek-v4-flash',
+        reasoningEffort: 'max',
+      })
+    })
+    expect(isPanelOpen()).toBe(false)
+  })
+
   it('renders effort names without descriptions and submits the effort as part of the session selection', async () => {
     const directory = createSnapshotStore<ModelDirectoryState>(state())
     const select = vi.fn(async (selection: ModelSelection) => {
@@ -613,7 +639,7 @@ describe('ModelSelect reasoning effort', () => {
       t={t}
     />)
 
-    const trigger = screen.getByRole('button', { name: /选择模型|当前/ })
+    const trigger = screen.getByRole('button', { name: /^选择模型/ })
     fireEvent.click(trigger)
     const rejected = modelRow(/DeepSeek-V4-Pro/)
     fireEvent.mouseMove(rejected)
@@ -655,7 +681,7 @@ describe('ModelSelect reasoning effort', () => {
       resolveText={resolveText} select={select} t={t} />)
     const spinners = () => document.querySelectorAll('[data-state="ongoing"]')
 
-    const trigger = screen.getByRole('button', { name: /选择模型|当前/ })
+    const trigger = screen.getByRole('button', { name: /^选择模型/ })
     fireEvent.click(trigger)
     fireEvent.click(modelRow(/DeepSeek-V4-Pro/))
     expect(spinners()).toHaveLength(2)
@@ -688,7 +714,7 @@ describe('ModelSelect reasoning effort', () => {
     render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()}
       resolveText={resolveText} select={select} t={t} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^选择模型/ }))
     fireEvent.click(effortChip())
     fireEvent.click(effortRow(/Max/))
     expect(effortRows()
@@ -1367,15 +1393,9 @@ describe('ModelSelect vendor grouping', () => {
     expect(rowsIn(anthropic())).toHaveLength(1)
   })
 
-  it('checks availability for the account route on open, then offers an explicit re-check', async () => {
+  it('lists every catalog row without asking the desktop to probe them', () => {
     vi.stubGlobal('dshDesktop', { protocolVersion: 1 })
-    const probeFetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
-      probedAt: Date.now(),
-      results: [
-        { model: 'gpt-5.6', ok: true, state: 'ok', status: 200, latencyMs: 40 },
-        { model: 'gpt-5.5', ok: false, state: 'upstream_error', status: 503, message: 'No available channel', latencyMs: 50 },
-      ],
-    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    const probeFetch = vi.fn(async () => new Response('{}', { status: 500 }))
     vi.stubGlobal('fetch', probeFetch)
     onTestFinished(() => { vi.unstubAllGlobals() })
     const groups: ModelDirectoryState['groups'] = [{
@@ -1387,16 +1407,9 @@ describe('ModelSelect vendor grouping', () => {
       ],
     }]
     mountOpen({ groups, current: null })
-    // Opening a stale panel starts one batch for the whole catalog.
-    await waitFor(() => { expect(probeFetch).toHaveBeenCalledTimes(1) })
-    expect(probeFetch.mock.calls[0]?.[0]).toBe('dsh-app://app/kito/model-probe')
-    expect(JSON.parse(String(probeFetch.mock.calls[0]?.[1]?.body))).toEqual({ models: ['gpt-5.6', 'gpt-5.5'] })
-    await waitFor(() => { expect(document.querySelectorAll('[data-state="ok"]').length).toBeGreaterThan(0) })
-    expect(document.querySelectorAll('[data-state="failed"]').length).toBeGreaterThan(0)
-    // Fresh results turn the control into an explicit re-check, which asks again.
-    const again = await screen.findByRole('button', { name: zh['probe.retry'] })
-    fireEvent.click(again)
-    await waitFor(() => { expect(probeFetch).toHaveBeenCalledTimes(2) })
+    expect(screen.getByRole('button', { name: 'GPT-5.6' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'GPT-5.5' })).toBeTruthy()
+    expect(probeFetch).not.toHaveBeenCalled()
   })
 
   it('never offers non-chat ids even when they are the only catalog rows', () => {
@@ -1515,10 +1528,12 @@ it('restores the account model name after login without changing the saved route
   const directory = createSnapshotStore(state({ current: selected, groups, retainedEffort: 'High' }))
   render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()}
     resolveText={resolveText} select={vi.fn()} t={t} />)
-  expect(screen.getByRole('button', { name: /选择模型，当前/ }).textContent).toBe('DeepSeek FlashHigh')
+  expect(screen.getByRole('button', { name: /选择模型，当前/ }).textContent).toBe('DeepSeek Flash')
+  expect(screen.getByRole('button', { name: '推理等级，当前 High' }).textContent).toContain('High')
   act(() => { directory.update((snapshot) => { snapshot.groups = []; snapshot.routable = false }) })
   expect(screen.getByRole('button', { name: '请选择模型' }).textContent).toBe('请选择模型')
   act(() => { directory.update((snapshot) => { snapshot.groups = groups; snapshot.routable = true }) })
-  expect(screen.getByRole('button', { name: /选择模型，当前/ }).textContent).toBe('DeepSeek FlashHigh')
+  expect(screen.getByRole('button', { name: /选择模型，当前/ }).textContent).toBe('DeepSeek Flash')
+  expect(screen.getByRole('button', { name: '推理等级，当前 High' }).textContent).toContain('High')
   expect(directory.getSnapshot().current).toEqual(selected)
 })

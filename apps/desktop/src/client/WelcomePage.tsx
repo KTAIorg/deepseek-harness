@@ -4,10 +4,18 @@ import type { FormEvent } from 'react'
 import { Toast } from '@deepseek-ai/dsh-client-ui-primitives/src/Toast.tsx'
 import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives/src/StateDot.tsx'
 import type { AccountView } from '@deepseek-ai/dsh-deepseek-account/types'
+import type { RecentAccount } from '../kito-login.ts'
+import { normalizeTelegramHint } from '../kito-login.ts'
 import type { WelcomeApi } from '../welcome-api.ts'
 
 type Page = 'entry' | 'key' | 'account'
-type WelcomeAttempt = NonNullable<AccountView['attempt']> & { readonly userCode?: string }
+type WelcomeAttempt = NonNullable<AccountView['attempt']> & {
+  readonly userCode?: string
+  readonly hint?: string
+  readonly resendAt?: number
+  readonly push?: 'accepted' | 'rate-limited' | 'busy'
+  readonly failure?: 'denied' | 'consumed' | 'expired' | 'network' | 'storage'
+}
 
 /**
  * Render the standalone welcome flow using shell-owned operations and localized copy.
@@ -28,6 +36,11 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   const [copyFeedback, setCopyFeedback] = useState<{ status: 'idle' | 'busy' | 'copied' | 'failed' }>({ status: 'idle' })
   const copyState = copyFeedback.status
   const [draft, setDraft] = useState('')
+  const [username, setUsername] = useState('')
+  const [hintError, setHintError] = useState('')
+  const [recent, setRecent] = useState<readonly RecentAccount[]>([])
+  const [showOther, setShowOther] = useState(false)
+  const [clock, setClock] = useState(0)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
@@ -65,6 +78,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
       })
     }
     takeNotice()
+    void api.recentAccounts().then((rows) => { if (mounted.current) setRecent(rows) }).catch(() => undefined)
     const stop = api.onAccountState((state) => {
       revision.current++
       takeNotice()
@@ -129,7 +143,12 @@ export function Welcome({ api }: { api: WelcomeApi }) {
       if (mounted.current) setBusy(false)
     }
   }
-  async function start() {
+  useEffect(() => {
+    if (attempt?.resendAt === undefined) return
+    const timer = setInterval(() => { setClock(Date.now()) }, 1000)
+    return () => { clearInterval(timer) }
+  }, [attempt?.resendAt])
+  async function begin(hint?: string) {
     navigate('account')
     setStarting(true)
     ignoreEmptyAccountPush.current = true
@@ -137,12 +156,35 @@ export function Welcome({ api }: { api: WelcomeApi }) {
     attemptRef.current = null
     const current = ++revision.current
     try {
-      const state = await api.startSignIn()
+      const state = await api.startSignIn(hint)
       ignoreEmptyAccountPush.current = false
       if (mounted.current && revision.current === current) showAccount(state)
     } catch {
       ignoreEmptyAccountPush.current = false
       if (mounted.current && revision.current === current) setStarting(false)
+    }
+  }
+  async function start(raw: string) {
+    const hint = normalizeTelegramHint(raw)
+    if (hint === '') {
+      setHintError(m.welcomeHintBlank)
+      return
+    }
+    setHintError('')
+    await begin(hint)
+  }
+  async function startQr() {
+    setHintError('')
+    await begin()
+  }
+  async function resend() {
+    const current = attemptRef.current
+    if (current === null || clock < (current.resendAt ?? 0)) return
+    try {
+      const state = await api.resendSignIn(current.id)
+      if (mounted.current) showAccount(state)
+    } catch {
+      // The current code stays on screen so the push can be tried again.
     }
   }
   async function cancel() {
@@ -175,7 +217,10 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   const failed = phase === 'expired' || phase === 'failed'
   const title = phase === 'initializing' ? m.welcomeAuthStarting
     : waiting ? m.welcomeAuthWaiting : phase === 'expired' ? m.welcomeAuthExpired
-      : phase === 'failed' ? m.welcomeAuthFailed : m.welcomeAuthExchanging
+      : attempt?.failure === 'denied' ? m.welcomeDenied
+        : phase === 'failed' ? m.welcomeAuthFailed : m.welcomeAuthExchanging
+  const showRecent = page === 'entry' && recent.length > 0 && !showOther
+  const resendLocked = attempt?.resendAt !== undefined && clock < attempt.resendAt
   const heading = page === 'entry' ? 'welcome-heading' : page === 'key' ? 'key-title' : 'auth-status'
 
   return <>
@@ -200,7 +245,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
       <section id="auth-page" className={`key-heading ${waiting ? 'auth-waiting' : phase === 'expired' ? 'auth-expired' : ''}`}
         hidden={page !== 'account'} aria-live="polite">
         <h1 id="auth-status">{title}</h1>
-        <p id="auth-description" hidden={!waiting && phase !== 'expired'}>{waiting ? m.welcomeAuthWaitingDescription : m.welcomeAuthExpiredDescription}</p>
+        <p id="auth-description" hidden={!waiting && phase !== 'expired'}>{waiting ? (attempt?.hint ? m.welcomePushSent : m.welcomeAuthWaitingDescription) : m.welcomeAuthExpiredDescription}</p>
         <p id="auth-code" className="auth-code" hidden={!waiting || !attempt?.userCode}>{attempt?.userCode}</p>
         <button id="auth-copy" className="copy-link" type="button" hidden={!waiting} disabled={!waiting || (copyState === 'busy' || copyState === 'copied')} onClick={() => { void copyLink() }}>
           {copyState === 'copied' ? m.welcomeAuthCopied : copyState === 'failed' ? m.welcomeAuthCopyFailed : m.welcomeAuthCopyLink}
@@ -210,14 +255,38 @@ export function Welcome({ api }: { api: WelcomeApi }) {
         <button id="auth-loading" className="primary" type="button" hidden={failed} disabled aria-label={m.welcomeAuthExchanging}>
           <StateDot state="ongoing" size={16} className="welcome-loading" />
         </button>
-        <button id="auth-retry" className="primary" type="button" hidden={!failed} onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'sign_in' }); void start() }}>{m.welcomeAuthRetry}</button>
+        <button id="auth-retry" className="primary" type="button" hidden={!failed} onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'sign_in' }); setShowOther(true); navigate('entry') }}>{m.welcomeAuthRetry}</button>
+        <button id="auth-resend" className="secondary" type="button" hidden={!waiting || attempt?.hint === undefined}
+          disabled={resendLocked} onClick={() => { void resend() }}>{m.welcomeResend}</button>
+        <button id="auth-qr" className="secondary" type="button" hidden={!waiting}
+          onClick={() => { if (attempt?.id !== undefined) void api.openSignIn(attempt.id) }}>{m.welcomeQr}</button>
         <button id="auth-api-key" className="secondary" type="button" hidden onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'api-key' }); navigate('key') }}>{m.welcomeApiKey}</button>
         <button id="auth-cancel" className="secondary" type="button" hidden={failed}
           disabled={cancelling || phase === 'committing' || phase === 'succeeded' || (phase === 'initializing' && !attempt?.id)}
           onClick={() => { void cancel() }}>{m.welcomeAuthCancel}</button>
       </div>
-      <div id="entry-actions" className="actions" hidden={page !== 'entry'}>
-        <button id="sign-in" className="primary" type="button" onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'sign_in' }); void start() }}>{m.welcomeSignIn}</button>
+      <section id="recent-accounts" hidden={!showRecent} aria-label={m.welcomeRecentOther}>
+        {recent.map(account => (
+          <button key={account.accountNo} type="button" className="recent-account" onClick={() => { void start(account.accountNo) }}>
+            {account.avatarUrl
+              ? <img className="recent-avatar" alt="" src={account.avatarUrl} />
+              : <span className="recent-avatar">{(account.displayName ?? account.accountNo).slice(0, 1)}</span>}
+            <span>{account.displayName ?? account.telegramUsername ?? account.accountNo}</span>
+          </button>
+        ))}
+        <button id="recent-other" className="back" type="button" onClick={() => { setShowOther(true) }}>{m.welcomeRecentOther}</button>
+      </section>
+      <form id="telegram-form" className="key-field" hidden={page !== 'entry' || showRecent} onSubmit={(event) => { event.preventDefault(); void start(username) }}>
+        <label className="visually-hidden" htmlFor="telegram-user">{m.welcomeHintPlaceholder}</label>
+        <input id="telegram-user" autoCapitalize="off" autoCorrect="off" spellCheck={false}
+          placeholder={m.welcomeHintPlaceholder} aria-describedby="hint-note hint-error"
+          value={username} onChange={(event) => { setUsername(event.target.value); setHintError('') }} />
+        <p id="hint-note">{m.welcomeHintNote}</p>
+        <p id="hint-error" role="alert" hidden={hintError === ''}>{hintError}</p>
+      </form>
+      <div id="entry-actions" className="actions" hidden={page !== 'entry' || showRecent}>
+        <button id="sign-in" className="primary" type="submit" form="telegram-form" onClick={(event) => { event.preventDefault(); void api.analytics?.('auth_page_click', { button_name: 'sign_in' }); void start(username) }}>{m.welcomeSignIn}</button>
+        <button id="sign-qr" className="secondary" type="button" onClick={() => { void startQr() }}>{m.welcomeQr}</button>
         <button ref={keyButton} id="api-key" className="secondary" type="button" hidden onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'api-key' }); navigate('key') }}>{m.welcomeApiKey}</button>
       </div>
       <div id="key-actions" className="actions" hidden={page !== 'key'}>
