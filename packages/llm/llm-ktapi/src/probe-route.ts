@@ -7,6 +7,9 @@ import { probeModels, type ModelProbeResult } from './probe.ts'
 /** Route path; the selector posts model ids here. */
 export const PROBE_PATH = '/kito/model-probe'
 
+/** Route the desktop calls when its window is shown again. */
+export const CATALOG_REFRESH_PATH = '/kito/catalog-refresh'
+
 /** A selector sends a handful of ids; anything larger is a mistake or hostility. */
 const MAX_BODY_BYTES = 64 * 1024
 
@@ -85,6 +88,35 @@ export function registerProbeRoute(ctx: Context, input: ProbeRouteInput): void {
       }
     },
   }), `llm-ktapi: POST ${PROBE_PATH}`)
+}
+
+/**
+ * Register a refresh of the account catalog.
+ * A failed read keeps the previous catalog; the handler still answers 200
+ * because the window can open again.
+ * @param ctx - context that carries `webServer`.
+ * @param refresh - host catalog read.
+ */
+export function registerCatalogRefreshRoute(ctx: Context, refresh: () => Promise<void>): void {
+  const connection = Reflect.get(ctx, 'connection') as ProbeConnection | undefined
+  ctx.effect(() => webServerOf(ctx).register({
+    kind: 'exact',
+    path: CATALOG_REFRESH_PATH,
+    handler: async (request, response) => {
+      const rejection = connection?.requestRejection(request)
+      if (rejection !== undefined) {
+        sendJson(response, rejection, { error: 'unauthorized' })
+        return
+      }
+      if (request.method !== 'POST') {
+        response.setHeader('allow', 'POST')
+        sendJson(response, 405, { error: 'method-not-allowed' })
+        return
+      }
+      await refresh()
+      sendJson(response, 200, { ok: true })
+    },
+  }), `llm-ktapi: POST ${CATALOG_REFRESH_PATH}`)
 }
 
 function sendJson(response: ServerResponse, status: number, payload: unknown): void {

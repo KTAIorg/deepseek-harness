@@ -10,7 +10,9 @@
  * Vendor-prefixed and mirror ids (`openai/gpt-5.6`, `sub2api-grok-4.5`) fold
  * into one row that submits the canonical id and carries an alias-count badge;
  * ids that cannot serve a chat conversation are never offered. The effort chip
- * opens the effort list for the current model. ↑/↓ move the highlighted row
+ * opens the effort list for the current model. The composer also puts an effort
+ * menu immediately to the right of the model trigger, so the level can change
+ * without opening this dialog. ↑/↓ move the highlighted row
  * while search keeps the keyboard; Enter and Tab settle it, Escape and
  * Shift+Tab leave the effort list first and otherwise close back to the
  * trigger. A successful selection records local usage, so the next open leads
@@ -27,7 +29,7 @@
  * one in place of its check mark.
  **/
 import {
-  Input, isMobileDevice, Modal, StateDot, Tag, Toast,
+  Input, isMobileDevice, Menu, Modal, StateDot, Tag, Toast,
   IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconCloseFillRegular,
   IconDataOutlineRegular, IconWarningOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -47,7 +49,6 @@ import {
 import { VendorIcon } from './VendorIcon.tsx'
 import { loadModelUsage, modelUsageKey, rememberModelUse, type ModelUsage } from './model-usage.ts'
 import { orderModelProviders } from './provider-order.ts'
-import { freshOutcome, modelProbe, probeIsStale, type ProbeOutcome } from './model-probe.ts'
 import { loadCollapsedSections, saveCollapsedSections } from './model-collapse.ts'
 
 /** Which pane the dropdown shows: the grouped model panel or its effort list. */
@@ -58,14 +59,6 @@ interface EffortChoice {
   key: string
   effort: string | undefined
   label: string
-}
-
-/** Availability dot: green answers, amber rate-limited, red refused, spinner while checking. */
-function ProbeBadge({ outcome, probing }: { outcome: ProbeOutcome | undefined; probing: boolean }) {
-  if (probing) return <span className={css.probeDot} data-state="probing" aria-hidden="true" />
-  if (outcome === undefined) return null
-  const state = outcome.ok ? 'ok' : outcome.state === 'rate_limited' ? 'limited' : 'failed'
-  return <span className={css.probeDot} data-state={state} aria-hidden="true" title={outcome.message} />
 }
 
 /**
@@ -83,8 +76,8 @@ export function ModelSelect(
     fn => directory.subscribe(fn),
     () => directory.getSnapshot(),
   )
-  const probe = useSyncExternalStore(modelProbe.subscribe, modelProbe.getSnapshot)
   const [open, setOpen] = useState(false)
+  const [effortOpen, setEffortOpen] = useState(false)
   const [pane, setPane] = useState<Pane>('model')
   const [query, setQuery] = useState('')
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null)
@@ -98,6 +91,7 @@ export function ModelSelect(
   const toastSeq = useRef(0)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const effortTriggerRef = useRef<HTMLButtonElement | null>(null)
   const searchRef = useRef<HTMLInputElement | null>(null)
   const effortRef = useRef<HTMLDivElement | null>(null)
   const groupsRef = useRef<HTMLDivElement | null>(null)
@@ -112,8 +106,6 @@ export function ModelSelect(
   const [usage, setUsage] = useState<ModelUsage>(loadModelUsage)
   const [collapsed, setCollapsed] = useState<readonly string[]>(loadCollapsedSections)
   const choices = useMemo(() => modelChoices(groups), [groups])
-  // Only the account-backed route has a probe endpoint; other providers keep no control.
-  const probed = choices.some(choice => choice.provider === 'ktapi')
   const sections = useMemo(() => buildModelSections(choices, usage, query), [choices, usage, query])
   // A vendor section folds to its heading. Search ignores folding: a query is
   // already a deliberate narrowing, and results hidden behind a fold would look
@@ -185,14 +177,6 @@ export function ModelSelect(
     // The dialog's own mask keeps the page inert, so search owns the keyboard.
     if (!isMobileDevice()) searchRef.current?.focus()
   }, [open, pane])
-
-  // Opening the selector is the only moment probed availability is asked for:
-  // a fresh batch is reused, and a stale one refreshes quietly in the
-  // background while the list is already interactive.
-  useEffect(() => {
-    if (!open || !probeIsStale(probe)) return
-    void modelProbe.run(choices.map(choice => ({ provider: choice.provider, model: choice.model.id })))
-  }, [open, probe, choices])
 
   useLayoutEffect(() => {
     if (open && pane === 'model' && activeModelIndex >= 0) {
@@ -452,8 +436,6 @@ export function ModelSelect(
         <span className={css.choiceText}>
           <span className={css.nameRow}>
             <span className={css.modelName}>{label}</span>
-            <ProbeBadge outcome={freshOutcome(probe, choice.provider, choice.model.id)}
-              probing={probe.pending[`${choice.provider}:${choice.model.id}`] === true} />
           </span>
           {choice.aliases.length > 0 && (
             <span className={css.aliasBadge}>{t('option.aliases', { count: choice.aliases.length })}</span>
@@ -511,11 +493,48 @@ export function ModelSelect(
               currentChoice.displayName,
             )}
         </span>
-        {effortLabel !== undefined && <span className={css.triggerEffort}>{effortLabel}</span>}
         {busy
           ? <StateDot state="ongoing" />
           : <IconChevronDownOutlineRegular className={clsx(css.chevron, open && css.chevronOpen)} />}
       </button>
+      {effortChoices.length > 0 && (
+        <Menu
+          open={effortOpen}
+          side="top"
+          align="end"
+          portal
+          autoFocus
+          className={css.effortAnchor}
+          minWidthFromAnchor
+          selectedId={effortChoices.find(level => level.effort === effectiveEffort)?.key}
+          anchor={(
+            <button
+              ref={effortTriggerRef}
+              type="button"
+              className={css.effortTrigger}
+              aria-label={t('effort.aria', { effort: effortLabel ?? '' })}
+              aria-haspopup="menu"
+              aria-expanded={effortOpen}
+              disabled={locked || busy}
+              onClick={() => {
+                if (open) close()
+                setEffortOpen(value => !value)
+              }}
+            >
+              <span className={css.effortTriggerLabel}>{effortLabel}</span>
+              <IconChevronDownOutlineRegular className={clsx(css.chevron, effortOpen && css.chevronOpen)} />
+            </button>
+          )}
+          items={effortChoices.map(level => ({ id: level.key, label: level.label }))}
+          onClose={() => { setEffortOpen(false) }}
+          onSelect={(id) => {
+            setEffortOpen(false)
+            const level = effortChoices.find(item => item.key === id)
+            if (level === undefined || effectiveEffort === level.effort) return
+            chooseEffort(level.effort)
+          }}
+        />
+      )}
 
       {/* Page-sized dialog: ui-primitives owns the mask, blur, focus layer and
           Escape handling, so the catalog spreads across the window instead of
@@ -560,22 +579,6 @@ export function ModelSelect(
                   </button>
                 )}
               </div>
-              {probed && (
-                <button type="button" className={css.probeAction} disabled={busy || probe.running}
-                  onClick={() => {
-                    void modelProbe.run(
-                      choices.map(choice => ({ provider: choice.provider, model: choice.model.id })),
-                      { force: true },
-                    )
-                  }}>
-                  {probe.running
-                    ? <>
-                      <StateDot state="ongoing" />
-                      <span>{t('probe.running', { done: probe.done, total: probe.total })}</span>
-                    </>
-                    : <span>{probe.probedAt === null ? t('probe.action') : t('probe.retry')}</span>}
-                </button>
-              )}
               {reasoning !== undefined && (
                 <button type="button" className={css.effortChip} disabled={busy} onClick={showEfforts}>
                   <span className={css.effortChipLabel}>{t('menu.effort')}</span>
