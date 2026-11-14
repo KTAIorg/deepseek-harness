@@ -818,15 +818,20 @@ async function main(): Promise<void> {
    * itself succeeded, and the model route retries derivation on its next access.
    * @param identityToken - KT Identity access token to derive from.
    */
-  const persistKitoModelKey = async (identityToken: string): Promise<void> => {
+  const persistKitoModelKey = async (identityToken: string): Promise<string | undefined> => {
     try {
       // A stored access token that ktapi has stopped accepting recovers here,
       // rather than leaving the model list empty until the next sign-in.
       const credential = await ensureKitoModelKeyWithRefresh(identityToken, () => refreshKitoIdentityToken())
       const saved = await welcomeBackend?.saveNamed(KITO_NEWAPI_KEY_REF, credential.key)
-      if (saved?.ok !== true) console.error('kito model key could not be stored')
+      if (saved?.ok !== true) {
+        console.error('kito model key could not be stored')
+        return undefined
+      }
+      return credential.key
     } catch (error) {
       console.error('kito model key derivation failed', error instanceof Error ? error.message : 'unknown')
+      return undefined
     }
   }
   const refreshKitoIdentityToken = createKitoIdentityRefresher({
@@ -858,7 +863,10 @@ async function main(): Promise<void> {
         openWallet: token => openKitoConsole(token, 'wallet'),
         openConsole: (token, page) => openKitoConsole(token, page),
         signOutConsole: () => signOutKitoConsole(),
-        readBalance: token => readKitoAccountBalance(token),
+        readBalance: token => readKitoAccountBalance(token, {
+          readApiKey: () => readStoredCredential(KITO_NEWAPI_KEY_REF),
+          refreshApiKey: identityToken => persistKitoModelKey(identityToken),
+        }),
         refreshIdentity: () => refreshKitoIdentityToken(),
         forgetIdentity: async () => {
           for (const ref of [KITO_IDENTITY_TOKEN_REF, KITO_IDENTITY_REFRESH_TOKEN_REF]) {

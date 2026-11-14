@@ -30,6 +30,8 @@ export interface KitoRouteOptions {
   readonly readToken?: () => Promise<string | undefined>
   /** Test seam. Production calls KT Identity and NewAPI. */
   readonly loadAccount?: (token: string) => Promise<KitoAccountView>
+  /** Test seam for profile-only loading when exercising `readBalance` separately. */
+  readonly loadProfile?: (token: string) => Promise<KitoAccountView>
 }
 
 /**
@@ -42,7 +44,7 @@ export async function handleKitoAppRoute(request: Request, options: KitoRouteOpt
   const url = new URL(request.url)
   if (url.hostname !== 'app') return undefined
   if (url.pathname === '/kito/account' && request.method === 'GET') {
-    return Response.json(await readAccount(options))
+    return readAccountResponse(options)
   }
   if (url.pathname === '/kito/sign-in' && request.method === 'POST') {
     options.showWelcome()
@@ -81,27 +83,33 @@ async function openConsolePage(options: KitoRouteOptions, page: KitoConsolePage)
  * A rejected or missing Identity token is renewed once from the refresh token. A confirmed
  * signed-out read removes legacy local model keys, so stale keys cannot restore model access.
  */
-async function readAccount(options: KitoRouteOptions): Promise<KitoAccountView> {
+async function readAccountResponse(options: KitoRouteOptions): Promise<Response> {
   const token = await (options.readToken ?? (() => readStoredCredential(KITO_IDENTITY_TOKEN_REF)))()
   try {
-    let profile: KitoAccountView = token === undefined ? { signedIn: false } : await loadProfile(options, token)
+    let activeToken = token
+    let profile: KitoAccountView = activeToken === undefined ? { signedIn: false } : await loadProfile(options, activeToken)
     if (!profile.signedIn && options.refreshIdentity !== undefined) {
       const renewed = await options.refreshIdentity()
-      if (renewed !== undefined) profile = await loadProfile(options, renewed)
+      if (renewed !== undefined) {
+        activeToken = renewed
+        profile = await loadProfile(options, renewed)
+      }
     }
     if (!profile.signedIn) {
       await options.forgetModelKeys?.()
-      return { signedIn: false }
+      return Response.json({ signedIn: false })
     }
-    if (options.loadAccount !== undefined || options.readBalance === undefined) return profile
-    const balance = await options.readBalance(token ?? '').catch(() => undefined)
-    return balance === undefined ? profile : { ...profile, balance }
+    if (options.loadAccount !== undefined || options.readBalance === undefined) return Response.json(profile)
+    const balance = await options.readBalance(activeToken ?? '').catch(() => undefined)
+    return Response.json(balance === undefined ? profile : { ...profile, balance })
   } catch (error) {
     console.error('kito account read failed', failureDetail(error))
-    return { signedIn: true }
+    // Surface transient Identity/network failures as 503 so the client resource retains the last good name and balance.
+    return Response.json({ error: 'account-unavailable' }, { status: 503 })
   }
 }
 
 function loadProfile(options: KitoRouteOptions, token: string): Promise<KitoAccountView> {
-  return options.loadAccount !== undefined ? options.loadAccount(token) : loadKitoProfile(token)
+  if (options.loadAccount !== undefined) return options.loadAccount(token)
+  return options.loadProfile !== undefined ? options.loadProfile(token) : loadKitoProfile(token)
 }

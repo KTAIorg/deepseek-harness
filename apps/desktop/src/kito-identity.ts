@@ -384,6 +384,67 @@ export function spendableFromEnsure(payload: unknown): number | undefined {
   return typeof quota === 'number' && Number.isFinite(quota) ? newapiQuotaToUsd(quota) : undefined
 }
 
+/** @param payload - `/api/usage/account/` body. @returns the shared USD balance rounded to cents, or undefined when absent. */
+export function spendableFromAccountUsage(payload: unknown): number | undefined {
+  const data = asRecord(asRecord(payload)?.data) ?? asRecord(payload)
+  if (data === undefined) return undefined
+  const remainingUsd = data.remaining_usd
+  if (typeof remainingUsd === 'number' && Number.isFinite(remainingUsd)) {
+    return Math.round(remainingUsd * 100) / 100
+  }
+  const remainQuota = data.remain_quota
+  const quotaPerUnit = data.quota_per_unit
+  if (typeof remainQuota === 'number' && Number.isFinite(remainQuota)
+    && typeof quotaPerUnit === 'number' && Number.isFinite(quotaPerUnit) && quotaPerUnit > 0) {
+    return Math.round((remainQuota / quotaPerUnit) * 100) / 100
+  }
+  return undefined
+}
+
+/** Outcome of querying `/api/usage/account/` with the derived relay key. */
+export type KitoAccountBalanceResult =
+  | { readonly status: 'ok'; readonly balance: number | undefined }
+  | { readonly status: 'unauthorized' }
+  | { readonly status: 'rate-limited'; readonly retryAfter: string | null }
+  | { readonly status: 'unavailable' }
+
+/**
+ * Read the user's spendable balance from NewAPI's read-only `/api/usage/account/`
+ * endpoint using the derived relay key, without creating a website console session.
+ * @param apiKey - managed NewAPI relay key (`sk-...`).
+ * @param input - optional origin, signal, and fetch implementation.
+ * @returns balance outcome distinguishing expired keys and rate limits from network/route unavailability.
+ */
+export async function fetchKitoAccountBalanceByKey(
+  apiKey: string,
+  input: Pick<FetchInit, 'baseUrl' | 'signal' | 'fetchImpl'> = {},
+): Promise<KitoAccountBalanceResult> {
+  const key = apiKey.trim()
+  if (!key) return { status: 'unauthorized' }
+  const fetchImpl = input.fetchImpl ?? kitoFetch
+  const baseUrl = (input.baseUrl ?? newapiBaseUrl()).replace(/\/+$/, '')
+  try {
+    const response = await fetchImpl(`${baseUrl}/api/usage/account/`, {
+      method: 'GET',
+      headers: jsonHeaders({ authorization: `Bearer ${key}` }),
+      signal: withTimeout(input.signal),
+    })
+    if (response.status === 429) {
+      await response.body?.cancel().catch(() => undefined)
+      return { status: 'rate-limited', retryAfter: response.headers.get('retry-after') }
+    }
+    if (response.status === 401) {
+      await response.body?.cancel().catch(() => undefined)
+      return { status: 'unauthorized' }
+    }
+    const payload = await readJson(response)
+    if (!response.ok) return { status: 'unavailable' }
+    return { status: 'ok', balance: spendableFromAccountUsage(payload) }
+  } catch {
+    return { status: 'unavailable' }
+  }
+}
+
 /**
  * How long to wait after a critical-route 429. Login, session refresh, and the
  * balance read share one 20-request window, so a rejected read must not be retried immediately.

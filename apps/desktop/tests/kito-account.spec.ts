@@ -7,9 +7,11 @@ import { readStoredCredential } from '../src/kito-credentials.ts'
 import {
   criticalRetryDelayMs,
   fetchKitoAccount,
+  fetchKitoAccountBalanceByKey,
   KITO_CONSOLE_PAGES,
   newapiQuotaToUsd,
   refreshKitoIdentity,
+  spendableFromAccountUsage,
 } from '../src/kito-identity.ts'
 import { consoleLogoutRequest, consoleRefreshRequest, establishKitoConsoleSession, parseSetCookie } from '../src/kito-wallet.ts'
 
@@ -215,7 +217,7 @@ describe('Kito account summary', () => {
     expect(steps).toEqual(['console', 'model-keys', 'identity'])
   })
 
-  it('renews an expired login once from the refresh token', async () => {
+  it('renews an expired login once from the refresh token and reads balance with the renewed token', async () => {
     let refreshes = 0
     const response = await handleKitoAppRoute(new Request('dsh-app://app/kito/account'), {
       showWelcome: () => undefined,
@@ -226,6 +228,57 @@ describe('Kito account summary', () => {
     })
     await expect(response?.json()).resolves.toEqual({ signedIn: true, displayName: 'Ada' })
     expect(refreshes).toBe(1)
+
+    let seenBalanceToken = ''
+    const withBalance = await handleKitoAppRoute(new Request('dsh-app://app/kito/account'), {
+      showWelcome: () => undefined,
+      openWallet: async () => undefined,
+      readToken: async () => 'expired',
+      loadProfile: async token => token === 'renewed' ? { signedIn: true, displayName: 'Ada' } : { signedIn: false },
+      refreshIdentity: async () => 'renewed',
+      readBalance: async (token) => { seenBalanceToken = token; return 454.7 },
+    })
+    await expect(withBalance?.json()).resolves.toEqual({ signedIn: true, displayName: 'Ada', balance: 454.7 })
+    expect(seenBalanceToken).toBe('renewed')
+  })
+
+  it('returns 503 on transient profile failure so the renderer retains cached name and balance', async () => {
+    const response = await handleKitoAppRoute(new Request('dsh-app://app/kito/account'), {
+      showWelcome: () => undefined,
+      openWallet: async () => undefined,
+      readToken: async () => 'token',
+      loadProfile: async () => { throw new Error('connect timeout') },
+    })
+    expect(response?.status).toBe(503)
+  })
+
+  it('reads spendable balance from /api/usage/account/ and distinguishes key/rate-limit states', async () => {
+    expect(spendableFromAccountUsage({ data: { remaining_usd: 454.701318 } })).toBe(454.7)
+    expect(spendableFromAccountUsage({ data: { remain_quota: 1_000_000, quota_per_unit: 500_000 } })).toBe(2)
+    expect(spendableFromAccountUsage({ data: {} })).toBeUndefined()
+    expect(spendableFromAccountUsage(null)).toBeUndefined()
+
+    await expect(fetchKitoAccountBalanceByKey('  ')).resolves.toEqual({ status: 'unauthorized' })
+    await expect(fetchKitoAccountBalanceByKey('sk-ok', {
+      baseUrl: 'https://ktapi.example',
+      fetchImpl: async () => new Response(JSON.stringify({ data: { remaining_usd: 10.5 } }), { status: 200 }),
+    })).resolves.toEqual({ status: 'ok', balance: 10.5 })
+    await expect(fetchKitoAccountBalanceByKey('sk-bad', {
+      baseUrl: 'https://ktapi.example',
+      fetchImpl: async () => new Response(null, { status: 401 }),
+    })).resolves.toEqual({ status: 'unauthorized' })
+    await expect(fetchKitoAccountBalanceByKey('sk-busy', {
+      baseUrl: 'https://ktapi.example',
+      fetchImpl: async () => new Response(null, { status: 429, headers: { 'retry-after': '90' } }),
+    })).resolves.toEqual({ status: 'rate-limited', retryAfter: '90' })
+    await expect(fetchKitoAccountBalanceByKey('sk-err', {
+      baseUrl: 'https://ktapi.example',
+      fetchImpl: async () => new Response(null, { status: 500 }),
+    })).resolves.toEqual({ status: 'unavailable' })
+    await expect(fetchKitoAccountBalanceByKey('sk-net', {
+      baseUrl: 'https://ktapi.example',
+      fetchImpl: async () => { throw new Error('offline') },
+    })).resolves.toEqual({ status: 'unavailable' })
   })
 
   it('reports signed out and removes legacy model keys when no login can be renewed', async () => {

@@ -2,7 +2,14 @@
 
 import { BrowserWindow, session, type Session } from 'electron'
 import { failureDetail, kitoFetch, readJson } from './kito-http.ts'
-import { criticalRetryDelayMs, KITO_CONSOLE_PAGES, KITO_WALLET_URL, spendableFromEnsure, type KitoConsolePage } from './kito-identity.ts'
+import {
+  criticalRetryDelayMs,
+  fetchKitoAccountBalanceByKey,
+  KITO_CONSOLE_PAGES,
+  KITO_WALLET_URL,
+  spendableFromEnsure,
+  type KitoConsolePage,
+} from './kito-identity.ts'
 import { consoleCookiesFrom, consoleLogoutRequest, consoleRefreshRequest, establishKitoConsoleSession, KITO_CONSOLE_REFRESH_COOKIE, type ConsoleCookie } from './kito-wallet.ts'
 
 const CONSOLE_TITLES: Record<KitoConsolePage, string> = {
@@ -28,8 +35,6 @@ const CONSOLE_EXPLICIT_RETRY_MS = 60 * 1000
 const LOGIN_PATH = /\/(?:login|signin|sign-in|auth\/login)(?:[/?#]|$)/iu
 let cachedBalance: { readonly at: number; readonly balance: number } | undefined
 let balanceBlockedUntil = 0
-/** One diagnosis per blocked window: a refused console login must not repeat in every poll. */
-let balanceFailureLogged = false
 const BALANCE_TTL_MS = 3 * 60 * 1000
 
 /**
@@ -69,6 +74,8 @@ export async function openKitoConsole(identityToken: string, page: KitoConsolePa
   current = window
   window.on('closed', () => {
     if (current === window) current = undefined
+    // Drop the balance cache when a wallet window closes so a top-up surfaces on the next focus.
+    cachedBalance = undefined
   })
   window.webContents.setWindowOpenHandler(({ url }) => (
     isWebUrl(url) ? { action: 'allow' } : { action: 'deny' }
@@ -205,49 +212,70 @@ export function openKitoWallet(identityToken: string): Promise<void> {
   return openKitoConsole(identityToken, 'wallet')
 }
 
+/** Optional API-key seams so background balance polling avoids creating website login sessions. */
+export interface ReadBalanceOptions {
+  /** Read the stored NewAPI relay key without network calls. */
+  readonly readApiKey?: () => Promise<string | undefined>
+  /** Derive or renew the NewAPI relay key from the Identity token when absent or rejected. */
+  readonly refreshApiKey?: (identityToken: string) => Promise<string | undefined>
+  /** Optional NewAPI base URL override for tests. */
+  readonly baseUrl?: string
+  /** Optional fetch implementation for tests. */
+  readonly fetchImpl?: typeof fetch
+}
+
 /**
- * Read the spendable USD amount through the Identity login.
- * A stored website session is reused; without one, the Identity token establishes that session once.
+ * Read the spendable USD amount without consuming a website login session.
+ * Prefers NewAPI's read-only `/api/usage/account/` endpoint using the derived
+ * relay key (falling back to an already-stored console refresh cookie only when
+ * that route is unavailable).
  * @param identityToken - KT Identity access token.
+ * @param options - optional API-key reader/refresher and test seams.
  * @returns the balance, or undefined when no source reports one.
  */
-export async function readKitoAccountBalance(identityToken: string): Promise<number | undefined> {
+export async function readKitoAccountBalance(
+  identityToken: string,
+  options: ReadBalanceOptions = {},
+): Promise<number | undefined> {
   const now = Date.now()
   if (cachedBalance !== undefined && now - cachedBalance.at < BALANCE_TTL_MS) return cachedBalance.balance
   if (now < balanceBlockedUntil) return cachedBalance?.balance
-  const fromIdentity = await readBalanceFromIdentity(identityToken)
-  if (fromIdentity?.balance !== undefined) {
-    cachedBalance = { at: Date.now(), balance: fromIdentity.balance }
-    return fromIdentity.balance
+
+  const fromApiKey = await readBalanceFromApiKey(identityToken, options)
+  if (fromApiKey !== undefined) {
+    cachedBalance = { at: Date.now(), balance: fromApiKey }
+    return fromApiKey
   }
   return readKitoConsoleBalance()
 }
 
-interface IdentityBalance { readonly balance?: number }
-
-async function readBalanceFromIdentity(identityToken: string): Promise<IdentityBalance | undefined> {
-  if (identityToken.length === 0) return undefined
-  const browser = session.fromPartition(WALLET_PARTITION)
-  const origin = new URL(KITO_WALLET_URL).origin
-  if (await hasRefreshCookie(browser, origin)) return undefined
-  // Each successful ensure spends one of the account's active console sessions, so a
-  // refused login waits out its cooldown instead of retrying on the next account poll.
-  if (Date.now() < consoleRetryAt) return undefined
-  try {
-    const established = await establishKitoConsoleSession(identityToken)
-    await storeConsoleCookies(browser, origin, established.cookies)
-    const balance = spendableFromEnsure(established.payload)
-    balanceFailureLogged = false
-    return balance === undefined ? undefined : { balance }
-  } catch (error) {
-    consoleRetryAt = Date.now() + 15 * 60 * 1000
-    balanceBlockedUntil = Date.now() + 60_000
-    if (!balanceFailureLogged) {
-      balanceFailureLogged = true
-      console.error('kito balance login failed', failureDetail(error))
-    }
-    return undefined
+async function readBalanceFromApiKey(
+  identityToken: string,
+  options: ReadBalanceOptions,
+): Promise<number | undefined> {
+  const keyRequest = {
+    ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+    ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
   }
+  let apiKey = await options.readApiKey?.()
+  if ((apiKey === undefined || apiKey === '') && identityToken !== '') {
+    apiKey = await options.refreshApiKey?.(identityToken)
+  }
+  if (apiKey === undefined || apiKey === '') return undefined
+
+  let result = await fetchKitoAccountBalanceByKey(apiKey, keyRequest)
+  if (result.status === 'unauthorized' && identityToken !== '' && options.refreshApiKey !== undefined) {
+    const renewed = await options.refreshApiKey(identityToken)
+    if (renewed !== undefined && renewed !== '') {
+      result = await fetchKitoAccountBalanceByKey(renewed, keyRequest)
+    }
+  }
+  if (result.status === 'rate-limited') {
+    balanceBlockedUntil = Date.now() + criticalRetryDelayMs(result.retryAfter)
+    return cachedBalance?.balance
+  }
+  if (result.status === 'ok') return result.balance
+  return undefined
 }
 
 /**
@@ -300,7 +328,7 @@ export async function signOutKitoConsole(): Promise<void> {
   consoleRetryAt = 0
   consoleVerifiedAt = 0
   consoleExplicitAt = 0
-  balanceFailureLogged = false
+  balanceBlockedUntil = 0
   cachedBalance = undefined
   if (current !== undefined && !current.isDestroyed()) current.close()
 }
