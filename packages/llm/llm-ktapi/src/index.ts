@@ -16,7 +16,7 @@ import {
   authContextFrom, credentialStoreFrom, resolveProfiles, type ResolvedPiAiProviderProfile,
 } from '@deepseek-ai/dsh-llm-pi-ai/host'
 import z from '@deepseek-ai/schemastery'
-import { DEFAULT_CONTEXT, DEFAULT_OUTPUT, type KtapiModel } from './catalog.ts'
+import { DEFAULT_CONTEXT, DEFAULT_OUTPUT, fallbackContextWindow, type KtapiModel } from './catalog.ts'
 import { CATALOG_TIMEOUT_MS, fetchKtapiCatalog, type KtapiCatalogSnapshot } from './discovery.ts'
 import { registerCatalogRefreshRoute, registerProbeRoute } from './probe-route.ts'
 
@@ -126,7 +126,7 @@ function profileOf(options: Options, snapshot: KtapiCatalogSnapshot | undefined)
   // snapshot is already ordered curated-first, then by id
   // (@see buildKtapiCatalog).
   const models = snapshot === undefined
-    ? [{ id: BOOTSTRAP_MODEL, name: 'DeepSeek Latest', contextWindow: DEFAULT_CONTEXT, maxTokens: DEFAULT_OUTPUT, input: ['text'], reasoningEfforts: UNDECLARED_REASONING_EFFORTS }]
+    ? [{ id: BOOTSTRAP_MODEL, name: 'DeepSeek Latest', contextWindow: fallbackContextWindow(BOOTSTRAP_MODEL) ?? DEFAULT_CONTEXT, maxTokens: DEFAULT_OUTPUT, input: ['text'], reasoningEfforts: UNDECLARED_REASONING_EFFORTS }]
     : (options.showAllModels ? snapshot.models : snapshot.models.filter(model => model.defaultVisible)).map(modelRow)
   return {
     displayName: options.displayName,

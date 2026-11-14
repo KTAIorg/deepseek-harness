@@ -35,6 +35,10 @@ const listing = {
     { id: 'deepseek-latest' },
     { id: 'deepseek-v4-flash' },
     { id: 'grok-4.6' },
+    {
+      id: 'glm-5.3',
+      reasoning: { efforts: ['off', 'low', 'medium', 'high'], default: 'high' },
+    },
   ],
 }
 
@@ -107,12 +111,16 @@ describe('real Loader composition', () => {
     const models = await context.llm.listModels(Ktapi.KTAI_PROVIDER)
     // Every id the account may call, the curated picks first; the selector
     // groups by vendor family, so the rest of the listing stays reachable.
-    expect(models.map(model => model.id)).toEqual(['grok-4.6', 'deepseek-latest', 'deepseek-v4-flash'])
+    expect(models.map(model => model.id)).toEqual(['grok-4.6', 'deepseek-latest', 'deepseek-v4-flash', 'glm-5.3'])
 
     const resolved = await context.llm.resolveModelInfo(Ktapi.KTAI_PROVIDER, 'deepseek-latest')
     expect(resolved.context?.contextWindow).toBe(128_000)
     expect(resolved.reasoning?.efforts.map(level => level.id)).toEqual(['off', 'low', 'medium', 'high', 'max'])
     expect(resolved.reasoning?.defaultEffort).toBeUndefined()
+
+    const glm53 = await context.llm.resolveModelInfo(Ktapi.KTAI_PROVIDER, 'glm-5.3')
+    expect(glm53.context?.contextWindow).toBe(1_000_000)
+    expect(glm53.reasoning?.efforts.map(level => level.id)).toEqual(['off', 'low', 'medium', 'high', 'max'])
   })
 
   it('sends system instructions with role system rather than developer for reasoning models', { timeout: 60_000 }, async () => {
@@ -310,6 +318,7 @@ describe('real Loader composition', () => {
     // and every consumer of `llm/models-updated` has been told so — a selector
     // that drew this list keeps drawing it until the key lands.
     expect((await context.llm.listModels(Ktapi.KTAI_PROVIDER)).map(model => model.id)).toEqual(['deepseek-latest'])
+    expect((await context.llm.resolveModelInfo(Ktapi.KTAI_PROVIDER, 'deepseek-latest')).context?.contextWindow).toBe(1_000_000)
 
     const live = context
     const published: string[] = []
@@ -325,7 +334,7 @@ describe('real Loader composition', () => {
     await republished
 
     expect((await live.llm.listModels(Ktapi.KTAI_PROVIDER)).map(model => model.id))
-      .toEqual(['grok-4.6', 'deepseek-latest', 'deepseek-v4-flash'])
+      .toEqual(['grok-4.6', 'deepseek-latest', 'deepseek-v4-flash', 'glm-5.3'])
   })
 
   it('reports a stored sign-in with no relay key instead of an empty list', { timeout: 60_000 }, async () => {

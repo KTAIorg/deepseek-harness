@@ -179,13 +179,50 @@ export function pickDefaultVisibleKeys(available: Iterable<string>): Map<string,
 /**
  * Read a context window from a pricing row's size tag (`"128K"`, `"1M"`).
  * @param tags - the row's tag string.
+ * @returns the window in tokens, or undefined when no size tag is present.
+ */
+export function parseContextFromTags(tags: string | undefined): number | undefined {
+  const match = tags?.match(/(?:^|,)\s*(\d+(?:\.\d+)?)\s*([KM])\s*(?:,|$)/iu)
+  if (match?.[1] === undefined) return undefined
+  const multiplier = match[2]?.toUpperCase() === 'M' ? 1_000_000 : 1_000
+  return Math.round(Number(match[1]) * multiplier)
+}
+
+/**
+ * Read a context window from a pricing row's size tag (`"128K"`, `"1M"`).
+ * @param tags - the row's tag string.
  * @returns the window in tokens, or {@link DEFAULT_CONTEXT} when no tag is present.
  */
 export function contextFromTags(tags: string | undefined): number {
-  const match = tags?.match(/(?:^|,)\s*(\d+(?:\.\d+)?)\s*([KM])\s*(?:,|$)/iu)
-  if (match?.[1] === undefined) return DEFAULT_CONTEXT
-  const multiplier = match[2]?.toUpperCase() === 'M' ? 1_000_000 : 1_000
-  return Math.round(Number(match[1]) * multiplier)
+  return parseContextFromTags(tags) ?? DEFAULT_CONTEXT
+}
+
+const MAX_REASONING_FALLBACK = /^glm-(?:5-3(?:$|-)|(?:flash-)?latest$)/u
+
+/**
+ * Known model-family context windows used only when neither the gateway
+ * listing nor any folded pricing row declares an explicit size tag.
+ * @param id - listed model id.
+ * @returns the documented context window in tokens, or undefined when unknown.
+ */
+export function fallbackContextWindow(id: string): number | undefined {
+  const key = modelFoldKey(id).replace(/^sub2api-/u, '')
+  if (/^glm-(?:5-3(?:$|-)|(?:flash-)?latest$)/u.test(key)) return 1_000_000
+  if (/^glm-(?:4-7|5|5-turbo)$/u.test(key)) return 200_000
+  if (/^deepseek-(?:latest|flash|v4(?:-|$))/u.test(key)) return 1_000_000
+  if (/^qwen3-[78](?:-|$)/u.test(key)) return 1_000_000
+  if (key === 'grok-4-3') return 1_000_000
+  if (/^grok-4-[567]$/u.test(key)) return 500_000
+  return undefined
+}
+
+function catalogReasoningFor(id: string, reasoning: LiveModelReasoning | undefined): LiveModelReasoning | undefined {
+  if (reasoning === undefined || reasoning.efforts === false) return reasoning
+  if (!MAX_REASONING_FALLBACK.test(modelFoldKey(id)) || reasoning.efforts.max !== undefined) return reasoning
+  return {
+    ...reasoning,
+    efforts: { ...reasoning.efforts, max: 'max' },
+  }
 }
 
 /**
@@ -219,6 +256,7 @@ export function foldListing(listed: readonly LiveCatalogModel[]): Map<string, Kt
     // The gateway writes a display spelling with spaces (`DeepSeek Latest`); it
     // names the model better than a request id does.
     const spelled = [chosen.id, ...aliases].find(id => /\s/u.test(id))
+    const reasoning = catalogReasoningFor(chosen.id, chosen.reasoning)
     folded.set(key, {
       id: chosen.id,
       name: chosen.name ?? spelled?.slice(spelled.lastIndexOf('/') + 1) ?? chosen.id,
@@ -226,7 +264,7 @@ export function foldListing(listed: readonly LiveCatalogModel[]): Map<string, Kt
       contextWindow: DEFAULT_CONTEXT,
       maxTokens: DEFAULT_OUTPUT,
       defaultVisible: false,
-      ...chosen.reasoning === undefined ? {} : { reasoning: chosen.reasoning },
+      ...reasoning === undefined ? {} : { reasoning },
     })
   }
   return folded
@@ -255,12 +293,13 @@ export function parsePricingPayload(payload: unknown): Map<string, KtapiPricing>
     const groups = Array.isArray(row.enable_groups)
       ? row.enable_groups.filter((group): group is string => typeof group === 'string')
       : undefined
+    const contextWindow = parseContextFromTags(tags)
     const ratio = finiteNumber(row.model_ratio)
     const completion = finiteNumber(row.completion_ratio)
     byId.set(id, {
       ...ratio === undefined ? {} : { inputRatio: ratio, outputRatio: ratio * (completion ?? 1) },
       ...groups === undefined || groups.length === 0 ? {} : { groups },
-      ...tags === undefined ? {} : { contextWindow: contextFromTags(tags) },
+      ...contextWindow === undefined ? {} : { contextWindow },
     })
   }
   return byId
@@ -270,7 +309,11 @@ export function parsePricingPayload(payload: unknown): Map<string, KtapiPricing>
  * Join the account's listing with the shared pricing into the selector's catalog.
  *
  * Each entry carries the pricing row of its own request id. A sibling id's row
- * is never borrowed: the gateway prices listed ids of one model differently.
+ * is never borrowed for pricing or group membership: the gateway prices listed
+ * ids of one model differently. When the request id's pricing row omits a size
+ * tag, an explicit size tag from a folded alias or documented model-family
+ * capacity still supplies the context window before falling back to
+ * {@link DEFAULT_CONTEXT}.
  * @param models - chat-capable rows the shared live-catalog reader returned for this account.
  * @param pricing - `GET /api/pricing` body, shared by every account.
  * @returns the catalog in curated order first, then the rest by id.
@@ -282,13 +325,17 @@ export function buildKtapiCatalog(models: readonly LiveCatalogModel[], pricing: 
   return [...folded]
     .map(([key, entry]) => {
       const row = priced.get(entry.id)
+      const aliasContext = entry.aliases
+        .map(alias => priced.get(alias)?.contextWindow)
+        .find((window): window is number => window !== undefined)
+      const contextWindow = row?.contextWindow ?? aliasContext ?? fallbackContextWindow(entry.id) ?? DEFAULT_CONTEXT
       const priority = picked.get(key)
       return {
         priority: priority ?? Number.MAX_SAFE_INTEGER,
         entry: {
           ...entry,
           defaultVisible: priority !== undefined,
-          ...row?.contextWindow === undefined ? {} : { contextWindow: row.contextWindow },
+          contextWindow,
           ...row?.inputRatio === undefined ? {} : { inputRatio: row.inputRatio },
           ...row?.outputRatio === undefined ? {} : { outputRatio: row.outputRatio },
           ...row?.groups === undefined ? {} : { groups: row.groups },
