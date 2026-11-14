@@ -1,8 +1,8 @@
 Kito Harness
 Kito Harness
-请在手机上确认
+欢迎使用 Kito Harness
+扫码、点击打开 Telegram，或推送到你的账号完成登录
 复制登录链接
-正在完成登录… [disabled]
-改用二维码
-取消
-在手机 Telegram 里打开官方 Bot，核对校验码后点确认。这台电脑不必登录 Telegram。
+刷新二维码
+打开 Telegram 登录
+发送

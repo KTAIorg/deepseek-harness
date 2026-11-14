@@ -7,16 +7,19 @@ interface Call {
   readonly init: RequestInit | undefined
 }
 
+const urlOf = (input: RequestInfo | URL): string =>
+  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+
 function recorder(handler: (call: Call) => Response | Promise<Response>): {
   fetchImpl: typeof fetch
   calls: Call[]
 } {
   const calls: Call[] = []
-  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const call = { url: String(input), init }
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const call = { url: urlOf(input), init }
     calls.push(call)
     return handler(call)
-  }) as typeof fetch
+  }
   return { fetchImpl, calls }
 }
 
@@ -33,7 +36,7 @@ describe('Kito model credential', () => {
     expect(calls[0]?.url).toBe('https://ktapi.example/api/iam/token/ensure')
     expect(calls[0]?.init?.method).toBe('POST')
     expect((calls[0]?.init?.headers as Record<string, string>).authorization).toBe('Bearer identity-token')
-    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ name: KITO_MANAGED_TOKEN_NAME })
+    expect(JSON.parse(typeof calls[0]?.init?.body === 'string' ? calls[0].init.body : '')).toEqual({ name: KITO_MANAGED_TOKEN_NAME })
   })
 
   it('keeps an already prefixed key untouched', async () => {
@@ -87,7 +90,7 @@ describe('Kito model credential', () => {
 
     expect(credential).toEqual({ key: 'sk-minted', created: true })
     const mint = calls.find(call => call.url.endsWith('/api/token/') && call.init?.method === 'POST')
-    expect(JSON.parse(String(mint?.init?.body))).toEqual({
+    expect(JSON.parse(typeof mint?.init?.body === 'string' ? mint.init.body : '')).toEqual({
       name: KITO_MANAGED_TOKEN_NAME,
       unlimited_quota: true,
       expired_time: -1,

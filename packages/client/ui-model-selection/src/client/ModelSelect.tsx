@@ -27,7 +27,7 @@
  * directory's pending selection is unsettled, the trigger shows a spinner in
  * place of its chevron, and each row whose value that selection carries shows
  * one in place of its check mark.
- **/
+ */
 import {
   Input, isMobileDevice, Menu, Modal, StateDot, Tag, Toast,
   IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconCloseFillRegular,
@@ -70,7 +70,7 @@ interface EffortChoice {
 export function ModelSelect(
   { locked, available, directory, load, select, resolveText, t, renderSlot }:
   ModelSelectInjected & Pick<PropsRuntime<'conversation.input.model'>, 'locked'> & PropsLocale<'model'>
-    & Omit<PropsRenderSlots<'conversation.input.model.label'>, 'SessionProvider'>,
+    & Omit<PropsRenderSlots<'conversation.input.model.label' | 'conversation.input.model.options'>, 'SessionProvider'>,
 ) {
   const state = useSyncExternalStore(
     fn => directory.subscribe(fn),
@@ -548,7 +548,7 @@ export function ModelSelect(
         contentClassName={css.dialogBody ?? ''}
         bodyClassName={css.dialogBodyInner ?? ''}
       >
-        {pane === 'model' && (
+        {open && pane === 'model' && (
           <div className={css.modelPane}>
             <div className={css.searchBar}>
               <div className={css.searchField}>
@@ -587,6 +587,14 @@ export function ModelSelect(
                 </button>
               )}
             </div>
+            {renderSlot('conversation.input.model.options', {
+              locked: locked || busy,
+              dismiss: () => {
+                close()
+                triggerRef.current?.focus()
+              },
+              reportFailure: (message) => { setToast({ seq: ++toastSeq.current, text: message }) },
+            })}
             {state.status === 'loading' && (
               <div className={css.status}>{t('status.loading')}</div>
             )}
@@ -640,7 +648,7 @@ export function ModelSelect(
             )}
           </div>
         )}
-        {pane === 'effort' && (
+        {open && pane === 'effort' && (
           <div ref={effortRef} className={css.effortPane} role="group" aria-label={t('menu.effort')}>
             <button type="button" className={css.effortBack} onClick={backToModels}>
               <IconChevronRightOutlineRegular className={css.effortBackIcon} />

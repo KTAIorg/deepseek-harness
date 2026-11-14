@@ -3,8 +3,8 @@ import { createKitoIdentityRefresher } from '../src/kito-identity-refresh.ts'
 
 function deps(overrides: Partial<Parameters<typeof createKitoIdentityRefresher>[0]> = {}) {
   return {
-    readRefreshToken: vi.fn(async () => 'refresh-1' as string | undefined),
-    refresh: vi.fn(async () => ({ token: 'fresh' }) as { token: string; refreshToken?: string } | undefined),
+    readRefreshToken: vi.fn<() => Promise<string | undefined>>(async () => 'refresh-1'),
+    refresh: vi.fn<(token: string) => Promise<{ token: string; refreshToken?: string } | undefined>>(async () => ({ token: 'fresh' })),
     saveToken: vi.fn(async () => ({ ok: true })),
     saveRefreshToken: vi.fn(async () => ({ ok: true })),
     ...overrides,

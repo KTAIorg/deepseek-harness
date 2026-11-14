@@ -3,9 +3,11 @@ import {
   buildKtapiCatalog,
   contextFromTags,
   DEFAULT_CONTEXT,
+  fallbackContextWindow,
   foldListing,
   modelFoldKey,
   normalizeModelId,
+  parseContextFromTags,
   parsePricingPayload,
   pickDefaultVisibleKeys,
 } from '../src/catalog.ts'
@@ -116,10 +118,45 @@ describe('ktapi catalog', () => {
   })
 
   it('reads a context window from the size tag', () => {
+    expect(parseContextFromTags('128K')).toBe(128_000)
+    expect(parseContextFromTags('Reasoning,Tools,1.1M')).toBe(1_100_000)
+    expect(parseContextFromTags('LLM')).toBeUndefined()
+    expect(parseContextFromTags(undefined)).toBeUndefined()
     expect(contextFromTags('128K')).toBe(128_000)
     expect(contextFromTags('1M')).toBe(1_000_000)
     expect(contextFromTags(undefined)).toBe(DEFAULT_CONTEXT)
     expect(contextFromTags('vision')).toBe(DEFAULT_CONTEXT)
+  })
+
+  it('resolves documented model-family context capacities and 1M alias tags without borrowing pricing', () => {
+    expect(fallbackContextWindow('glm-5.3')).toBe(1_000_000)
+    expect(fallbackContextWindow('glm-5.3-flash')).toBe(1_000_000)
+    expect(fallbackContextWindow('glm-latest')).toBe(1_000_000)
+    expect(fallbackContextWindow('glm-5')).toBe(200_000)
+    expect(fallbackContextWindow('glm-4.7')).toBe(200_000)
+    expect(fallbackContextWindow('deepseek-v4.1-flash-1017')).toBe(1_000_000)
+    expect(fallbackContextWindow('qwen3.8-max-preview')).toBe(1_000_000)
+    expect(fallbackContextWindow('grok-4.3')).toBe(1_000_000)
+    expect(fallbackContextWindow('sub2api-grok-4.7')).toBe(500_000)
+    expect(fallbackContextWindow('some-other-model')).toBeUndefined()
+
+    const catalog = buildKtapiCatalog(
+      ids(['glm-5.3', 'GLM 5.3', 'qwen3.7-max', 'qwen/qwen3.7-max', 'qwen3.6-plus', 'qwen/qwen3.6-plus', 'glm-5']),
+      {
+        data: [
+          { model_name: 'glm-5.3', model_ratio: 0.63, completion_ratio: 3.14, enable_groups: ['ktai'] },
+          { model_name: 'qwen3.7-max', tags: 'LLM', model_ratio: 0.4, completion_ratio: 4 },
+          { model_name: 'qwen/qwen3.7-max', tags: 'Reasoning,Tools,1M', model_ratio: 99 },
+          { model_name: 'qwen3.6-plus', tags: 'Reasoning,Tools,262.1K', model_ratio: 0.2 },
+          { model_name: 'qwen/qwen3.6-plus', tags: 'Reasoning,Tools,1M', model_ratio: 0.5 },
+          { model_name: 'glm-5', tags: 'LLM', model_ratio: 0.5 },
+        ],
+      },
+    )
+    expect(catalog.find(entry => entry.id === 'glm-5.3')).toMatchObject({ contextWindow: 1_000_000, inputRatio: 0.63 })
+    expect(catalog.find(entry => entry.id === 'qwen3.7-max')).toMatchObject({ contextWindow: 1_000_000, inputRatio: 0.4 })
+    expect(catalog.find(entry => entry.id === 'qwen3.6-plus')).toMatchObject({ contextWindow: 262_100, inputRatio: 0.2 })
+    expect(catalog.find(entry => entry.id === 'glm-5')).toMatchObject({ contextWindow: 200_000, inputRatio: 0.5 })
   })
 
   it('attaches the pricing of the request id and orders curated picks first', () => {
@@ -177,14 +214,23 @@ describe('ktapi catalog', () => {
     expect(parsePricingPayload(null).size).toBe(0)
   })
 
-  it('keeps the reasoning capability the gateway declares for the request id', () => {
+  it('keeps the reasoning capability the gateway declares for the request id and adds max for GLM-5.3', () => {
     const catalog = buildKtapiCatalog([
       { id: 'deepseek/deepseek-latest', reasoning: { efforts: false } },
       { id: 'deepseek-latest', name: 'Latest', reasoning: { efforts: { low: 'low', high: 'high' }, defaultEffort: 'high' } },
+      { id: 'glm-5.3', reasoning: { efforts: { off: null, low: 'low', medium: 'medium', high: 'high' }, defaultEffort: 'high' } },
+      { id: 'glm-latest', reasoning: { efforts: { off: null, low: 'low', high: 'high', max: 'max' } } },
+      { id: 'glm-4.7', reasoning: { efforts: { off: null, low: 'low', medium: 'medium', high: 'high' } } },
       { id: 'plain-model' },
     ], undefined)
     expect(catalog.find(entry => entry.id === 'deepseek-latest'))
       .toMatchObject({ name: 'Latest', reasoning: { efforts: { low: 'low', high: 'high' }, defaultEffort: 'high' } })
+    expect(catalog.find(entry => entry.id === 'glm-5.3')?.reasoning)
+      .toEqual({ efforts: { off: null, low: 'low', medium: 'medium', high: 'high', max: 'max' }, defaultEffort: 'high' })
+    expect(catalog.find(entry => entry.id === 'glm-latest')?.reasoning)
+      .toEqual({ efforts: { off: null, low: 'low', high: 'high', max: 'max' } })
+    expect(catalog.find(entry => entry.id === 'glm-4.7')?.reasoning)
+      .toEqual({ efforts: { off: null, low: 'low', medium: 'medium', high: 'high' } })
     expect(catalog.find(entry => entry.id === 'plain-model')?.reasoning).toBeUndefined()
   })
 

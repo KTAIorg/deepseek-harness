@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-llm-deepseek",
   "description": "DeepSeek Messages adapter",
-  "version": "0.2.2-rc.1",
+  "version": "0.2.2-rc.3",
   "publishConfig": {
     "access": "public"
   },
@@ -22,8 +22,13 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib/*.js",
-    "lib/types/**/*.d.ts"
+    "lib/index.js",
+    "lib/host.js",
+    "lib/host-*.js",
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "lib/**/*.js.map",
+    "src"
   ],
   "license": "MIT",
   "peerDependencies": {

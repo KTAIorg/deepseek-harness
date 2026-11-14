@@ -1,8 +1,8 @@
 Kito Harness
 Kito Harness
-Confirm on your phone
+Welcome to Kito Harness
+Scan the QR code, open Telegram, or push to your account.
 Copy sign-in link
-Completing sign in… [disabled]
-Use a QR code
-Cancel
-Open the official bot in Telegram on your phone and confirm the code. This computer does not need Telegram.
+Refresh QR code
+Open Telegram to sign in
+Send

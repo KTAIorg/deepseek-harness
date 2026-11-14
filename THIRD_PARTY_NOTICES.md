@@ -64,6 +64,7 @@ External packages installed for runtime use or embedded in distributed Host or b
 | [`@opentelemetry/sdk-logs`](https://github.com/open-telemetry/opentelemetry-js) | Apache-2.0 |
 | [`@playwright/mcp`](https://github.com/microsoft/playwright-mcp) | Apache-2.0 |
 | [`@puppeteer/browsers`](https://github.com/puppeteer/puppeteer/tree/main/packages/browsers) | Apache-2.0 |
+| [`@sentry/node`](https://github.com/getsentry/sentry-javascript) | MIT |
 | [`@shikijs/langs`](https://github.com/shikijs/shiki) | MIT |
 | [`@standard-schema/spec`](https://github.com/standard-schema/standard-schema) | MIT |
 | [`@tanstack/react-virtual`](https://github.com/TanStack/virtual) | MIT |
@@ -271,6 +272,7 @@ External packages **directly declared** for development, tests, types, or toolin
 | [`playwright`](https://github.com/microsoft/playwright) | Apache-2.0 |
 | [`pnpm`](https://github.com/pnpm/pnpm) | MIT |
 | [`publint`](https://github.com/publint/publint) | MIT |
+| [`qrcode.react`](https://github.com/zpao/qrcode.react) | ISC |
 | [`selfsigned`](https://github.com/jfromaniello/selfsigned) | MIT |
 | [`smol-toml`](https://github.com/squirrelchat/smol-toml) | BSD-3-Clause |
 | [`spdx-expression-parse`](https://github.com/jslicense/spdx-expression-parse.js) | MIT |

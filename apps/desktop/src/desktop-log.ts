@@ -29,9 +29,11 @@ export interface DesktopLog {
 /** @param value - one console argument. @returns its loggable text. */
 function render(value: unknown): string {
   if (typeof value === 'string') return value
+  if (value === undefined) return 'undefined'
   if (value instanceof Error) return value.stack ?? `${value.name}: ${value.message}`
   try {
-    return JSON.stringify(value) ?? String(value)
+    const encoded = JSON.stringify(value) as string | undefined
+    return encoded ?? Object.prototype.toString.call(value)
   } catch {
     // A value with a cycle or a throwing `toJSON` must not lose the log line.
     return Object.prototype.toString.call(value)

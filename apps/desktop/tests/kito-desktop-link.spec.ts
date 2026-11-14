@@ -2,6 +2,9 @@ import http from 'node:http'
 import { describe, expect, it, vi } from 'vitest'
 import { runKitoDesktopLink } from '../src/kito-desktop-link.ts'
 
+const urlOf = (input: RequestInfo | URL): string =>
+  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+
 describe('Kito desktop link', () => {
   it('keeps an independent session and reports a conflict until the person switches', async () => {
     const seen: string[] = []
@@ -33,7 +36,7 @@ describe('Kito desktop link', () => {
   it('reuses the same account without starting a device login', async () => {
     const calls: string[] = []
     const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
-      calls.push(`${init?.method ?? 'GET'} ${String(url)}`)
+      calls.push(`${init?.method ?? 'GET'} ${urlOf(url)}`)
       return new Response(JSON.stringify({ accountId: 'acct', displayName: 'A', allowSwitch: false }), { status: 200 })
     }) as typeof fetch
     const result = await runKitoDesktopLink(
@@ -53,8 +56,8 @@ describe('Kito desktop link', () => {
   it('tells the desktop the handoff failed', async () => {
     const bodies: string[] = []
     const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
-      if (init?.method === 'POST') bodies.push(String(init.body))
-      if (String(url).endsWith('/complete')) return new Response('{}', { status: 200 })
+      if (init?.method === 'POST' && typeof init.body === 'string') bodies.push(init.body)
+      if (urlOf(url).endsWith('/complete')) return new Response('{}', { status: 200 })
       return new Response(JSON.stringify({ accountId: 'acct', displayName: 'A', allowSwitch: true }), { status: 200 })
     }) as typeof fetch
     await expect(runKitoDesktopLink(

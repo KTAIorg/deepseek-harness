@@ -15,8 +15,8 @@
   en: 127ea90553cb6af7
   zh: 7b1c5aec8558c684
 /kito-harness-desktop/application-overview:
-  en: 92c9b0f37e71196c
-  zh: 02735847224b3478
+  en: 046b6b508e4b70a5
+  zh: 75accad3e3daf894
 /kito-harness-desktop/terminal-command:
   en: 5f2d25a1d8472647
   zh: 2acb5c5d7d1917e2
@@ -27,14 +27,14 @@
   en: 3724c53da4f7647b
   zh: 76ae549d43c99bb4
 /kito-harness-desktop/key-technical-decisions/bundled-workspace-dependencies:
-  en: eb1151865382050d
-  zh: 880df19c040f46af
+  en: 9d0fb23b993733f0
+  zh: 9a2a555693c07e6a
 /kito-harness-desktop/bundled-command-runtime:
   en: 2880dca01738664c
   zh: 518b4b60d3a23ead
 /kito-harness-desktop/installation-ownership:
-  en: 160b500cdcd6a39a
-  zh: 6c267f1762ec3689
+  en: 575d82acb5d61018
+  zh: b1064786f63863f7
 /kito-harness-desktop/installation-ownership/runtime-and-plugin-activation:
   en: 4951cd3ee659eb33
   zh: 96bdd6358dad587a
@@ -54,14 +54,14 @@
   en: ac31ebdd9de54f34
   zh: 921e534d5c4b3a16
 /kito-harness-desktop/windows-installer-interface:
-  en: 7af71fed9290c1a4
-  zh: 48280cd6738bf458
+  en: 686009a3cbb136cb
+  zh: 7b6c9bf8ee980285
 /kito-harness-desktop/updates:
-  en: 67bf0a18faa7aa76
-  zh: 782e14ce62bb939f
+  en: 8b0b9efeb83727ef
+  zh: 5ee95de48ceab392
 /kito-harness-desktop/updates/local-desktop-settings:
-  en: 2e57457c44c85b5f
-  zh: 5b8510a3dc4c6c9d
+  en: dbe57394894b7368
+  zh: a3bb788c2ce631a4
 /kito-harness-desktop/updates/mandatory-update-policy:
   en: 182a9c6705213e13
   zh: 681762f83490f4c6

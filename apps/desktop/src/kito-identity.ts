@@ -135,7 +135,7 @@ export async function startKitoDeviceLogin(input: FetchInit = {}): Promise<KitoD
 }
 
 /** Result of asking Identity to deliver the same confirmation again. */
-export type KitoPushResult = 'accepted' | 'rate-limited' | 'expired' | 'busy'
+export type KitoPushResult = 'accepted' | 'rate-limited' | 'expired' | 'unsupported' | 'busy'
 
 /**
  * Ask Identity to deliver the existing confirmation to a Telegram username.
@@ -160,8 +160,8 @@ export async function pushKitoDeviceLoginHint(input: FetchInit & {
   )
   if (response.status === 202) return 'accepted'
   if (response.status === 429) return 'rate-limited'
-  // 409 is a session that is no longer waiting. 404 is an older server without
-  // this route; the original confirmation is still valid, so it stays on screen.
+  if (response.status === 404) return 'unsupported'
+  // 409 is a session that is no longer waiting.
   if (response.status === 401 || response.status === 409) return 'expired'
   return 'busy'
 }
@@ -273,13 +273,12 @@ export async function refreshKitoIdentity(refreshToken: string, input: FetchInit
 }
 
 /**
- * Read the Telegram display name and the shared NewAPI balance.
- * A missing balance stays absent so the UI does not show a fake zero.
+ * Read only the signed-in KT Identity profile without touching NewAPI or creating a console session.
  * @param identityToken - KT Identity access token.
- * @param input - optional origins and cancellation.
- * @returns the signed-in summary, or signed out when the token is rejected.
+ * @param input - optional signal and fetch implementation.
+ * @returns profile summary, or signed out when Identity rejects the token.
  */
-export async function fetchKitoAccount(identityToken: string, input: FetchInit = {}): Promise<KitoAccountView> {
+export async function fetchKitoProfile(identityToken: string, input: FetchInit = {}): Promise<KitoAccountView> {
   const fetchImpl = input.fetchImpl ?? kitoFetch
   const profile = await fetchImpl(`${identityBaseUrl()}/identity/v1/account/me`, {
     method: 'GET',
@@ -289,7 +288,41 @@ export async function fetchKitoAccount(identityToken: string, input: FetchInit =
   const profilePayload = await readJson(profile)
   if (profile.status === 401) return { signedIn: false }
   if (!profile.ok) throw new Error(errorMessage(profilePayload, `KT Identity account failed (${profile.status})`))
-  const balance = await fetchSpendable(identityToken, fetchImpl, input.signal).catch(() => undefined)
+  return kitoAccountView(profilePayload, undefined)
+}
+
+/**
+ * Read the Telegram display name and the shared NewAPI balance.
+ * Prefers the key-authenticated read-only usage endpoint when `apiKey` is supplied
+ * so no NewAPI browser session is consumed; falls back to `/api/iam/ensure` only when omitted.
+ * A missing balance stays absent so the UI does not show a fake zero.
+ * @param identityToken - KT Identity access token.
+ * @param input - optional origins, cancellation, and NewAPI relay key.
+ * @returns the signed-in summary, or signed out when the token is rejected.
+ */
+export async function fetchKitoAccount(
+  identityToken: string,
+  input: FetchInit & { readonly apiKey?: string } = {},
+): Promise<KitoAccountView> {
+  const fetchImpl = input.fetchImpl ?? kitoFetch
+  const profile = await fetchImpl(`${identityBaseUrl()}/identity/v1/account/me`, {
+    method: 'GET',
+    headers: jsonHeaders({ authorization: `Bearer ${identityToken}` }),
+    signal: withTimeout(input.signal),
+  })
+  const profilePayload = await readJson(profile)
+  if (profile.status === 401) return { signedIn: false }
+  if (!profile.ok) throw new Error(errorMessage(profilePayload, `KT Identity account failed (${profile.status})`))
+  let balance: number | undefined
+  if (input.apiKey !== undefined && input.apiKey.trim() !== '') {
+    const usage = await fetchKitoAccountBalanceByKey(input.apiKey, {
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+      fetchImpl,
+    })
+    balance = usage.status === 'ok' ? usage.balance : undefined
+  } else {
+    balance = await fetchSpendable(identityToken, fetchImpl, input.signal).catch(() => undefined)
+  }
   return kitoAccountView(profilePayload, balance)
 }
 
@@ -382,6 +415,67 @@ export function spendableFromEnsure(payload: unknown): number | undefined {
   const user = asRecord(data?.user) ?? data
   const quota = user?.quota
   return typeof quota === 'number' && Number.isFinite(quota) ? newapiQuotaToUsd(quota) : undefined
+}
+
+/** @param payload - `/api/usage/account/` body. @returns the shared USD balance rounded to cents, or undefined when absent. */
+export function spendableFromAccountUsage(payload: unknown): number | undefined {
+  const data = asRecord(asRecord(payload)?.data) ?? asRecord(payload)
+  if (data === undefined) return undefined
+  const remainingUsd = data.remaining_usd
+  if (typeof remainingUsd === 'number' && Number.isFinite(remainingUsd)) {
+    return Math.round(remainingUsd * 100) / 100
+  }
+  const remainQuota = data.remain_quota
+  const quotaPerUnit = data.quota_per_unit
+  if (typeof remainQuota === 'number' && Number.isFinite(remainQuota)
+    && typeof quotaPerUnit === 'number' && Number.isFinite(quotaPerUnit) && quotaPerUnit > 0) {
+    return Math.round((remainQuota / quotaPerUnit) * 100) / 100
+  }
+  return undefined
+}
+
+/** Outcome of querying `/api/usage/account/` with the derived relay key. */
+export type KitoAccountBalanceResult =
+  | { readonly status: 'ok'; readonly balance: number | undefined }
+  | { readonly status: 'unauthorized' }
+  | { readonly status: 'rate-limited'; readonly retryAfter: string | null }
+  | { readonly status: 'unavailable' }
+
+/**
+ * Read the user's spendable balance from NewAPI's read-only `/api/usage/account/`
+ * endpoint using the derived relay key, without creating a website console session.
+ * @param apiKey - managed NewAPI relay key (`sk-...`).
+ * @param input - optional origin, signal, and fetch implementation.
+ * @returns balance outcome distinguishing expired keys and rate limits from network/route unavailability.
+ */
+export async function fetchKitoAccountBalanceByKey(
+  apiKey: string,
+  input: Pick<FetchInit, 'baseUrl' | 'signal' | 'fetchImpl'> = {},
+): Promise<KitoAccountBalanceResult> {
+  const key = apiKey.trim()
+  if (!key) return { status: 'unauthorized' }
+  const fetchImpl = input.fetchImpl ?? kitoFetch
+  const baseUrl = (input.baseUrl ?? newapiBaseUrl()).replace(/\/+$/, '')
+  try {
+    const response = await fetchImpl(`${baseUrl}/api/usage/account/`, {
+      method: 'GET',
+      headers: jsonHeaders({ authorization: `Bearer ${key}` }),
+      signal: withTimeout(input.signal),
+    })
+    if (response.status === 429) {
+      await response.body?.cancel().catch(() => undefined)
+      return { status: 'rate-limited', retryAfter: response.headers.get('retry-after') }
+    }
+    if (response.status === 401) {
+      await response.body?.cancel().catch(() => undefined)
+      return { status: 'unauthorized' }
+    }
+    const payload = await readJson(response)
+    if (!response.ok) return { status: 'unavailable' }
+    return { status: 'ok', balance: spendableFromAccountUsage(payload) }
+  } catch {
+    return { status: 'unavailable' }
+  }
 }
 
 /**

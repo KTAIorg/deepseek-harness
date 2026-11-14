@@ -16,7 +16,7 @@ import {
   authContextFrom, credentialStoreFrom, resolveProfiles, type ResolvedPiAiProviderProfile,
 } from '@deepseek-ai/dsh-llm-pi-ai/host'
 import z from '@deepseek-ai/schemastery'
-import { DEFAULT_CONTEXT, DEFAULT_OUTPUT, type KtapiModel } from './catalog.ts'
+import { DEFAULT_CONTEXT, DEFAULT_OUTPUT, fallbackContextWindow, type KtapiModel } from './catalog.ts'
 import { CATALOG_TIMEOUT_MS, fetchKtapiCatalog, type KtapiCatalogSnapshot } from './discovery.ts'
 import { registerCatalogRefreshRoute, registerProbeRoute } from './probe-route.ts'
 
@@ -126,13 +126,16 @@ function profileOf(options: Options, snapshot: KtapiCatalogSnapshot | undefined)
   // snapshot is already ordered curated-first, then by id
   // (@see buildKtapiCatalog).
   const models = snapshot === undefined
-    ? [{ id: BOOTSTRAP_MODEL, name: 'DeepSeek Latest', contextWindow: DEFAULT_CONTEXT, maxTokens: DEFAULT_OUTPUT, input: ['text'], reasoningEfforts: UNDECLARED_REASONING_EFFORTS }]
+    ? [{ id: BOOTSTRAP_MODEL, name: 'DeepSeek Latest', contextWindow: fallbackContextWindow(BOOTSTRAP_MODEL) ?? DEFAULT_CONTEXT, maxTokens: DEFAULT_OUTPUT, input: ['text'], reasoningEfforts: UNDECLARED_REASONING_EFFORTS }]
     : (options.showAllModels ? snapshot.models : snapshot.models.filter(model => model.defaultVisible)).map(modelRow)
   return {
     displayName: options.displayName,
     apiKeyEnv: options.apiKeyEnv,
     api: 'openai-completions',
     baseURL: options.baseURL,
+    // ktapi forwards OpenAI chat-completions payloads to DeepSeek and other
+    // upstreams that reject role "developer", so system instructions stay "system".
+    compat: { supportsDeveloperRole: false },
     models,
   }
 }
@@ -176,10 +179,10 @@ export function apply(ctx: Context, config: Config): void {
     if (hit?.value !== undefined) return hit.value
     const identity = await ctx.credentials.resolve(credentialRef(identityTokenRef))
     if (identity?.value === undefined) return undefined
-    throw new LlmError(
-      `KT sign-in is stored but ${apiKeyEnv} was not derived from it; the model list stays empty until the relay key is stored`,
-      'KTAI_RELAY_KEY_MISSING',
-    )
+    throw LlmError.fromFailure({
+      message: `KT sign-in is stored but ${apiKeyEnv} was not derived from it; the model list stays empty until the relay key is stored`,
+      code: 'KTAI_RELAY_KEY_MISSING',
+    })
   }
 
   const adapter = new PiAiAdapter({

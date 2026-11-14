@@ -13,7 +13,7 @@ import { kitoAccountResource } from './account-resource.ts'
 import { KITO_EXTRA_LANGUAGES, KitoLanguageDock } from './LanguagePicker.tsx'
 import { LANGUAGE_PACKS } from './language-packs.ts'
 import { KitoBrandMark, KitoBrandName } from './Brand.tsx'
-import { en, zh } from './copy.ts'
+import { de, en, es, fr, ja, pt, ru, zh } from './copy.ts'
 
 export { Config } from '../index.ts'
 
@@ -56,7 +56,7 @@ export function insideDesktopShell(): boolean {
 export function apply(ctx: ClientContext, config: Config = {}): void {
   if (process.env.DSH_CLIENT_BUILD_PROFILE === 'official') return
   const accountRefreshIntervalMs = config.accountRefreshIntervalMs ?? 180000
-  ctx.effect(() => ctx.locale.register(ACCOUNT_NS, { zh, en }), 'ui-brand-kito: account copy')
+  ctx.effect(() => ctx.locale.register(ACCOUNT_NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-brand-kito: account copy')
   ctx.effect(() => {
     const remove = KITO_EXTRA_LANGUAGES.map(language => ctx.locale.addLanguage(language))
     return () => { for (const dispose of remove) dispose() }

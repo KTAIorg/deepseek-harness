@@ -16,13 +16,16 @@ const pricing = {
   ],
 }
 
+const urlOf = (input: RequestInfo | URL): string =>
+  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+
 function stub(handler: (url: string) => Response): { fetchImpl: typeof fetch; urls: string[] } {
   const urls: string[] = []
-  const fetchImpl = (async (input: RequestInfo | URL) => {
-    const url = String(input)
+  const fetchImpl: typeof fetch = async (input) => {
+    const url = urlOf(input)
     urls.push(url)
     return handler(url)
-  }) as typeof fetch
+  }
   return { fetchImpl, urls }
 }
 
@@ -42,13 +45,13 @@ describe('ktapi catalog discovery', () => {
 
   it('sends the relay key as a bearer token', async () => {
     let authorization: string | undefined
-    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).endsWith('/v1/models')) {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      if (urlOf(input).endsWith('/v1/models')) {
         authorization = (init?.headers as Record<string, string> | undefined)?.authorization
         return json(listing)
       }
       return json(pricing)
-    }) as typeof fetch
+    }
     await fetchKtapiCatalog({ apiKey: 'sk-test', fetchImpl, baseUrl: 'https://ktapi.example' })
     expect(authorization).toBe('Bearer sk-test')
   })

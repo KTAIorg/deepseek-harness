@@ -122,10 +122,10 @@ export async function fetchKtapiCatalog(input: KtapiCatalogInput): Promise<Ktapi
   // The shared reader owns the request, so the deadline rides the HTTP
   // implementation: one signal per call, covering the body read too.
   const base = input.fetchImpl ?? fetch
-  const deadline = (url: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
+  const deadline: typeof fetch = (url, init) =>
     base(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
   const [listing, pricing] = await Promise.all([
-    fetchLiveCatalog(endpointsOf(input.baseUrl).models, apiKey, { fetchImpl: deadline as typeof fetch }),
+    fetchLiveCatalog(endpointsOf(input.baseUrl).models, apiKey, { fetchImpl: deadline }),
     readPricing({ ...input, timeoutMs }),
   ])
   return {

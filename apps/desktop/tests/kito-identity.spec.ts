@@ -6,17 +6,20 @@ import { finishKitoDeviceLogin, startKitoDeviceLogin } from '../src/kito-identit
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
+const urlOf = (input: RequestInfo | URL): string =>
+  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+
 /** @param handler - one response per request, in order. @returns the fetch stub and the recorded URLs. */
 function recorder(handler: Array<() => Response>): { fetchImpl: typeof fetch; urls: string[] } {
   const urls: string[] = []
   let index = 0
-  const fetchImpl = (async (input: RequestInfo | URL) => {
-    urls.push(String(input))
+  const fetchImpl: typeof fetch = async (input) => {
+    urls.push(urlOf(input))
     const next = handler[Math.min(index, handler.length - 1)]
     index += 1
     if (next === undefined) throw new Error('recorder ran out of responses')
     return next()
-  }) as typeof fetch
+  }
   return { fetchImpl, urls }
 }
 
