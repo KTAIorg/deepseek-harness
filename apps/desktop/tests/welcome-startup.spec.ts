@@ -117,8 +117,9 @@ vi.mock('../src/kito-sign-in.ts', () => ({
     state.kitoSignInSuccess = options.onSuccess
     return {
       start: async () => state.kitoSignInState,
+      push: async () => state.kitoSignInState,
       resend: async () => state.kitoSignInState,
-      openQr: vi.fn(),
+      openQr: vi.fn(async () => state.kitoSignInState),
       cancel: async () => state.kitoSignInState,
       state: () => state.kitoSignInState,
     }

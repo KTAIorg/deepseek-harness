@@ -1,6 +1,7 @@
 Kito Harness
 Kito Harness
 欢迎使用 Kito Harness
-组装无限可能，共探智能上限
-使用 Telegram 登录
-改用二维码
+扫码、点击打开 Telegram，或推送到你的账号完成登录
+刷新二维码
+打开 Telegram 登录
+发送

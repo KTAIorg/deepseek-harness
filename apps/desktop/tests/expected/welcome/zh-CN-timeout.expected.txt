@@ -1,5 +1,8 @@
 Kito Harness
 Kito Harness
+欢迎使用 Kito Harness
+扫码、点击打开 Telegram，或推送到你的账号完成登录
+刷新二维码
+打开 Telegram 登录
+发送
 登录已超时
-重新登录
-请重新登录后继续操作

@@ -1,16 +1,19 @@
 /** Desktop welcome presentation; account and credential operations stay in the preload. */
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import { Toast } from '@deepseek-ai/dsh-client-ui-primitives/src/Toast.tsx'
 import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives/src/StateDot.tsx'
 import type { AccountView } from '@deepseek-ai/dsh-deepseek-account/types'
 import type { RecentAccount } from '../kito-login.ts'
 import { normalizeTelegramHint } from '../kito-login.ts'
+import { formatDesktopMessage } from '../locale.ts'
 import type { WelcomeApi } from '../welcome-api.ts'
 
-type Page = 'entry' | 'key' | 'account'
+type Page = 'entry' | 'key'
 type WelcomeAttempt = NonNullable<AccountView['attempt']> & {
   readonly userCode?: string
+  readonly deeplink?: string
   readonly hint?: string
   readonly resendAt?: number
   readonly push?: 'accepted' | 'rate-limited' | 'busy'
@@ -19,9 +22,9 @@ type WelcomeAttempt = NonNullable<AccountView['attempt']> & {
 
 /**
  * Render the standalone welcome flow using shell-owned operations and localized copy.
- * Clearing the account attempt returns the sign-in status page to the initial choices.
+ * Offers QR scan, one-click Telegram launch, and username push simultaneously on one page.
  * @param props.api - isolated preload API; no account credentials reach the renderer.
- * @returns welcome pages with fixed bottom actions.
+ * @returns welcome pages with QR, direct Telegram jump, and username push controls.
  */
 export function Welcome({ api }: { api: WelcomeApi }) {
   const { messages: m } = api
@@ -32,38 +35,35 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   const [attempt, setAttempt] = useState<WelcomeAttempt | null>(null)
   const attemptRef = useRef<WelcomeAttempt | null>(null)
   const [starting, setStarting] = useState(false)
-  const [cancelling, setCancelling] = useState(false)
+  const [pushing, setPushing] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState<{ status: 'idle' | 'busy' | 'copied' | 'failed' }>({ status: 'idle' })
   const copyState = copyFeedback.status
   const [draft, setDraft] = useState('')
   const [username, setUsername] = useState('')
   const [hintError, setHintError] = useState('')
   const [recent, setRecent] = useState<readonly RecentAccount[]>([])
-  const [showOther, setShowOther] = useState(false)
-  const [clock, setClock] = useState(0)
+  const [clock, setClock] = useState(() => Date.now())
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const mounted = useRef(true)
   const revision = useRef(0)
   const input = useRef<HTMLInputElement>(null)
+  const userInput = useRef<HTMLInputElement>(null)
   const keyButton = useRef<HTMLButtonElement>(null)
   const focusEntry = useRef(false)
-  const ignoreEmptyAccountPush = useRef(false)
 
   function navigate(next: Page) {
     pageRef.current = next
     setPage(next)
   }
-  function showAccount(state: AccountView & { attempt: WelcomeAttempt | null }) {
-    if (pageRef.current === 'key' || (state.attempt === null && pageRef.current === 'entry')) return
-    // DeepSeek account snapshots arrive with no attempt. They must not bounce a Telegram login back to the entry page.
-    if (ignoreEmptyAccountPush.current && state.attempt === null && pageRef.current === 'account') return
+
+  function applyAccountState(state: AccountView & { attempt: WelcomeAttempt | null }) {
     attemptRef.current = state.attempt
     setAttempt(state.attempt)
     setStarting(false)
+    setPushing(false)
     setCopyFeedback({ status: 'idle' })
-    navigate(state.attempt === null || state.attempt.phase === 'cancelled' ? 'entry' : 'account')
   }
 
   useEffect(() => {
@@ -82,7 +82,16 @@ export function Welcome({ api }: { api: WelcomeApi }) {
     const stop = api.onAccountState((state) => {
       revision.current++
       takeNotice()
-      showAccount(state)
+      applyAccountState(state)
+    })
+    const initial = ++revision.current
+    setStarting(true)
+    void api.startSignIn().then((state) => {
+      if (!mounted.current || revision.current !== initial) return
+      if (state.attempt !== null) applyAccountState(state)
+      else setStarting(false)
+    }).catch(() => {
+      if (mounted.current && revision.current === initial) setStarting(false)
     })
     return () => { mounted.current = false; stop() }
   }, [api, m.welcomeTitle])
@@ -91,7 +100,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
     if (page === 'entry' && visiblePage.current !== 'entry') void api.analytics?.('auth_page_view', {})
     visiblePage.current = page
     if (page === 'key') input.current?.focus()
-    else if (page === 'entry' && focusEntry.current) {
+    else if (focusEntry.current) {
       focusEntry.current = false
       keyButton.current?.focus()
     }
@@ -102,6 +111,13 @@ export function Welcome({ api }: { api: WelcomeApi }) {
     const timer = setTimeout(() => { setCopyFeedback({ status: 'idle' }) }, 2000)
     return () => { clearTimeout(timer) }
   }, [copyFeedback])
+
+  useEffect(() => {
+    if (attempt?.resendAt === undefined) return
+    setClock(Date.now())
+    const timer = setInterval(() => { setClock(Date.now()) }, 1000)
+    return () => { clearInterval(timer) }
+  }, [attempt?.resendAt])
 
   async function saveKey(event: FormEvent) {
     event.preventDefault()
@@ -129,6 +145,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
       if (mounted.current) setBusy(false)
     }
   }
+
   async function skip() {
     if (busyRef.current) return
     busyRef.current = true
@@ -143,63 +160,50 @@ export function Welcome({ api }: { api: WelcomeApi }) {
       if (mounted.current) setBusy(false)
     }
   }
-  useEffect(() => {
-    if (attempt?.resendAt === undefined) return
-    const timer = setInterval(() => { setClock(Date.now()) }, 1000)
-    return () => { clearInterval(timer) }
-  }, [attempt?.resendAt])
-  async function begin(hint?: string) {
-    navigate('account')
+
+  async function refreshChallenge() {
+    setHintError('')
     setStarting(true)
-    ignoreEmptyAccountPush.current = true
-    setAttempt(null)
-    attemptRef.current = null
     const current = ++revision.current
     try {
-      const state = await api.startSignIn(hint)
-      ignoreEmptyAccountPush.current = false
-      if (mounted.current && revision.current === current) showAccount(state)
+      const state = await api.startSignIn()
+      if (mounted.current && revision.current === current) applyAccountState(state)
     } catch {
-      ignoreEmptyAccountPush.current = false
       if (mounted.current && revision.current === current) setStarting(false)
     }
   }
-  async function start(raw: string) {
+
+  async function openTelegram() {
+    setHintError('')
+    void api.analytics?.('auth_page_click', { button_name: 'sign_in' })
+    const current = attemptRef.current
+    const waitingId = current?.phase === 'waiting-browser' ? current.id : undefined
+    try {
+      await api.openSignIn(waitingId)
+    } catch {
+      // Errors surface via the waiting state pushed by the main process.
+    }
+  }
+
+  async function pushTo(raw: string) {
     const hint = normalizeTelegramHint(raw)
     if (hint === '') {
       setHintError(m.welcomeHintBlank)
+      userInput.current?.focus()
       return
     }
     setHintError('')
-    await begin(hint)
-  }
-  async function startQr() {
-    setHintError('')
-    await begin()
-  }
-  async function resend() {
-    const current = attemptRef.current
-    if (current === null || clock < (current.resendAt ?? 0)) return
-    try {
-      const state = await api.resendSignIn(current.id)
-      if (mounted.current) showAccount(state)
-    } catch {
-      // The current code stays on screen so the push can be tried again.
-    }
-  }
-  async function cancel() {
-    if (cancelling || attemptRef.current === null) return
-    setCancelling(true)
+    setPushing(true)
     const current = ++revision.current
+    const waitingId = attemptRef.current?.phase === 'waiting-browser' ? attemptRef.current.id : undefined
     try {
-      const state = await api.cancelSignIn(attemptRef.current.id)
-      if (mounted.current && revision.current === current) showAccount(state)
+      const state = await api.pushSignIn(waitingId, hint)
+      if (mounted.current && revision.current === current) applyAccountState(state)
     } catch {
-      // The current attempt remains visible so cancellation can be retried.
-    } finally {
-      if (mounted.current) setCancelling(false)
+      if (mounted.current && revision.current === current) setPushing(false)
     }
   }
+
   async function copyLink() {
     const current = attemptRef.current
     if (current?.phase !== 'waiting-browser' || (copyState === 'busy' || copyState === 'copied')) return
@@ -212,26 +216,174 @@ export function Welcome({ api }: { api: WelcomeApi }) {
     }
   }
 
-  const phase = starting ? 'initializing' : attempt?.phase ?? 'failed'
+  const phase = starting ? 'initializing' : attempt?.phase ?? 'idle'
   const waiting = phase === 'waiting-browser'
+  const exchanging = phase === 'exchanging' || phase === 'committing' || phase === 'succeeded'
   const failed = phase === 'expired' || phase === 'failed'
-  const title = phase === 'initializing' ? m.welcomeAuthStarting
-    : waiting ? m.welcomeAuthWaiting : phase === 'expired' ? m.welcomeAuthExpired
-      : attempt?.failure === 'denied' ? m.welcomeDenied
-        : phase === 'failed' ? m.welcomeAuthFailed : m.welcomeAuthExchanging
-  const showRecent = page === 'entry' && recent.length > 0 && !showOther
-  const resendLocked = attempt?.resendAt !== undefined && clock < attempt.resendAt
-  const heading = page === 'entry' ? 'welcome-heading' : page === 'key' ? 'key-title' : 'auth-status'
+  const qrUrl = waiting ? attempt?.authorizeUrl : undefined
+  const normalizedDraft = normalizeTelegramHint(username)
+  const cooldownSeconds = attempt?.resendAt !== undefined && attempt.hint !== undefined && attempt.hint === normalizedDraft
+    ? Math.max(0, Math.ceil((attempt.resendAt - clock) / 1000))
+    : 0
+  const sendDisabled = pushing || cooldownSeconds > 0
+  const sendLabel = pushing
+    ? m.welcomeSending
+    : cooldownSeconds > 0
+      ? formatDesktopMessage(m.welcomePushCooldown, { seconds: String(cooldownSeconds) })
+      : m.welcomeSend
+  const failedTitle = phase === 'expired'
+    ? m.welcomeAuthExpired
+    : attempt?.failure === 'denied'
+      ? m.welcomeDenied
+      : m.welcomeAuthFailed
+  const pushFeedback = ((): { tone: 'success' | 'warn'; text: string } | undefined => {
+    if (!waiting || attempt?.push === undefined) return undefined
+    if (attempt.push === 'accepted' && attempt.hint !== undefined) {
+      return {
+        tone: 'success',
+        text: attempt.userCode
+          ? formatDesktopMessage(m.welcomePushSentWithCode, { hint: `@${attempt.hint}`, code: attempt.userCode })
+          : m.welcomePushSent,
+      }
+    }
+    return attempt.push === 'rate-limited'
+      ? { tone: 'warn', text: m.welcomePushRateLimited }
+      : { tone: 'warn', text: m.welcomePushBusy }
+  })()
+  const heading = page === 'entry' ? 'welcome-heading' : 'key-title'
 
   return <>
     {expiryNotice && <Toast text={m.welcomeSessionExpired} onDone={() => { setExpiryNotice(false) }} />}
     <div className="titlebar" aria-hidden="true" />
     <main className="welcome" aria-labelledby={heading}>
-      <img className="brand" src="assets/welcome-brand.svg" alt={m.welcomeBrand} width="472" height="40" />
-      <div id="tagline" className="tagline" hidden={page !== 'entry'}>
-        <h1 id="welcome-heading"><span>{m.welcomeTaglineBefore}</span><em>{m.welcomeTaglineBrand}</em><span>{m.welcomeTaglineAfter}</span></h1>
-        <p id="welcome-description">{m.welcomeDescription}</p>
-      </div>
+      <img className="brand" src="assets/welcome-brand.svg" alt={m.welcomeBrand} width="472" height="32" />
+
+      {page === 'entry' && !exchanging && (
+        <div className="entry-stack">
+          <div id="tagline" className="tagline">
+            <h1 id="welcome-heading"><span>{m.welcomeTaglineBefore}</span><em>{m.welcomeTaglineBrand}</em><span>{m.welcomeTaglineAfter}</span></h1>
+            <p id="welcome-description">{m.welcomeDescription}</p>
+          </div>
+
+          <section className="qr-section" aria-label={m.welcomeQrScanHint}>
+            <div className={`qr-card${qrUrl ? '' : ' qr-card-empty'}`}>
+              {qrUrl ? (
+                <QRCodeSVG value={qrUrl} size={136} level="M" bgColor="#ffffff" fgColor="#0f1115" />
+              ) : starting ? (
+                <div className="qr-placeholder">
+                  <StateDot state="ongoing" size={18} />
+                  <span>{m.welcomeQrGenerating}</span>
+                </div>
+              ) : (
+                <div className="qr-placeholder">
+                  <span className="qr-status">{failed ? failedTitle : m.welcomeQrGenerating}</span>
+                  <button id="auth-retry" type="button" className="qr-retry" onClick={() => { void refreshChallenge() }}>
+                    {m.welcomeQrRefresh}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {waiting ? (
+              <div className="qr-meta">
+                {attempt?.userCode && (
+                  <span id="auth-code" className="auth-code">{formatDesktopMessage(m.welcomeCodeLabel, { code: attempt.userCode })}</span>
+                )}
+                <button
+                  id="auth-copy"
+                  className="text-link"
+                  type="button"
+                  disabled={copyState === 'busy' || copyState === 'copied'}
+                  onClick={() => { void copyLink() }}
+                >
+                  {copyState === 'copied' ? m.welcomeAuthCopied : copyState === 'failed' ? m.welcomeAuthCopyFailed : m.welcomeAuthCopyLink}
+                </button>
+                <button id="auth-refresh" className="text-link" type="button" onClick={() => { void refreshChallenge() }}>
+                  {m.welcomeQrRefresh}
+                </button>
+              </div>
+            ) : (
+              <p className="qr-caption">{failed ? m.welcomeAuthExpiredDescription : m.welcomeQrScanHint}</p>
+            )}
+          </section>
+
+          <div id="entry-actions" className="actions-primary">
+            <button id="sign-in" className="primary" type="button" onClick={() => { void openTelegram() }}>
+              {m.welcomeOpenTelegram}
+            </button>
+            <button ref={keyButton} id="api-key" className="secondary" type="button" hidden onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'api-key' }); navigate('key') }}>{m.welcomeApiKey}</button>
+          </div>
+
+          <section className="push-section" aria-label={m.welcomeOrPush}>
+            <div className="push-divider"><span>{m.welcomeOrPush}</span></div>
+
+            {recent.length > 0 && (
+              <div id="recent-accounts" className="recent-list" aria-label={m.welcomeRecentQuick}>
+                {recent.map(account => (
+                  <button
+                    key={account.accountNo}
+                    type="button"
+                    className="recent-chip"
+                    disabled={pushing}
+                    onClick={() => {
+                      const label = account.telegramUsername ? `@${account.telegramUsername}` : account.accountNo
+                      setUsername(label)
+                      void pushTo(account.accountNo)
+                    }}
+                  >
+                    <span className="recent-avatar" aria-hidden="true">{(account.displayName ?? account.telegramUsername ?? account.accountNo).trim().slice(0, 1).toUpperCase()}</span>
+                    <span className="recent-name">{account.displayName ?? (account.telegramUsername ? `@${account.telegramUsername}` : account.accountNo)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <form
+              id="telegram-form"
+              className="push-form"
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault()
+                void pushTo(username)
+              }}
+            >
+              <label className="visually-hidden" htmlFor="telegram-user">{m.welcomeHintPlaceholder}</label>
+              <div className="push-row">
+                <input
+                  ref={userInput}
+                  id="telegram-user"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder={m.welcomeHintPlaceholder}
+                  aria-describedby="hint-note hint-error"
+                  aria-invalid={hintError !== ''}
+                  value={username}
+                  onChange={(event) => { setUsername(event.target.value); setHintError('') }}
+                />
+                <button id="push-send" className="secondary push-send" type="submit" disabled={sendDisabled}>
+                  {sendLabel}
+                </button>
+              </div>
+              <p id="hint-note" className="hint-note" hidden={hintError !== '' || pushFeedback !== undefined}>{m.welcomeHintNote}</p>
+              <p id="hint-error" className="hint-error" role="alert" hidden={hintError === ''}>{hintError}</p>
+              {hintError === '' && pushFeedback !== undefined && (
+                <p id="hint-status" className={`hint-status hint-status-${pushFeedback.tone}`} aria-live="polite">
+                  {pushFeedback.text}
+                </p>
+              )}
+            </form>
+          </section>
+        </div>
+      )}
+
+      {page === 'entry' && exchanging && (
+        <section id="auth-page" className="key-heading auth-exchanging" aria-live="polite">
+          <StateDot state="ongoing" size={20} />
+          <h1 id="auth-status">{m.welcomeAuthExchanging}</h1>
+        </section>
+      )}
+
       <form id="key-form" className="key-form" hidden={page !== 'key'} noValidate onSubmit={(event) => { void saveKey(event) }} aria-busy={busy}>
         <header className="key-heading"><h1 id="key-title">{m.welcomeKeyTitle}</h1><p id="key-description">{m.welcomeKeyDescription}</p></header>
         <div className="key-field">
@@ -242,53 +394,6 @@ export function Welcome({ api }: { api: WelcomeApi }) {
           <p id="key-error" className="key-error" role="alert" hidden={error === ''}>{error}</p>
         </div>
       </form>
-      <section id="auth-page" className={`key-heading ${waiting ? 'auth-waiting' : phase === 'expired' ? 'auth-expired' : ''}`}
-        hidden={page !== 'account'} aria-live="polite">
-        <h1 id="auth-status">{title}</h1>
-        <p id="auth-description" hidden={!waiting && phase !== 'expired'}>{waiting ? (attempt?.hint ? m.welcomePushSent : m.welcomeAuthWaitingDescription) : m.welcomeAuthExpiredDescription}</p>
-        <p id="auth-code" className="auth-code" hidden={!waiting || !attempt?.userCode}>{attempt?.userCode}</p>
-        <button id="auth-copy" className="copy-link" type="button" hidden={!waiting} disabled={!waiting || (copyState === 'busy' || copyState === 'copied')} onClick={() => { void copyLink() }}>
-          {copyState === 'copied' ? m.welcomeAuthCopied : copyState === 'failed' ? m.welcomeAuthCopyFailed : m.welcomeAuthCopyLink}
-        </button>
-      </section>
-      <div id="auth-actions" className="actions" hidden={page !== 'account'}>
-        <button id="auth-loading" className="primary" type="button" hidden={failed} disabled aria-label={m.welcomeAuthExchanging}>
-          <StateDot state="ongoing" size={16} className="welcome-loading" />
-        </button>
-        <button id="auth-retry" className="primary" type="button" hidden={!failed} onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'sign_in' }); setShowOther(true); navigate('entry') }}>{m.welcomeAuthRetry}</button>
-        <button id="auth-resend" className="secondary" type="button" hidden={!waiting || attempt?.hint === undefined}
-          disabled={resendLocked} onClick={() => { void resend() }}>{m.welcomeResend}</button>
-        <button id="auth-qr" className="secondary" type="button" hidden={!waiting}
-          onClick={() => { if (attempt?.id !== undefined) void api.openSignIn(attempt.id) }}>{m.welcomeQr}</button>
-        <button id="auth-api-key" className="secondary" type="button" hidden onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'api-key' }); navigate('key') }}>{m.welcomeApiKey}</button>
-        <button id="auth-cancel" className="secondary" type="button" hidden={failed}
-          disabled={cancelling || phase === 'committing' || phase === 'succeeded' || (phase === 'initializing' && !attempt?.id)}
-          onClick={() => { void cancel() }}>{m.welcomeAuthCancel}</button>
-      </div>
-      <section id="recent-accounts" hidden={!showRecent} aria-label={m.welcomeRecentOther}>
-        {recent.map(account => (
-          <button key={account.accountNo} type="button" className="recent-account" onClick={() => { void start(account.accountNo) }}>
-            {account.avatarUrl
-              ? <img className="recent-avatar" alt="" src={account.avatarUrl} />
-              : <span className="recent-avatar">{(account.displayName ?? account.accountNo).slice(0, 1)}</span>}
-            <span>{account.displayName ?? account.telegramUsername ?? account.accountNo}</span>
-          </button>
-        ))}
-        <button id="recent-other" className="back" type="button" onClick={() => { setShowOther(true) }}>{m.welcomeRecentOther}</button>
-      </section>
-      <form id="telegram-form" className="key-field" hidden={page !== 'entry' || showRecent} onSubmit={(event) => { event.preventDefault(); void start(username) }}>
-        <label className="visually-hidden" htmlFor="telegram-user">{m.welcomeHintPlaceholder}</label>
-        <input id="telegram-user" autoCapitalize="off" autoCorrect="off" spellCheck={false}
-          placeholder={m.welcomeHintPlaceholder} aria-describedby="hint-note hint-error"
-          value={username} onChange={(event) => { setUsername(event.target.value); setHintError('') }} />
-        <p id="hint-note">{m.welcomeHintNote}</p>
-        <p id="hint-error" role="alert" hidden={hintError === ''}>{hintError}</p>
-      </form>
-      <div id="entry-actions" className="actions" hidden={page !== 'entry' || showRecent}>
-        <button id="sign-in" className="primary" type="submit" form="telegram-form" onClick={(event) => { event.preventDefault(); void api.analytics?.('auth_page_click', { button_name: 'sign_in' }); void start(username) }}>{m.welcomeSignIn}</button>
-        <button id="sign-qr" className="secondary" type="button" onClick={() => { void startQr() }}>{m.welcomeQr}</button>
-        <button ref={keyButton} id="api-key" className="secondary" type="button" hidden onClick={() => { void api.analytics?.('auth_page_click', { button_name: 'api-key' }); navigate('key') }}>{m.welcomeApiKey}</button>
-      </div>
       <div id="key-actions" className="actions" hidden={page !== 'key'}>
         <button id="save-key" className="primary" type="submit" form="key-form" disabled={busy || draft.trim() === ''}>{m.welcomeKeySave}</button>
         <button id="skip-key" className="secondary" type="button" disabled={busy} onClick={() => { void skip() }}>{m.welcomeKeyLater}</button>

@@ -135,7 +135,7 @@ export async function startKitoDeviceLogin(input: FetchInit = {}): Promise<KitoD
 }
 
 /** Result of asking Identity to deliver the same confirmation again. */
-export type KitoPushResult = 'accepted' | 'rate-limited' | 'expired' | 'busy'
+export type KitoPushResult = 'accepted' | 'rate-limited' | 'expired' | 'unsupported' | 'busy'
 
 /**
  * Ask Identity to deliver the existing confirmation to a Telegram username.
@@ -160,8 +160,8 @@ export async function pushKitoDeviceLoginHint(input: FetchInit & {
   )
   if (response.status === 202) return 'accepted'
   if (response.status === 429) return 'rate-limited'
-  // 409 is a session that is no longer waiting. 404 is an older server without
-  // this route; the original confirmation is still valid, so it stays on screen.
+  if (response.status === 404) return 'unsupported'
+  // 409 is a session that is no longer waiting.
   if (response.status === 401 || response.status === 409) return 'expired'
   return 'busy'
 }

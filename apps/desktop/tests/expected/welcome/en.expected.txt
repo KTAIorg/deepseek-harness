@@ -1,6 +1,7 @@
 Kito Harness
 Kito Harness
 Welcome to Kito Harness
-Build potential. Explore intelligence.
-Sign in with Telegram
-Use a QR code
+Scan the QR code, open Telegram, or push to your account.
+Refresh QR code
+Open Telegram to sign in
+Send

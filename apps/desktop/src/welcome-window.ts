@@ -66,7 +66,7 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
     active = false
     for (const channel of [
       WELCOME_IPC.analyticsEnabled, WELCOME_IPC.analytics, WELCOME_IPC.takeNotice, WELCOME_IPC.saveApiKey,
-      WELCOME_IPC.skip, WELCOME_IPC.start, WELCOME_IPC.resend, WELCOME_IPC.openQr, WELCOME_IPC.recent,
+      WELCOME_IPC.skip, WELCOME_IPC.start, WELCOME_IPC.push, WELCOME_IPC.resend, WELCOME_IPC.openQr, WELCOME_IPC.recent,
       WELCOME_IPC.forgetRecent, WELCOME_IPC.cancel, WELCOME_IPC.copyLink,
     ]) {
       ipcMain.removeHandler(channel)
@@ -108,6 +108,13 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
     if (hint !== undefined && typeof hint !== 'string') throw new Error('desktop welcome: invalid hint')
     return operations.startSignIn(hint)
   })
+  ipcMain.handle(WELCOME_IPC.push, async (event, id: unknown, hint: unknown) => {
+    assertSender(event)
+    if ((id !== undefined && typeof id !== 'string') || typeof hint !== 'string') {
+      throw new Error('desktop welcome: invalid push request')
+    }
+    return operations.pushSignIn(id as SignInAttemptId | undefined, hint)
+  })
   ipcMain.handle(WELCOME_IPC.resend, async (event, id: unknown) => {
     assertSender(event)
     if (typeof id !== 'string') throw new Error('desktop welcome: invalid attempt')
@@ -115,8 +122,8 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
   })
   ipcMain.handle(WELCOME_IPC.openQr, async (event, id: unknown) => {
     assertSender(event)
-    if (typeof id !== 'string') throw new Error('desktop welcome: invalid attempt')
-    await operations.openSignIn(id as SignInAttemptId)
+    if (id !== undefined && typeof id !== 'string') throw new Error('desktop welcome: invalid attempt')
+    await operations.openSignIn(id as SignInAttemptId | undefined)
   })
   ipcMain.handle(WELCOME_IPC.recent, async (event) => { assertSender(event); return operations.recentAccounts() })
   ipcMain.handle(WELCOME_IPC.forgetRecent, async (event, accountNo: unknown) => {

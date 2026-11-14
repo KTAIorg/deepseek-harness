@@ -43,6 +43,7 @@ const operations = {
   analyticsEnabled: async () => true,
   takeNotice: async () => undefined,
   startSignIn: async () => ({ links: { usageUrl: 'http://localhost/usage', topUpUrl: 'http://localhost/top_up' }, status: 'signed-out' as const, attempt: null }),
+  pushSignIn: async () => ({ links: { usageUrl: 'http://localhost/usage', topUpUrl: 'http://localhost/top_up' }, status: 'signed-out' as const, attempt: null }),
   resendSignIn: async () => ({ links: { usageUrl: 'http://localhost/usage', topUpUrl: 'http://localhost/top_up' }, status: 'signed-out' as const, attempt: null }),
   openSignIn: async () => undefined,
   recentAccounts: async () => [],
@@ -142,6 +143,15 @@ describe('desktop welcome window', () => {
     await expect(copy(own, 42)).rejects.toThrow('invalid attempt')
     await copy(own, 'attempt')
     expect(copySignInLink).toHaveBeenCalledExactlyOnceWith('attempt')
+    const push = electron.handlers.get(WELCOME_IPC.push)!
+    await expect(push({ ...own, senderFrame: {} }, 'attempt', '@ada')).rejects.toThrow('unowned frame')
+    await expect(push(own, 42, '@ada')).rejects.toThrow('invalid push request')
+    await expect(push(own, undefined, 42)).rejects.toThrow('invalid push request')
+    await push(own, undefined, '@ada')
+    const openQr = electron.handlers.get(WELCOME_IPC.openQr)!
+    await expect(openQr({ ...own, senderFrame: {} }, 'attempt')).rejects.toThrow('unowned frame')
+    await expect(openQr(own, 42)).rejects.toThrow('invalid attempt')
+    await openQr(own, undefined)
     window.once.mock.calls[0]![1]()
     expect(electron.handlers.size).toBe(0)
   })

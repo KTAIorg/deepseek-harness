@@ -1524,6 +1524,44 @@ async function main(): Promise<void> {
       return Promise.resolve()
     }
     openingWelcome ??= (async () => {
+      const ensureSignIn = (): KitoSignIn => {
+        kitoSignIn ??= createKitoSignIn({
+          publish: (state) => {
+            if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
+          },
+          saveIdentity: async (token) => {
+            const saved = await welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false }
+            // The model key is derived from a stored identity token, so it follows
+            // the same sign-in rather than asking the person for a second credential.
+            if (saved.ok) void persistKitoModelKey(token)
+            return saved
+          },
+          saveRefreshToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false },
+          onSuccess: () => {
+            void enterWorkspace({ activate: false }).then(() => { publishKitoAccount() }).catch(() => undefined)
+          },
+          remember: async (token) => {
+            const account = await fetchKitoAccount(token)
+            if (!account.signedIn || account.accountNo === undefined) return
+            await storeRecentAccount(resolveKitoHarnessHome(), {
+              accountNo: account.accountNo,
+              ...(account.displayName === undefined ? {} : { displayName: account.displayName }),
+              ...(account.telegramUsername === undefined ? {} : { telegramUsername: account.telegramUsername }),
+              ...(account.avatarUrl === undefined ? {} : { avatarUrl: account.avatarUrl }),
+            })
+          },
+          openLogin: async (url, fallbackUrl) => {
+            try {
+              await shell.openExternal(url)
+            } catch {
+              if (fallbackUrl !== undefined && fallbackUrl !== url) {
+                await shell.openExternal(fallbackUrl).catch(() => undefined)
+              }
+            }
+          },
+        })
+        return kitoSignIn
+      }
       welcomeWindow = await openWelcomeWindow(locale, {
         analytics: track,
         analyticsEnabled: () => Promise.resolve(analyticsEnabled),
@@ -1532,43 +1570,14 @@ async function main(): Promise<void> {
           pendingWelcomeNotice = undefined
           return Promise.resolve(notice)
         },
-        startSignIn: async (hint?: string) => {
-          kitoSignIn ??= createKitoSignIn({
-            publish: (state) => {
-              if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
-            },
-            saveIdentity: async (token) => {
-              const saved = await welcomeBackend?.saveNamed(KITO_IDENTITY_TOKEN_REF, token) ?? { ok: false }
-              // The model key is derived from a stored identity token, so it follows
-              // the same sign-in rather than asking the person for a second credential.
-              if (saved.ok) void persistKitoModelKey(token)
-              return saved
-            },
-            saveRefreshToken: async token => welcomeBackend?.saveNamed(KITO_IDENTITY_REFRESH_TOKEN_REF, token) ?? { ok: false },
-            onSuccess: () => {
-              void enterWorkspace({ activate: false }).then(() => { publishKitoAccount() }).catch(() => undefined)
-            },
-            remember: async (token) => {
-              const account = await fetchKitoAccount(token)
-              if (!account.signedIn || account.accountNo === undefined) return
-              await storeRecentAccount(resolveKitoHarnessHome(), {
-                accountNo: account.accountNo,
-                ...(account.displayName === undefined ? {} : { displayName: account.displayName }),
-                ...(account.telegramUsername === undefined ? {} : { telegramUsername: account.telegramUsername }),
-                ...(account.avatarUrl === undefined ? {} : { avatarUrl: account.avatarUrl }),
-              })
-            },
-            openLogin: (url) => { void shell.openExternal(url).catch(() => undefined) },
-          })
-          return kitoSignIn.start(hint)
-        },
+        startSignIn: (hint?: string) => ensureSignIn().start(hint),
+        pushSignIn: (id, hint) => ensureSignIn().push(id, hint),
         resendSignIn: async (id) => {
           if (kitoSignIn === undefined) throw new Error('desktop welcome: backend unavailable')
           return kitoSignIn.resend(id)
         },
-        openSignIn: (id) => {
-          kitoSignIn?.openQr(id)
-          return Promise.resolve()
+        openSignIn: async (id) => {
+          await ensureSignIn().openQr(id)
         },
         recentAccounts: () => readRecentAccounts(resolveKitoHarnessHome()),
         forgetRecentAccount: accountNo => dropRecentAccount(resolveKitoHarnessHome(), accountNo),
@@ -1594,6 +1603,11 @@ async function main(): Promise<void> {
       })
       const window = welcomeWindow
       window.once('closed', () => {
+        const activeAttempt = kitoSignIn?.state().attempt
+        if (!enteredWorkspace && activeAttempt !== null && activeAttempt !== undefined
+          && (activeAttempt.phase === 'initializing' || activeAttempt.phase === 'waiting-browser')) {
+          void kitoSignIn?.cancel(activeAttempt.id).catch(() => undefined)
+        }
         void welcomeBackend?.account.state().then((state) => {
           if (state.attempt !== null && !enteredWorkspace) return welcomeBackend?.account.cancel(state.attempt.id)
           return undefined

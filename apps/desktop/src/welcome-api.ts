@@ -12,6 +12,7 @@ export const WELCOME_IPC = {
   analyticsEnabled: 'dsh-welcome:analytics-enabled',
   skip: 'dsh-welcome:skip',
   start: 'dsh-welcome:start',
+  push: 'dsh-welcome:push',
   resend: 'dsh-welcome:resend',
   openQr: 'dsh-welcome:open-qr',
   recent: 'dsh-welcome:recent',
@@ -43,10 +44,16 @@ export interface WelcomeOperations {
    * @returns account state after starting a login attempt.
    */
   startSignIn(hint?: string): Promise<AccountView>
+  /**
+   * @param id - optional waiting attempt identifier.
+   * @param hint - Telegram username or KT account number to push confirmation to.
+   * @returns updated account state.
+   */
+  pushSignIn(id: SignInAttemptId | undefined, hint: string): Promise<AccountView>
   /** @param id - waiting attempt to deliver again. @returns the same confirmation. */
   resendSignIn(id: SignInAttemptId): Promise<AccountView>
-  /** @param id - waiting attempt whose https login page should open. */
-  openSignIn(id: SignInAttemptId): Promise<void>
+  /** @param id - optional waiting attempt whose Telegram confirmation opens. */
+  openSignIn(id?: SignInAttemptId): Promise<void>
   /** @returns accounts that signed in on this computer, newest first. */
   recentAccounts(): Promise<readonly RecentAccount[]>
   /** @param accountNo - local row to drop. @returns the remaining rows. */
