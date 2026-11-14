@@ -24,7 +24,7 @@
 .action {
   flex: none;
   padding: 6px 12px;
-  border: 1px solid var(--dsw-alias-border-l);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-interactive-bg);
   color: var(--dsw-alias-label-primary);
@@ -39,6 +39,6 @@
 }
 
 .action:focus-visible {
-  outline: 2px solid var(--dsw-alias-border-inverted);
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: 2px;
 }

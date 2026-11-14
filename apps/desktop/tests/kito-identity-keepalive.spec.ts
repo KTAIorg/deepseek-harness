@@ -14,7 +14,7 @@ function harness(overrides: Partial<Parameters<typeof createKitoIdentityKeepaliv
     return handle
   })
   const clearIntervalSpy = vi.fn()
-  const refresh = vi.fn(async () => 'fresh' as string | undefined)
+  const refresh = vi.fn<() => Promise<string | undefined>>(async () => 'fresh')
   const onRenewed = vi.fn()
   const keepalive = createKitoIdentityKeepalive({
     refresh,
@@ -131,7 +131,7 @@ describe('Kito Identity keepalive', () => {
   })
 
   it('works without a renewal callback', async () => {
-    const refresh = vi.fn(async () => 'fresh' as string | undefined)
+    const refresh = vi.fn<() => Promise<string | undefined>>(async () => 'fresh')
     const keepalive = createKitoIdentityKeepalive({
       refresh,
       setInterval: () => Symbol('interval'),
@@ -162,7 +162,7 @@ describe('Kito Identity keepalive', () => {
   it('uses the real timers and clock when no seams are given', async () => {
     vi.useFakeTimers()
     try {
-      const refresh = vi.fn(async () => 'fresh' as string | undefined)
+      const refresh = vi.fn<() => Promise<string | undefined>>(async () => 'fresh')
       const keepalive = createKitoIdentityKeepalive({ refresh, intervalMs: 1_000, minGapMs: 500 })
       keepalive.start()
       expect(refresh).toHaveBeenCalledTimes(1)

@@ -1,4 +1,6 @@
-vi.mock('../src/web-document.ts', () => ({ authenticateWebHost: async () => 'test-cookie', serveWebDocument: vi.fn(), forwardWebRequest: vi.fn() }))
+vi.mock('../src/web-document.ts', () => ({
+  authenticateWebHost: async () => 'test-cookie', serveWebDocument: vi.fn(), forwardWebRequest: vi.fn(), removeLegacyHostCookies: async () => {},
+}))
 /** Welcome startup uses the Host before transitioning to the workspace. */
 
 import { afterEach, expect, it, vi } from 'vitest'
@@ -31,6 +33,9 @@ const state = vi.hoisted(() => ({
   closeWelcome: vi.fn(),
   welcomeLocale: undefined as DesktopLocale | undefined,
   preference: 'zh',
+  themePreference: 'system',
+  kitoSignInState: { status: 'signed-out', attempt: null, links: { usageUrl: '', topUpUrl: '' } } as AccountView,
+  kitoSignInSuccess: undefined as (() => void) | undefined,
   hasApiKey: false,
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   listeners: new Map<string, (...args: unknown[]) => void>(),
@@ -38,7 +43,7 @@ const state = vi.hoisted(() => ({
   windowOptions: undefined as BrowserWindowConstructorOptions | undefined,
   menu: vi.fn(),
   operations: undefined as WelcomeOperations | undefined,
-  nativeTheme: { themeSource: 'system', shouldUseDarkColors: false },
+  nativeTheme: { themeSource: 'system', shouldUseDarkColors: false, on: vi.fn(), removeListener: vi.fn() },
 }))
 
 vi.mock('../src/crash-report.ts', async importOriginal => ({
@@ -71,7 +76,8 @@ vi.mock('electron', () => ({
     constructor(options: BrowserWindowConstructorOptions) { state.windowOptions = options }
     private ready: (() => void) | undefined
     webContents = { mainFrame: { url: 'dsh-app://app/' }, setWindowOpenHandler: vi.fn(),
-      on: vi.fn(), once: vi.fn(), send: vi.fn(), openDevTools: state.openDevTools }
+      on: vi.fn(), once: vi.fn(), send: vi.fn(), openDevTools: state.openDevTools,
+      executeJavaScript: vi.fn(async () => undefined) }
     static getAllWindows() { return [] }
     once(name: string, callback: () => void) { if (name === 'ready-to-show') this.ready = callback; return this }
     on() { return this }
@@ -81,14 +87,14 @@ vi.mock('electron', () => ({
     focus = state.focusWorkspace
     moveTop = state.moveTopWorkspace
     hide = vi.fn()
+    setBackgroundColor = vi.fn()
     show = state.showWorkspace
     showInactive = state.showInactiveWorkspace
     async loadURL(url: string) { state.contents = this.webContents; await state.loadWorkspace(url); this.ready?.() }
   },
-  net: { fetch: vi.fn() },
   nativeTheme: state.nativeTheme,
   session: { defaultSession: {
-    on: vi.fn(),
+    on: vi.fn(), cookies: {},
     setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), webRequest: { onBeforeSendHeaders: vi.fn() },
   } },
   protocol: { registerSchemesAsPrivileged: vi.fn(), handle: vi.fn() },
@@ -98,13 +104,27 @@ vi.mock('electron', () => ({
   },
   dialog: { showErrorBox: vi.fn(), showMessageBox: vi.fn() },
   Menu: { buildFromTemplate: state.menu, setApplicationMenu: vi.fn() },
-  nativeImage: { createFromPath: (path: string) => ({ path }) },
+  nativeImage: { createFromPath: (path: string) => Object.defineProperty({ path }, 'isEmpty', { value: () => true }) },
 }))
 // The Windows tray relabels through Menu as well; keep the menu call counts below platform-neutral.
 vi.mock('../src/tray.ts', () => ({ DesktopTray: class { relabel() {} dispose() {} } }))
 
 vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: () => ({ profile: '/profile' }) }))
-vi.mock('../src/settings.ts', () => ({ readDesktopSettings: () => ({ updates: { allowTestAuthPopupWindow: false } }) }))
+vi.mock('../src/desktop-log.ts', () => ({ startDesktopLog: () => ({ file: '/desktop-user-data/logs/main.log', close: () => undefined }) }))
+vi.mock('../src/kito-credentials.ts', () => ({ readStoredCredential: vi.fn(async () => undefined) }))
+vi.mock('../src/kito-sign-in.ts', () => ({
+  createKitoSignIn: (options: { onSuccess: () => void }) => {
+    state.kitoSignInSuccess = options.onSuccess
+    return {
+      start: async () => state.kitoSignInState,
+      resend: async () => state.kitoSignInState,
+      openQr: vi.fn(),
+      cancel: async () => state.kitoSignInState,
+      state: () => state.kitoSignInState,
+    }
+  },
+}))
+vi.mock('../src/settings.ts', () => ({ readDesktopSettings: async () => ({ updates: { allowTestAuthPopupWindow: false } }) }))
 vi.mock('../src/login-shell-environment.ts', async importOriginal => ({
   ...await importOriginal<typeof import('../src/login-shell-environment.ts')>(),
   readDesktopLoginShellEnvironment: async (base: NodeJS.ProcessEnv) => ({ environment: base, failures: [] }),
@@ -114,23 +134,27 @@ vi.mock('../src/project-manager.ts', () => ({ DesktopProjectManager: class {
   canRecoverProfile = vi.fn(() => true)
 } }))
 vi.mock('../src/host-process.ts', () => ({
+  DesktopHostFatalError: class DesktopHostFatalError extends Error {},
+  DesktopHostUncleanExitError: class DesktopHostUncleanExitError extends Error {},
   DesktopHostProcess: class {
     start = state.startHost
     stop = state.stopHost
     fetch() {
       return Promise.resolve(Response.json({
         loggedIn: false, hasApiKey: state.hasApiKey, writable: true, localePreference: state.preference,
+        themePreference: state.themePreference,
       }))
     }
   },
 }))
 vi.mock('../src/welcome-backend.ts', () => ({
-  connectDesktopWelcome: async () => ({
+  connectDesktopWelcome: () => ({
     analyticsEnabled: async () => false,
     readLocalePreference: async () => state.preference,
     read: async () => {
       await state.beforeRead()
-      return { loggedIn: false, hasApiKey: state.hasApiKey, writable: true, localePreference: state.preference }
+      return { loggedIn: false, hasApiKey: state.hasApiKey, writable: true,
+        localePreference: state.preference, themePreference: state.themePreference }
     },
     save: async () => ({ ok: true }),
     account: {
@@ -178,8 +202,11 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
   vi.resetModules()
   vi.clearAllMocks()
   state.preference = 'zh'
+  state.themePreference = updated ? 'dark' : 'light'
   state.hasApiKey = false
   state.operations = undefined
+  state.kitoSignInSuccess = undefined
+  state.kitoSignInState = { status: 'signed-out', attempt: null, links: { usageUrl: '', topUpUrl: '' } }
   state.accountState.mockResolvedValue({ status: 'signed-out', attempt: null, links: { usageUrl: '', topUpUrl: '' } })
   if (updated) vi.stubGlobal('process', { ...process, platform: 'win32', argv: ['desktop', '--updated'] })
   vi.useFakeTimers()
@@ -196,7 +223,10 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
   const reading = Promise.withResolvers<undefined>()
   const loading = Promise.withResolvers<undefined>()
   state.beforeRead.mockReturnValueOnce(reading.promise)
-  state.beforeWelcome.mockReturnValueOnce(loading.promise)
+  state.beforeWelcome.mockImplementationOnce(async () => {
+    expect(state.nativeTheme.themeSource).toBe(state.themePreference)
+    await loading.promise
+  })
   const activate = () => {
     state.appListeners.get('second-instance')!()
     state.appListeners.get('open-url')!({ preventDefault: vi.fn() }, 'kito-harness://open')
@@ -225,17 +255,14 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
   const attemptId = 'login' as NonNullable<AccountView['attempt']>['id']
   const account: AccountView = { status: 'signed-out', links: { usageUrl: '', topUpUrl: '' },
     attempt: { id: attemptId, phase: 'waiting-browser', authorizeUrl: 'https://example.test/login' } }
-  state.accountState.mockResolvedValue(account)
+  state.kitoSignInState = account
+  await state.operations!.startSignIn()
   await state.operations!.copySignInLink(attemptId)
-  expect(state.copy).toHaveBeenCalledExactlyOnceWith('https://example.test/login?theme=light')
-  state.nativeTheme.shouldUseDarkColors = true
-  await state.operations!.copySignInLink(attemptId)
-  expect(state.copy).toHaveBeenLastCalledWith('https://example.test/login?theme=dark')
-  state.nativeTheme.shouldUseDarkColors = false
+  expect(state.copy).toHaveBeenCalledExactlyOnceWith('https://example.test/login')
   await expect(state.operations!.copySignInLink('stale' as typeof attemptId)).rejects.toThrow('login link is unavailable')
-  state.accountState.mockResolvedValue({ ...account, attempt: { id: attemptId, phase: 'expired' } })
+  state.kitoSignInState = { ...account, attempt: { id: attemptId, phase: 'expired' } }
   await expect(state.operations!.copySignInLink(attemptId)).rejects.toThrow('login link is unavailable')
-  expect(state.copy).toHaveBeenCalledTimes(2)
+  expect(state.copy).toHaveBeenCalledTimes(1)
   await state.operations!.skip()
   expect(state.loadWorkspace).not.toHaveBeenCalled()
   expect(state.showWorkspace).toHaveBeenCalledOnce()
@@ -266,32 +293,11 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
   expect(state.dialogLocale!().id).toBe('en')
   expect(state.menu).toHaveBeenCalledTimes(initialMenus + 1)
   expect(await bootstrap(event)).toEqual({ languages: ['en-US'], preference: 'en' })
-  const welcomeCount = state.beforeWelcome.mock.calls.length
-  state.hasApiKey = true
-  state.accountListener!({ ...account, status: 'credential-stored', attempt: null })
-  state.accountListener!({ ...account, status: 'signed-out', attempt: null })
-  state.expiryListener!()
-  await vi.advanceTimersByTimeAsync(0)
-  expect(state.beforeWelcome).toHaveBeenCalledTimes(welcomeCount)
-  expect(await state.operations!.takeNotice()).toBeUndefined()
-  state.hasApiKey = false
-  state.accountListener!({ ...account, status: 'credential-stored', attempt: null })
-  state.accountListener!({ ...account, status: 'signed-out', attempt: null })
-  state.expiryListener!()
-  await vi.waitFor(() => { expect(state.beforeWelcome).toHaveBeenCalledTimes(welcomeCount + 1) })
-  expect(await state.operations!.takeNotice()).toBe('session-expired')
-  expect(await state.operations!.takeNotice()).toBeUndefined()
-  state.accountListener!({ ...account, status: 'signed-out', attempt: null })
-  await vi.advanceTimersByTimeAsync(0)
-  expect(await state.operations!.takeNotice()).toBeUndefined()
-  state.accountListener!({ ...account, status: 'credential-stored', attempt: null })
-  state.accountListener!({ ...account, status: 'signed-out', attempt: null })
-  await vi.advanceTimersByTimeAsync(0)
-  expect(await state.operations!.takeNotice()).toBeUndefined()
   state.showWorkspace.mockClear()
   state.focusWorkspace.mockClear()
   vi.stubEnv('DSH_DESKTOP_OPEN_DEVTOOLS', '1')
-  state.accountListener!({ ...account, status: 'credential-stored', attempt: { id: attemptId, phase: 'succeeded' } })
+  state.kitoSignInState = { ...account, status: 'credential-stored', attempt: { id: attemptId, phase: 'succeeded' } }
+  state.kitoSignInSuccess!()
   await vi.waitFor(() => { expect(state.showInactiveWorkspace).toHaveBeenCalledOnce() })
   expect(state.showWorkspace).not.toHaveBeenCalled()
   expect(state.focusWorkspace).not.toHaveBeenCalled()

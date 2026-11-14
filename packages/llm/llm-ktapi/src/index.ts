@@ -176,10 +176,10 @@ export function apply(ctx: Context, config: Config): void {
     if (hit?.value !== undefined) return hit.value
     const identity = await ctx.credentials.resolve(credentialRef(identityTokenRef))
     if (identity?.value === undefined) return undefined
-    throw new LlmError(
-      `KT sign-in is stored but ${apiKeyEnv} was not derived from it; the model list stays empty until the relay key is stored`,
-      'KTAI_RELAY_KEY_MISSING',
-    )
+    throw LlmError.fromFailure({
+      message: `KT sign-in is stored but ${apiKeyEnv} was not derived from it; the model list stays empty until the relay key is stored`,
+      code: 'KTAI_RELAY_KEY_MISSING',
+    })
   }
 
   const adapter = new PiAiAdapter({

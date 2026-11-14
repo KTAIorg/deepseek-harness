@@ -1,0 +1,42 @@
+[
+  {
+    "environment": "test",
+    "version": "1.2.3-alpha.1",
+    "keys": [
+      "kito-harness/0123456789abcdef0123456789abcdef/bin/mac-x64/stable/kito-harness-1.2.3-alpha.1-mac-x64.dmg",
+      "kito-harness/0123456789abcdef0123456789abcdef/bin/mac-x64/stable/kito-harness-1.2.3-alpha.1-mac-x64.zip",
+      "kito-harness/0123456789abcdef0123456789abcdef/bin/mac-x64/stable/kito-harness-1.2.3-alpha.1-mac-x64.zip.blockmap",
+      "kito-harness/0123456789abcdef0123456789abcdef/feeds/mac-x64/stable-mac.yml"
+    ]
+  },
+  {
+    "environment": "test",
+    "version": "1.2.3-rc.1",
+    "keys": [
+      "kito-harness/0123456789abcdef0123456789abcdef/bin/mac-x64/stable/kito-harness-1.2.3-rc.1-mac-x64.dmg",
+      "kito-harness/0123456789abcdef0123456789abcdef/bin/mac-x64/stable/kito-harness-1.2.3-rc.1-mac-x64.zip",
+      "kito-harness/0123456789abcdef0123456789abcdef/bin/mac-x64/stable/kito-harness-1.2.3-rc.1-mac-x64.zip.blockmap",
+      "kito-harness/0123456789abcdef0123456789abcdef/feeds/mac-x64/stable-mac.yml"
+    ]
+  },
+  {
+    "environment": "production",
+    "version": "1.2.3-alpha.1",
+    "keys": [
+      "kito-harness/bin/mac-x64/stable/kito-harness-1.2.3-alpha.1-mac-x64.dmg",
+      "kito-harness/bin/mac-x64/stable/kito-harness-1.2.3-alpha.1-mac-x64.zip",
+      "kito-harness/bin/mac-x64/stable/kito-harness-1.2.3-alpha.1-mac-x64.zip.blockmap",
+      "kito-harness/feeds/mac-x64/stable-mac.yml"
+    ]
+  },
+  {
+    "environment": "production",
+    "version": "1.2.3-rc.1",
+    "keys": [
+      "kito-harness/bin/mac-x64/stable/kito-harness-1.2.3-rc.1-mac-x64.dmg",
+      "kito-harness/bin/mac-x64/stable/kito-harness-1.2.3-rc.1-mac-x64.zip",
+      "kito-harness/bin/mac-x64/stable/kito-harness-1.2.3-rc.1-mac-x64.zip.blockmap",
+      "kito-harness/feeds/mac-x64/stable-mac.yml"
+    ]
+  }
+]

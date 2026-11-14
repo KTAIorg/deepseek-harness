@@ -3,6 +3,9 @@
   - button "关闭模型选择器"
   - searchbox "搜索模型…": ACMLG
   - button "清除搜索"
+  - text: 启用智能体团队协作
+  - button "关于智能体团队协作"
+  - switch "启用智能体团队协作"
   - group "模型":
     - region "搜索结果":
       - heading "搜索结果" [level=3]

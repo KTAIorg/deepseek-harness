@@ -70,12 +70,14 @@ MIT 许可原文：Permission is hereby granted, free of charge, to any person o
 
 当会话被其他写句柄占用时，模型选择失败提示用户退出其他正在运行的 DSH 后重试。
 
+会话级列表 slot `conversation.input.model.options` 在模型与推理等级选项下方追加控件。Owner props 提供 `locked`、`reportFailure(message)` 和 `dismiss()`，后者关闭菜单并同步聚焦触发按钮，供贡献方随后打开其他浮层；贡献方读取自身投影并提供专用命令。启用的开关按钮参与菜单键盘导航。
+
 -----
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-菜单采用共享 `MenuSurface` 材质，包括用于背景模糊的 macOS 底层；自定义内容遵循[菜单规则](../../../docs/web-styling.zh.md#component-rules)。composer 菜单通过 body portal 使用 fixed 定位。`useAnchoredPosition` 统一触发按钮的 fixed 定位坐标，并在滚动、窗口缩放、可见视口变化和菜单尺寸变化时更新位置。打开菜单和切换面板时，在绘制前同步完成测量和定位。菜单默认在按钮上方展开、右边缘对齐、间距为 8px；两个方向均可移动以保留 12px 视口边距，但不会翻转到按钮下方。面板尺寸不超过可见视口，键盘打开时也遵循此限制。模型名称超出面板宽度时以省略号截断，角标保持可见。模型与推理等级列表在面板高度限制内纵向滚动。
+菜单采用共享 `MenuSurface` 材质，包括用于背景模糊的 macOS 底层；自定义内容遵循[菜单规则](../../../docs/web-styling.zh.md#component-rules)。composer 菜单通过 body portal 使用 fixed 定位及 CSS Anchor Positioning，要求浏览器支持 `anchor-name`、`position-anchor` 和 `anchor()`。触发按钮和菜单共享唯一的锚点名称。CSS 优先将菜单放在按钮上方，右边缘对齐、间距为 8px，并将菜单限制在布局视口的 12px 内边距及桌面窗口边框间距内。桌面页面缩放导致 sticky 输入区重新布局时，面板仍保持与触发器的间距。定位不通过 JavaScript 读取按钮矩形或追踪视口变化。双指缩放时菜单随页面一起缩放，可以超出视觉视口，包括键盘打开时。模型名称超出面板宽度时以省略号截断，角标保持可见。模型与推理等级列表在面板高度限制内纵向滚动。
 
 <details>
 <summary>实现细节——点击展开</summary>

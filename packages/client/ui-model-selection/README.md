@@ -68,12 +68,14 @@ Catalog availability does not block sending with a saved selection; request exec
 
 When another writer owns the Session, model-selection failures tell the user to quit other running DSH instances and retry.
 
+The session-scoped `conversation.input.model.options` list slot appends controls below model and reasoning selection. Owner props expose `locked`, `reportFailure(message)`, and `dismiss()`, which closes the menu and synchronously focuses its trigger before another overlay opens; contributions read their own projections and supply narrow commands. Enabled switch buttons participate in the menu’s keyboard navigation.
+
 -----
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-Menus use the shared `MenuSurface` material, including the macOS backing for background blur; custom content follows the [menu rules](../../../docs/web-styling.md#component-rules). The composer menu uses a fixed body portal. `useAnchoredPosition` normalizes the trigger's fixed-position coordinates and updates placement on scroll, resize, visual-viewport changes, and menu-size changes. Opening the menu and changing panes measure and place the panel synchronously before paint. Placement starts above the trigger with right edges aligned and an 8px gap; both axes shift to retain a 12px viewport margin without flipping below the trigger. Panel dimensions are capped to the visible viewport, including while the keyboard is open. Model names ellipsize within the panel width while badges stay visible. Model and reasoning-effort lists scroll vertically within the panel height limit.
+Menus use the shared `MenuSurface` material, including the macOS backing for background blur; custom content follows the [menu rules](../../../docs/web-styling.md#component-rules). The composer menu uses a fixed body portal and CSS Anchor Positioning, which requires browser support for `anchor-name`, `position-anchor`, and `anchor()`. The trigger and menu share a unique anchor name. CSS prefers the position above the trigger with right edges aligned and an 8px gap, and keeps the menu within the layout viewport's 12px insets and desktop frame clearance. The trigger gap is preserved when desktop page zoom reflows the sticky composer. No JavaScript reads the trigger rectangle or tracks viewport changes for this placement. Pinch zoom scales the menu with the page; it may extend beyond the visual viewport, including while the keyboard is open. Model names ellipsize within the panel width while badges stay visible. Model and reasoning-effort lists scroll vertically within the panel height limit.
 
 <details>
 <summary>Implementation internals — click to expand</summary>

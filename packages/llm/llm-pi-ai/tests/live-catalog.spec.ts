@@ -20,7 +20,7 @@ describe('live model catalog', () => {
   })
 
   it('loads the account model list and maps each row\'s declared reasoning levels', async () => {
-    const fetchImpl = vi.fn(async () => Response.json({
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({
       data: [
         {
           id: 'deepseek-v4.1-flash',
@@ -64,27 +64,27 @@ describe('live model catalog', () => {
     expect(nonReasoning.reasoning).toBeUndefined()
     await adapter.listModels('kito')
     expect(fetchImpl).toHaveBeenCalledTimes(1)
-    expect(fetchImpl).toHaveBeenCalledWith('https://ktapi.cc/v1/models', expect.objectContaining({
-      headers: expect.objectContaining({
-        authorization: 'Bearer sk-test',
-        'X-Kito-Token-Name': 'kito',
-      }),
+    const [requestUrl, requestInit] = fetchImpl.mock.calls[0] ?? []
+    expect(requestUrl).toBe('https://ktapi.cc/v1/models')
+    expect(requestInit?.headers).toEqual(expect.objectContaining({
+      authorization: 'Bearer sk-test',
+      'X-Kito-Token-Name': 'kito',
     }))
   })
 
   it('sends deployment headers but never lets them replace the discovery-owned names', async () => {
-    const fetchImpl = vi.fn(async () => Response.json({ data: [{ id: 'k3-latest' }] }))
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ data: [{ id: 'k3-latest' }] }))
     await fetchLiveCatalog('https://ktapi.cc/v1', 'sk-test', {
       headers: { Authorization: 'Bearer attacker', ACCEPT: 'text/html', 'X-Deploy-Trace': 'on' },
       fetchImpl,
     })
-    expect(fetchImpl).toHaveBeenCalledWith('https://ktapi.cc/v1/models', expect.objectContaining({
-      headers: expect.objectContaining({
-        authorization: 'Bearer sk-test',
-        accept: 'application/json',
-        'user-agent': 'Kito/2.0',
-        'X-Deploy-Trace': 'on',
-      }),
+    const [requestUrl, requestInit] = fetchImpl.mock.calls[0] ?? []
+    expect(requestUrl).toBe('https://ktapi.cc/v1/models')
+    expect(requestInit?.headers).toEqual(expect.objectContaining({
+      authorization: 'Bearer sk-test',
+      accept: 'application/json',
+      'user-agent': 'Kito/2.0',
+      'X-Deploy-Trace': 'on',
     }))
   })
 })

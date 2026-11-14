@@ -51,7 +51,6 @@ export function initKitoSentry(appFacts: { packaged: boolean; release: string })
       release: appFacts.release,
       tracesSampleRate: 0,
       skipOpenTelemetrySetup: true,
-      sendDefaultPii: false,
       beforeSend(event) {
         return scrub(event)
       },

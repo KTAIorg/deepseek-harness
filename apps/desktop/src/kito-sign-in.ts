@@ -106,13 +106,13 @@ export function createKitoSignIn(options: {
       const normalized = hint === undefined ? '' : normalizeTelegramHint(hint)
       current = {
         id, abort, phase: 'initializing', status: 'signed-out',
-        ...(normalized === undefined || normalized === '' ? {} : { hint: normalized }),
+        ...(normalized === '' ? {} : { hint: normalized }),
       }
       publish()
       try {
         const challenge = await startKitoDeviceLogin({
           signal: abort.signal,
-          ...(normalized === undefined || normalized === '' ? {} : { hint: normalized }),
+          ...(normalized === '' ? {} : { hint: normalized }),
           ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
         })
         if (current.id !== id) return snapshot()
@@ -121,7 +121,7 @@ export function createKitoSignIn(options: {
         current.opaqueCode = challenge.opaqueCode
         current.authorizeUrl = challenge.loginUrl
         current.userCode = challenge.userCode
-        if (normalized !== undefined && normalized !== '') {
+        if (normalized !== '') {
           current.push = 'accepted'
           current.resendAt = Date.now() + PUSH_COOLDOWN_MS
         }
@@ -148,7 +148,7 @@ export function createKitoSignIn(options: {
         options.onSuccess()
         return state
       } catch (error) {
-        if (current?.id !== id) return snapshot()
+        if (current.id !== id) return snapshot()
         if (abort.signal.aborted) {
           current.phase = 'cancelled'
           return publish()
@@ -187,11 +187,11 @@ export function createKitoSignIn(options: {
       if (current?.id !== id || current.authorizeUrl === undefined) return
       options.openLogin?.(current.authorizeUrl)
     },
-    async cancel(id) {
-      if (current?.id !== id) return snapshot()
+    cancel(id) {
+      if (current?.id !== id) return Promise.resolve(snapshot())
       current.abort.abort()
       current.phase = 'cancelled'
-      return publish()
+      return Promise.resolve(publish())
     },
   }
 }

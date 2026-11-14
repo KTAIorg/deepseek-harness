@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { finishKitoDeviceLogin } from '../src/kito-identity.ts'
 import { createKitoSignIn } from '../src/kito-sign-in.ts'
 
+const urlOf = (input: RequestInfo | URL): string =>
+  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+
 describe('Kito welcome sign-in', () => {
   it('shows the Telegram code, then stores the Identity token', async () => {
     const published: string[] = []
@@ -16,11 +19,11 @@ describe('Kito welcome sign-in', () => {
       onSuccess: () => { succeeded = true },
       openLogin: (url) => { opened = url },
       fetchImpl: async (url, init) => {
-        const target = String(url)
+        const target = urlOf(url)
         if (target.endsWith('/identity/v1/device/sessions') && init?.method === 'POST') {
-          const headers = new Headers(init?.headers)
+          const headers = new Headers(init.headers)
           expect(headers.get('user-agent')).toBe('Kito/2.0')
-          const body = JSON.parse(String(init.body)) as { client_type: string }
+          const body = JSON.parse(typeof init.body === 'string' ? init.body : '') as { client_type: string }
           expect(body.client_type).toBe('kito_desktop')
           return new Response(JSON.stringify({
             session_id: 'sess', user_code: 'ABCD', opaque_code: 'opaque',
@@ -55,7 +58,7 @@ describe('Kito welcome sign-in', () => {
       opaqueCode: 'opaque',
       intervalMs: 0,
       fetchImpl: async (url, init) => {
-        const target = String(url)
+        const target = urlOf(url)
         if (target.endsWith('/identity/v1/device/sessions/sess') && init?.method === 'GET') {
           polls += 1
           if (polls === 1) throw new TypeError('fetch failed')
@@ -78,7 +81,7 @@ describe('Kito welcome sign-in', () => {
       saveIdentity: () => Promise.resolve({ ok: true }),
       onSuccess: () => undefined,
       fetchImpl: async (url, init) => {
-        const target = String(url)
+        const target = urlOf(url)
         if (target.includes('://ktapi.cc') || target.includes('/api/iam/')) {
           newapiCalls += 1
           return new Response('unexpected', { status: 500 })
@@ -112,8 +115,8 @@ describe('Kito welcome sign-in', () => {
       onSuccess: () => undefined,
       openLogin: (url) => { opened = url },
       fetchImpl: async (url, init) => {
-        const target = String(url)
-        if (init?.method === 'POST') bodies.push(JSON.parse(String(init.body)))
+        const target = urlOf(url)
+        if (init?.method === 'POST' && typeof init.body === 'string') bodies.push(JSON.parse(init.body))
         if (target.endsWith('/identity/v1/device/sessions') && init?.method === 'POST') {
           return new Response(JSON.stringify({
             session_id: 'sess', user_code: 'K7Q2', opaque_code: 'opaque',
@@ -138,7 +141,7 @@ describe('Kito welcome sign-in', () => {
     expect(bodies).toHaveLength(1)
     signIn.openQr(signIn.state().attempt!.id)
     expect(opened).toBe('https://t.me/bot?start=login_x')
-    signIn.cancel(signIn.state().attempt!.id)
+    await signIn.cancel(signIn.state().attempt!.id)
     await started
   })
 })

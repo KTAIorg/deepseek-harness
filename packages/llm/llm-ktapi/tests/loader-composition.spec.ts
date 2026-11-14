@@ -44,6 +44,9 @@ const pricing = {
 }
 
 /** @param url - request URL. @returns the gateway response a real deployment would send. */
+const urlOf = (input: RequestInfo | URL): string =>
+  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+
 function gateway(url: string): Response {
   const body = url.endsWith('/v1/models') ? listing : pricing
   return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
@@ -62,7 +65,7 @@ describe('real Loader composition', () => {
       '',
     ].join('\n'))
 
-    globalThis.fetch = (async (input: RequestInfo | URL) => gateway(String(input))) as typeof fetch
+    globalThis.fetch = async input => gateway(urlOf(input))
 
     const dependencies = {
       name: 'fixture-dependencies',
@@ -124,7 +127,7 @@ describe('real Loader composition', () => {
       '',
     ].join('\n'))
 
-    globalThis.fetch = (async (input: RequestInfo | URL) => gateway(String(input))) as typeof fetch
+    globalThis.fetch = async input => gateway(urlOf(input))
 
     const dependencies = {
       name: 'fixture-dependencies',
@@ -179,7 +182,7 @@ describe('real Loader composition', () => {
       '',
     ].join('\n'))
 
-    globalThis.fetch = (async (input: RequestInfo | URL) => gateway(String(input))) as typeof fetch
+    globalThis.fetch = async input => gateway(urlOf(input))
 
     const stored = new Map<string, string>()
     const dependencies = {
@@ -233,10 +236,10 @@ describe('real Loader composition', () => {
       live.on('llm/models-updated', () => { resolve() })
     })
     // An unrelated credential must not republish this route.
-    await live.credentials.set('SOME_OTHER_KEY' as never, 'sk-unrelated' as never)
+    await live.credentials.set('SOME_OTHER_KEY' as never, 'sk-unrelated')
     expect(published).toEqual([])
 
-    await live.credentials.set('KITO_NEWAPI_API_KEY' as never, 'sk-from-kito-login' as never)
+    await live.credentials.set('KITO_NEWAPI_API_KEY' as never, 'sk-from-kito-login')
     await republished
 
     expect((await live.llm.listModels(Ktapi.KTAI_PROVIDER)).map(model => model.id))
@@ -258,7 +261,7 @@ describe('real Loader composition', () => {
       '',
     ].join('\n'))
 
-    globalThis.fetch = (async (input: RequestInfo | URL) => gateway(String(input))) as typeof fetch
+    globalThis.fetch = async input => gateway(urlOf(input))
 
     const stored = new Map<string, string>([['KITO_IDENTITY_TOKEN', 'identity-access-token']])
     const dependencies = {

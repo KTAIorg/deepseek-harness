@@ -13,11 +13,14 @@ import {
 } from '../src/kito-identity.ts'
 import { consoleLogoutRequest, consoleRefreshRequest, establishKitoConsoleSession, parseSetCookie } from '../src/kito-wallet.ts'
 
+const urlOf = (input: RequestInfo | URL): string =>
+  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+
 describe('Kito account summary', () => {
   it('uses the Telegram display name and the shared NewAPI balance', async () => {
     const view = await fetchKitoAccount('token', {
       fetchImpl: async (url) => {
-        const target = String(url)
+        const target = urlOf(url)
         if (target.endsWith('/identity/v1/account/me')) {
           return new Response(JSON.stringify({ account: { displayName: ' Ada ', accountNo: 'KT1' } }), { status: 200 })
         }
@@ -34,7 +37,7 @@ describe('Kito account summary', () => {
   it('reads the nested Identity profile name', async () => {
     const view = await fetchKitoAccount('token', {
       fetchImpl: async (url) => {
-        if (String(url).endsWith('/identity/v1/account/me')) {
+        if (urlOf(url).endsWith('/identity/v1/account/me')) {
           return new Response(JSON.stringify({
             account: { accountNo: 'KT1' },
             profile: { displayName: ' 豆豆 ' },
@@ -74,7 +77,7 @@ describe('Kito account summary', () => {
   it('omits the balance when NewAPI does not report a quota', async () => {
     const view = await fetchKitoAccount('token', {
       fetchImpl: async (url) => {
-        if (String(url).endsWith('/identity/v1/account/me')) {
+        if (urlOf(url).endsWith('/identity/v1/account/me')) {
           return new Response(JSON.stringify({ displayName: 'Ada' }), { status: 200 })
         }
         return new Response(JSON.stringify({ data: {} }), { status: 200 })
@@ -86,7 +89,7 @@ describe('Kito account summary', () => {
   it('keeps the KT account number and the Telegram username for support copy', async () => {
     const view = await fetchKitoAccount('token', {
       fetchImpl: async (url) => {
-        if (String(url).endsWith('/identity/v1/account/me')) {
+        if (urlOf(url).endsWith('/identity/v1/account/me')) {
           return new Response(JSON.stringify({
             account: { displayName: 'Ada', accountNo: 'KT251018ABCD' },
             identities: [
@@ -116,7 +119,7 @@ describe('Kito account summary', () => {
     const session = await establishKitoConsoleSession('identity-token', {
       walletUrl: 'https://www.ktapi.cc/wallet',
       fetchImpl: async (url, init) => {
-        seenUrl = String(url)
+        seenUrl = urlOf(url)
         seenAuthorization = new Headers(init?.headers).get('authorization') ?? ''
         const headers = new Headers()
         headers.append('set-cookie', 'new_api_refresh=sid.secret; Path=/api/user/auth; HttpOnly; Secure; SameSite=Strict')
@@ -242,7 +245,7 @@ describe('Kito account summary', () => {
   it('renews the Identity token through the device refresh endpoint', async () => {
     const requests: Array<{ url: string; body: unknown }> = []
     const reply = (status: number, body: unknown) => async (url: RequestInfo | URL, init?: RequestInit) => {
-      requests.push({ url: String(url), body: JSON.parse(String(init?.body)) })
+      requests.push({ url: urlOf(url), body: JSON.parse(typeof init?.body === 'string' ? init.body : '') })
       return new Response(JSON.stringify(body), { status })
     }
     await expect(refreshKitoIdentity('refresh-1', { baseUrl: 'https://login.test', fetchImpl: reply(200, { access_token: 'fresh' }) }))

@@ -135,7 +135,7 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
   const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as ArrayLike<number> | string)
     size += buffer.length
     if (size > MAX_BODY_BYTES) return undefined
     chunks.push(buffer)

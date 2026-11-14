@@ -10,6 +10,8 @@ export interface WelcomeState {
   readonly hasApiKey: boolean
   readonly writable: boolean
   readonly localePreference: string | null
+  /** Effective Host theme preference; absent or invalid optional theme settings use system appearance. */
+  readonly themePreference: 'light' | 'dark' | 'system'
 }
 
 /** Narrow operations available to the native welcome flow. */
@@ -19,7 +21,7 @@ export interface DesktopWelcomeBackend {
   readonly account: DesktopAccountBackend
   /** @param event - desktop-owned fields. @returns after local Host intake. */
   report(event: ProductEvent): Promise<void>
-  /** @returns Configured-key presence and the shared language preference, without credential values. */
+  /** @returns Configured-key presence and the shared language and theme preferences, without credential values. */
   read(): Promise<WelcomeState>
   /** @returns The saved UI language without account or provider requests. */
   readLocalePreference(): Promise<string | null>
@@ -39,20 +41,18 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Authenticate the native HTTP client through the Web application's launch URL.
- * @param authenticatedUrl - URL supplied by the running Desktop Host.
- * @param send - Electron session fetch, retaining the Web authentication cookie.
+ * Connect the native HTTP client to the Desktop Host; every request sends `cookie` explicitly and uses no cookie jar.
+ * @param hostUrl - URL of the running Desktop Host; only its origin is used.
+ * @param cookie - Cookie header returned by `authenticateWebHost` for this Host.
+ * @param send - HTTP client for Host requests.
  * @returns metadata reads and write-only credential operations over standard RPC.
  */
-export async function connectDesktopWelcome(
-  authenticatedUrl: string,
-  send: (input: string, init?: RequestInit) => Promise<Response>,
-  cookies: () => Promise<string> = () => Promise.resolve(''),
-): Promise<DesktopWelcomeBackend> {
-  const origin = new URL(authenticatedUrl).origin
-  const authenticated = await send(authenticatedUrl, { credentials: 'include' })
-  await authenticated.body?.cancel()
-  if (!authenticated.ok) throw new Error('desktop welcome: Web authentication failed')
+export function connectDesktopWelcome(
+  hostUrl: string,
+  cookie: string,
+  send: (input: string, init?: RequestInit) => Promise<Response> = fetch,
+): DesktopWelcomeBackend {
+  const origin = new URL(hostUrl).origin
   const invoke = async (
     request: { namespace: string; method: string; args: Record<string, unknown> },
     signal?: AbortSignal,
@@ -60,8 +60,8 @@ export async function connectDesktopWelcome(
     const rpcId = randomUUID()
     const method = `${request.namespace}/${request.method}`
     const response = await send(new URL(`/api/${method}`, origin).href, {
-      method: 'POST', credentials: 'include', redirect: 'error', ...(signal === undefined ? {} : { signal }),
-      headers: { 'content-type': 'application/json' },
+      method: 'POST', redirect: 'error', ...(signal === undefined ? {} : { signal }),
+      headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({ type: 'client-request', rpcId, method, payload: { args: request.args } }),
     })
     if (!response.ok) throw new Error(`desktop welcome: ${method} returned HTTP ${response.status}`)
@@ -77,7 +77,7 @@ export async function connectDesktopWelcome(
     }
     return envelope.result.value
   }
-  const account = desktopAccountBackend(origin, invoke, cookies)
+  const account = desktopAccountBackend(origin, invoke, cookie)
   const independentAccount = process.env.DSH_CLIENT_BUILD_PROFILE === 'kito' || process.env.DSH_CLIENT_BUILD_PROFILE === 'local'
   const settingsAndReference = async () => {
     const settings = await invoke({ namespace: 'settings', method: 'describe', args: {} })
@@ -94,6 +94,14 @@ export async function connectDesktopWelcome(
       throw new Error('desktop welcome: invalid locale preference')
     }
     return locale.value.preference ?? null
+  }
+  const themePreference = (namespaces: unknown[]): WelcomeState['themePreference'] => {
+    const theme = namespaces.find(item => record(item) && item.ns === 'ui-theme')
+    if (theme === undefined) return 'system'
+    const preference = record(theme) && record(theme.value) ? theme.value.preference : undefined
+    if (preference === 'light' || preference === 'dark' || preference === 'system') return preference
+    console.warn('desktop appearance: invalid Host theme preference; using system appearance')
+    return 'system'
   }
   const read = async (): Promise<WelcomeState> => {
     const { settings, ref } = await settingsAndReference()
@@ -115,7 +123,7 @@ export async function connectDesktopWelcome(
         return record(value) && typeof value.apiKeyEnv === 'string' ? [value.apiKeyEnv] : []
       }))
     }
-    const unique = [...new Set([...(ref === undefined ? [] : [ref]), ...refs])]
+    const unique = [...new Set([ref, ...refs])]
     const states: Record<string, unknown> = {}
     // credentials.describe accepts at most 64 references per request.
     for (let offset = 0; offset < unique.length; offset += 64) {
@@ -123,22 +131,24 @@ export async function connectDesktopWelcome(
       if (!record(batch)) throw new Error('desktop welcome: invalid credential metadata')
       Object.assign(states, batch)
     }
-    if (ref !== undefined && states[ref] !== undefined && !record(states[ref])) throw new Error('desktop welcome: missing credential metadata')
-    const identityConfigured = ref !== undefined && record(states[ref]) && states[ref].configured === true
+    if (states[ref] !== undefined && !record(states[ref])) throw new Error('desktop welcome: missing credential metadata')
+    const identityConfigured = record(states[ref]) && states[ref].configured === true
     if (independentAccount) {
       return {
         loggedIn: identityConfigured,
         hasApiKey: identityConfigured,
         writable: false,
         localePreference: localePreference(namespaces),
+        themePreference: themePreference(namespaces),
       }
     }
     const accountState = await account.state()
     return {
       loggedIn: accountState.status === 'credential-stored' || identityConfigured,
       hasApiKey: identityConfigured || Object.values(states).some(value => record(value) && value.configured === true),
-      writable: ref !== undefined && record(states[ref]) && states[ref].writable === true,
+      writable: record(states[ref]) && states[ref].writable === true,
       localePreference: localePreference(namespaces),
+      themePreference: themePreference(namespaces),
     }
   }
   return {
@@ -160,7 +170,6 @@ export async function connectDesktopWelcome(
       if (!/^[\x21-\x7e]+$/.test(apiKey)) return { ok: false }
       try {
         const { ref } = await settingsAndReference()
-        if (ref === undefined) return { ok: false }
         await invoke({ namespace: 'credentials', method: 'set', args: { ref, value: apiKey } })
         return { ok: true }
       } catch {

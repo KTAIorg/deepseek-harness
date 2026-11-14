@@ -6,14 +6,14 @@
 
 规范来源：kt-agent-skills/oss-fork-maintenance
 
-- **当前基线**：`kito-harness-v0.2.2-rc.6`（`cc2b31b28b`，2026-11-08）。
+- **当前基线**：`kito-harness-v0.2.2-rc.10` + 上游 `dsh-v0.2.2-rc.3`（`38a6a5c965`，2026-11-14）。
 
 ## 仓库角色
 
 - `upstream` = <https://github.com/deepseek-ai/deepseek-harness>（只读，禁止 push）
 - `origin` = KTAIorg/deepseek-harness（KT fork，真 fork，保留完整上游历史）
 
-上游是 MIT 协议的 TypeScript pnpm monorepo，默认分支 `master`。同步检查用 `upstream/master` 与发行 tag，不用 fork 的 `main`。当前基线是发行 tag `kito-harness-v0.2.2-rc.6`（`cc2b31b28b`，2026-11-08）；上一个上游对比点是 `66491b05`（`release: dsh@0.2.2-rc.1`）。公共 API 仍是 pre-stable，只合已发行 tag，不追 `master` HEAD。
+上游是 MIT 协议的 TypeScript pnpm monorepo，默认分支 `master`。同步检查用 `upstream/master` 与发行 tag，不用 fork 的 `main`。当前同步基线已合入上游发行 tag `dsh-v0.2.2-rc.3`（`38a6a5c965`）；上一个上游对比点是 `66491b05`（`release: dsh@0.2.2-rc.1`）。公共 API 仍是 pre-stable，只合已发行 tag，不追 `master` HEAD。
 
 ## 分支模型
 
@@ -63,14 +63,14 @@
 
 ## 验证清单
 
-- [ ] `pnpm install --frozen-lockfile` + `pnpm run build` 通过
-- [ ] `node apps/cli/lib/bin.js web` 本地启动，`/` 返回 200
+- [x] `pnpm install --frozen-lockfile` + `pnpm run build`（与 `pnpm run build:kito`）通过
+- [x] `node apps/cli/lib/bin.js web` 本地启动，带登录 cookie 访问 `/` 返回 200
 - [ ] CI 构建镜像（linux/amd64）推送 GHCR 成功
 - [ ] TEST 环境 rollout 完成，nginx sidecar `/` 探测 200
 - [ ] KT 定制域回归：镜像 digest 写回 gitops-test / gitops-prod 链路正常
 - [ ] 认证门面仍是 Service 唯一入口，dsh 不直接对 Pod 网络暴露
-- [ ] `node --test kt/kito-provider/tests/*.test.js`
-- [ ] 上游安全 fix 确认已含（列出 from→to 中的 security 相关项）
+- [x] `node --test kt/kito-provider/tests/*.test.js`（5/5 通过）
+- [x] 上游安全 fix 确认已含（列出 from→to 中的 security 相关项：`5868dbc357`/`93bef27ec7` 清除默认 Electron session 中的遗留 Host auth cookie；`076527b6a0` terminal-panel 拒绝过期 sandbox 策略下的输入；`e6cd6fdc61`/`f8633966f5`/`41a1aa8a97` 校验可写目录授权与 Windows ACL 范围；`a93b1ecdf1`/`91f9d14fa8` 独立子进程权限与 AX 遍历上限；主进程 `devToolsEnabled` 保持仅 `!app.isPackaged` 开放）
 
 桌面壳与 Kito 插件合入后，另加：KT Identity 登录、`ktapi.cc` 路由、安装包不内置共享 API key。
 
@@ -83,3 +83,4 @@
 | 2026-10-18 | `dsh-v0.2.1-alpha.1`→`dsh-v0.2.1-rc.2`（`687f282e86`） | 桌面 README、安装文案、产物名和上传清单。上游新增目录替换文案、未公证产物后缀和 nightly-only 清单；Kito 产品名、`kito-harness` 路径和 `updates.ktyun.cc` 保留 | 本地开发客户端窗口版本 `0.2.1-rc.2`，模型菜单为 Kito 网关目录 | KT |
 | 2026-11-07 | `dsh-v0.2.1-rc.2`→`dsh@0.2.2-rc.1`（`66491b05`） | 上游主干合并；KT 侧保留品牌、桌面壳、部署清单与治理文档（白名单 1–6） | 构建 + 桌面安装包冒烟 | KT |
 | 2026-11-08 | 无新上游 tag；本仓 `0.2.2-rc.1`→`0.2.2-rc.6` | 无上游冲突。期间新增白名单 7–9（`llm-ktapi`、`llm-pi-ai` live catalog、Kito 品牌/账号/模型选择器、桌面壳扩展文件） | `pnpm run build` + 各包测试 + 桌面发布流水线 | KT |
+| 2026-11-14 | `dsh@0.2.2-rc.1`→`dsh-v0.2.2-rc.3`（`38a6a5c965`） | 基于 `feat/kito-telegram-login`（`kito-harness-v0.2.2-rc.10`）合并 1,574 个上游提交。按 ADR 0002/0004/0005 保留 Kito 品牌、`ui-brand-kito`（补齐 ja/es/fr/de/ru/pt 词典）、`ui-settings-account`、`ui-model-selection`、`llm-ktapi`（清单版本升 `0.2.2-rc.3`，文档升 `package-bundle`）、桌面壳（`kito-harness`、`updates.ktyun.cc`、`~/.kito-harness`、`kitoSignIn`/keepalive、`devToolsEnabled`、`welcome-window` dispose 修复）；CSS 对齐 0.5px hairline 与 focus ring / state token；重建 `pnpm-lock.yaml` 与 `THIRD_PARTY_NOTICES.md` | `typecheck`（5/5）、`lint`、`build`（10/10）、`build:kito`（10/10）、`dsh web` GET `/` 200、`kt/kito-provider`（5/5）、`main-startup`（187/187）、`welcome-startup`（2/2）、`desktop-rollout`（32/32）、`desktop-upload-plan`（23/23）、`desktop-channel-version`（5/5）、`ui-theme` / `ui-brand-kito` / `ui-settings-account` / `ui-model-selection`、doc-standard / notices / locale-parity 全绿 | KT |

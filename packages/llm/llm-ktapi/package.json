@@ -1,6 +1,6 @@
 {
   "name": "@kito/dsh-llm-ktapi",
-  "version": "0.2.2-rc.1",
+  "version": "0.2.2-rc.3",
   "description": "The ktapi model catalog: normalizes the gateway listing, applies the curated Kito picks, and attaches pricing.",
   "repository": {
     "type": "git",

@@ -10,14 +10,10 @@
     "label": "检查更新…"
   },
   {
+    "label": "打开日志目录"
+  },
+  {
     "label": "管理 dsh 命令…"
-  },
-  {
-    "type": "separator"
-  },
-  {
-    "role": "toggleDevTools",
-    "label": "开发者工具"
   },
   {
     "type": "separator"

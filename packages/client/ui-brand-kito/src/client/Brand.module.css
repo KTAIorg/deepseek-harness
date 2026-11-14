@@ -160,7 +160,7 @@
   gap: 2px;
   min-width: 0;
   padding: 10px 12px;
-  border: 1px solid var(--dsw-alias-border-l);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-l1);
 }
@@ -213,12 +213,12 @@
 }
 
 .factCopy[data-copied='true'] {
-  color: var(--dsw-alias-state-fg-success, var(--dsw-alias-label-primary));
+  color: var(--dsw-alias-state-success-primary);
 }
 
 @media (hover: hover) {
   .factCopy:hover {
-    border-color: var(--dsw-alias-border-l);
+    border-color: var(--dsw-alias-border-l2);
     background: var(--dsw-alias-interactive-bg-hover);
     color: var(--dsw-alias-label-primary);
   }
@@ -371,7 +371,7 @@
 .panelRetry {
   flex: none;
   padding: 4px 10px;
-  border: 1px solid var(--dsw-alias-border-l);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-interactive-bg);
   color: var(--dsw-alias-label-primary);
@@ -388,7 +388,7 @@
   gap: 12px;
   min-width: 0;
   padding: 10px 12px;
-  border: 1px solid var(--dsw-alias-border-l);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-l1);
 }
@@ -458,14 +458,14 @@
 
 @media (hover: hover) {
   .signOutButton:hover {
-    border-color: var(--dsw-alias-border-l);
+    border-color: var(--dsw-alias-border-l2);
     background: var(--dsw-alias-interactive-bg-hover);
     color: var(--dsw-alias-label-primary);
   }
 }
 
 .signOutButton:focus-visible {
-  outline: 2px solid var(--dsw-alias-border-inverted);
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: 2px;
 }
 
@@ -477,7 +477,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px solid var(--dsw-alias-border-l);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-interactive-bg);
   color: var(--dsw-alias-label-primary);
@@ -489,7 +489,7 @@
 }
 
 .panelButton:focus-visible {
-  outline: 2px solid var(--dsw-alias-border-inverted);
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: 2px;
 }
 

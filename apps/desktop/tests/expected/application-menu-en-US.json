@@ -10,14 +10,10 @@
     "label": "Check for Updates…"
   },
   {
+    "label": "Open Log Folder"
+  },
+  {
     "label": "Manage dsh Command…"
-  },
-  {
-    "type": "separator"
-  },
-  {
-    "role": "toggleDevTools",
-    "label": "Developer tools"
   },
   {
     "type": "separator"

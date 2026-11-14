@@ -75,7 +75,7 @@ async function finishDesktopLink(
     redirect: 'error',
   })
   if (!sourceResponse.ok) throw new Error('kito desktop login source rejected')
-  const source = await sourceResponse.json() as DesktopLoginSource
+  const source = await sourceResponse.json() as Partial<DesktopLoginSource> | null
   if (!source?.accountId) throw new Error('kito desktop login source rejected')
   const current = await deps.currentAccountId()
   if (current && current !== source.accountId && !source.allowSwitch) {

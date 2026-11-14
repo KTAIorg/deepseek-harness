@@ -8,7 +8,7 @@ import { parseProxy, proxyRequest, systemProxy } from '../src/kito-proxy.ts'
 const opened: Server[] = []
 
 afterEach(async () => {
-  await Promise.all(opened.splice(0).map(async server => await new Promise<void>((resolve) => {
+  await Promise.all(opened.splice(0).map(server => new Promise<void>((resolve) => {
     server.closeAllConnections()
     server.close(() => { resolve() })
   })))
