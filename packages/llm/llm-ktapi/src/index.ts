@@ -133,6 +133,9 @@ function profileOf(options: Options, snapshot: KtapiCatalogSnapshot | undefined)
     apiKeyEnv: options.apiKeyEnv,
     api: 'openai-completions',
     baseURL: options.baseURL,
+    // ktapi forwards OpenAI chat-completions payloads to DeepSeek and other
+    // upstreams that reject role "developer", so system instructions stay "system".
+    compat: { supportsDeveloperRole: false },
     models,
   }
 }

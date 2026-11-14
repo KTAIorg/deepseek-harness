@@ -1,3 +1,4 @@
+import { createServer } from 'node:http'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -5,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as Ktapi from '../src/index.ts'
 
@@ -112,6 +113,87 @@ describe('real Loader composition', () => {
     expect(resolved.context?.contextWindow).toBe(128_000)
     expect(resolved.reasoning?.efforts.map(level => level.id)).toEqual(['off', 'low', 'medium', 'high', 'max'])
     expect(resolved.reasoning?.defaultEffort).toBeUndefined()
+  })
+
+  it('sends system instructions with role system rather than developer for reasoning models', { timeout: 60_000 }, async () => {
+    let requestBody: { messages?: Array<{ role: string }> } | undefined
+    const server = createServer((req, res) => {
+      let raw = ''
+      req.setEncoding('utf8')
+      req.on('data', (chunk: string) => { raw += chunk })
+      req.on('end', () => {
+        if (req.url === '/v1/chat/completions') {
+          requestBody = JSON.parse(raw) as { messages?: Array<{ role: string }> }
+          res.writeHead(200, { 'content-type': 'text/event-stream' })
+          res.end('data: {"id":"1","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+          return
+        }
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify(req.url?.includes('/models') ? listing : pricing))
+      })
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    try {
+      const address = server.address() as { port: number }
+      root = await mkdtemp(join(tmpdir(), 'dsh-llm-ktapi-system-role-'))
+      const configPath = join(root, 'cordis.yml')
+      await writeFile(configPath, [
+        '- name: fixture-dependencies',
+        "- name: '@deepseek-ai/dsh-llm'",
+        "- name: '@kito/dsh-llm-ktapi'",
+        '  config:',
+        `    baseURL: 'http://127.0.0.1:${String(address.port)}/v1'`,
+        '',
+      ].join('\n'))
+
+      const dependencies = {
+        name: 'fixture-dependencies',
+        apply(ctx: Context) {
+          ctx.provide('credentials', {
+            resolve: async (ref: { value?: unknown }) => ({
+              value: 'sk-from-kito-login',
+              source: 'file',
+              ref,
+            }),
+          } as never)
+        },
+      }
+
+      context = new Context()
+      context.baseUrl = pathToFileURL(root).href + '/'
+      await context.plugin(Loader)
+      context.loader.builtins.include = Include
+      const modules = new Map<string, unknown>([
+        ['fixture-dependencies', dependencies],
+        ['@deepseek-ai/dsh-llm', LlmRuntime],
+        ['@kito/dsh-llm-ktapi', Ktapi],
+      ])
+      context.loader.internal = {
+        version: 'v2',
+        async import(specifier: string) {
+          if (!modules.has(specifier)) throw new Error(`unexpected Loader import: ${specifier}`)
+          return modules.get(specifier)
+        },
+      } as unknown as NonNullable<typeof context.loader.internal>
+      await context.loader.create({
+        name: 'cordis:include',
+        config: { path: pathToFileURL(configPath).href },
+      })
+      await context.loader.await()
+
+      const chunks: unknown[] = []
+      for await (const chunk of context.llm.stream({
+        provider: Ktapi.KTAI_PROVIDER,
+        model: 'deepseek-latest',
+        reasoningEffort: ReasoningEffortId('high'),
+        system: 'system instructions',
+        messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+      })) chunks.push(chunk)
+      expect(chunks.length).toBeGreaterThan(0)
+      expect(requestBody?.messages?.map(message => message.role)).toEqual(['system', 'user'])
+    } finally {
+      await new Promise<void>((resolve) => { server.close(() => { resolve() }); server.closeAllConnections() })
+    }
   })
 
   it('serves the curated shortlist when showAllModels is off', { timeout: 60_000 }, async () => {
