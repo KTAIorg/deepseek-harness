@@ -8,12 +8,19 @@ import {
   criticalRetryDelayMs,
   fetchKitoAccount,
   fetchKitoAccountBalanceByKey,
+  fetchKitoProfile,
   KITO_CONSOLE_PAGES,
   newapiQuotaToUsd,
   refreshKitoIdentity,
   spendableFromAccountUsage,
 } from '../src/kito-identity.ts'
-import { consoleLogoutRequest, consoleRefreshRequest, establishKitoConsoleSession, parseSetCookie } from '../src/kito-wallet.ts'
+import {
+  consoleLogoutRequest,
+  consoleRefreshRequest,
+  establishKitoConsoleSession,
+  parseSetCookie,
+  resolveKitoConsoleDeviceId,
+} from '../src/kito-wallet.ts'
 
 const urlOf = (input: RequestInfo | URL): string =>
   typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
@@ -133,6 +140,53 @@ describe('Kito account summary', () => {
     expect(seenAuthorization).toBe('Bearer identity-token')
     expect(session.pageUrl).toBe('https://www.ktapi.cc/wallet')
     expect(session.cookies.map(item => item.name)).toEqual(['new_api_refresh', 'new_api_has_session'])
+  })
+
+  it('fetches profile without touching NewAPI and persists one stable console device id', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'kito-device-'))
+    const first = await resolveKitoConsoleDeviceId(home)
+    const second = await resolveKitoConsoleDeviceId(home)
+    expect(first).toMatch(/^[0-9a-f-]{36}$/i)
+    expect(second).toBe(first)
+
+    const urls: string[] = []
+    const profile = await fetchKitoProfile('id-token', {
+      fetchImpl: async (url) => {
+        urls.push(urlOf(url))
+        return new Response(JSON.stringify({ account: { displayName: 'Ada', accountNo: 'KT1' } }), { status: 200 })
+      },
+    })
+    expect(urls).toEqual(['https://login.ktyun.cc/identity/v1/account/me'])
+    expect(profile).toEqual({ signedIn: true, displayName: 'Ada', accountNo: 'KT1' })
+
+    const withKey = await fetchKitoAccount('id-token', {
+      apiKey: 'sk-managed',
+      fetchImpl: async (url) => {
+        urls.push(urlOf(url))
+        if (urlOf(url).endsWith('/identity/v1/account/me')) {
+          return new Response(JSON.stringify({ account: { displayName: 'Ada', accountNo: 'KT1' } }), { status: 200 })
+        }
+        return new Response(JSON.stringify({ data: { remaining_usd: 99.5 } }), { status: 200 })
+      },
+    })
+    expect(urls.some(url => url.includes('/api/iam/ensure'))).toBe(false)
+    expect(withKey).toEqual({ signedIn: true, displayName: 'Ada', accountNo: 'KT1', balance: 99.5 })
+  })
+
+  it('surfaces HTTP status when openConsole rejects without crashing the route', async () => {
+    const errors: unknown[] = []
+    const response = await handleKitoAppRoute(new Request('dsh-app://app/kito/open?target=usage', { method: 'POST' }), {
+      showWelcome: () => undefined,
+      openWallet: async () => undefined,
+      openConsole: async () => {
+        const err = Object.assign(new Error('session limit'), { status: 409 })
+        throw err
+      },
+      onConsoleError: error => errors.push(error),
+      readToken: async () => 'stored-token',
+    })
+    expect(response?.status).toBe(409)
+    expect(errors).toHaveLength(1)
   })
 
   it('opens the signed-in wallet from the account click and asks to log in when no account is stored', async () => {

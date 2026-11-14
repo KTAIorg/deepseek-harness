@@ -89,6 +89,26 @@ describe('proxy tunnelling', () => {
     expect(tunnels).toEqual([`127.0.0.1:${String(targetPort)}`])
   })
 
+  it('preserves multiple Set-Cookie headers across a proxy tunnel', { timeout: 20_000 }, async () => {
+    const targetPort = await listen(createHttpServer((_request, response) => {
+      response.setHeader('set-cookie', [
+        'new_api_refresh=sid.secret; Path=/api/user/auth; Expires=Thu, 14 Dec 2026 08:00:00 GMT; HttpOnly; SameSite=Strict',
+        'new_api_has_session=1; Path=/; Expires=Thu, 14 Dec 2026 08:00:00 GMT; SameSite=Strict',
+      ])
+      response.end(JSON.stringify({ ok: true }))
+    }))
+    const { port: proxyPort } = await startProxy()
+    const response = await proxyRequest(
+      new URL(`http://127.0.0.1:${String(proxyPort)}`),
+      new URL(`http://127.0.0.1:${String(targetPort)}/api/iam/ensure`),
+      { method: 'POST', body: '{}' },
+    )
+    expect(response.headers.getSetCookie()).toEqual([
+      'new_api_refresh=sid.secret; Path=/api/user/auth; Expires=Thu, 14 Dec 2026 08:00:00 GMT; HttpOnly; SameSite=Strict',
+      'new_api_has_session=1; Path=/; Expires=Thu, 14 Dec 2026 08:00:00 GMT; SameSite=Strict',
+    ])
+  })
+
   it('fails loudly when the proxy refuses the tunnel', { timeout: 20_000 }, async () => {
     const server = createHttpServer()
     server.on('connect', (_request: import('node:http').IncomingMessage, client: Socket) => {

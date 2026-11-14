@@ -1,10 +1,16 @@
 /** Turn the stored KT Identity login into a ktapi.cc console session for the wallet page. */
 
+import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { resolveKitoHarnessHome } from './kito-home.ts'
 import { failureDetail, jsonHeaders, kitoFetch, readJson, withTimeout } from './kito-http.ts'
 import { identityBaseUrl, kitoAccountView, KITO_WALLET_URL, spendableFromEnsure, type KitoAccountView } from './kito-identity.ts'
 
 /** Cookie the NewAPI console uses to recognize a login. The value never leaves this process. */
 export const KITO_CONSOLE_REFRESH_COOKIE = 'new_api_refresh'
+const CONSOLE_DEVICE_FILE = '.console-device-id'
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
 
 export interface ConsoleCookie {
   readonly name: string
@@ -66,29 +72,58 @@ export function consoleCookiesFrom(response: Response): readonly ConsoleCookie[]
 }
 
 /**
+ * Return a stable device identifier for this Kito Harness home so repeated
+ * console sign-ins from the same installation can replace their own session
+ * instead of accumulating duplicate rows on the server.
+ * @param home - Kito Harness data directory; defaults to {@link resolveKitoHarnessHome}.
+ * @returns persisted UUID for this desktop profile.
+ */
+export async function resolveKitoConsoleDeviceId(home: string = resolveKitoHarnessHome()): Promise<string> {
+  const path = join(home, CONSOLE_DEVICE_FILE)
+  try {
+    const existing = (await readFile(path, 'utf8')).trim()
+    if (UUID_RE.test(existing)) return existing
+  } catch {
+    // Missing or unreadable id falls through to generate and store a fresh one.
+  }
+  const generated = randomUUID()
+  try {
+    await mkdir(home, { recursive: true })
+    await writeFile(path, `${generated}\n`, { mode: 0o600 })
+  } catch {
+    // A read-only home still receives a consistent in-run identifier.
+  }
+  return generated
+}
+
+/**
  * Ask ktapi.cc to accept the Identity login and return the console session cookies.
  * The token is not placed in the page URL.
  * @param identityToken - KT Identity access token.
- * @param input - optional wallet page and fetch implementation.
+ * @param input - optional wallet page, stable client device id, and fetch implementation.
  * @returns the page to open and the cookies that sign it in.
  */
 export async function establishKitoConsoleSession(
   identityToken: string,
-  input: { readonly fetchImpl?: typeof fetch; readonly walletUrl?: string } = {},
+  input: { readonly fetchImpl?: typeof fetch; readonly walletUrl?: string; readonly deviceId?: string } = {},
 ): Promise<{ readonly pageUrl: string; readonly cookies: readonly ConsoleCookie[]; readonly payload: unknown }> {
   const pageUrl = input.walletUrl ?? KITO_WALLET_URL
   const origin = new URL(pageUrl).origin
   const fetchImpl = input.fetchImpl ?? kitoFetch
+  const deviceId = input.deviceId?.trim()
   let response: Response
   try {
     response = await fetchImpl(`${origin}/api/iam/ensure`, {
       method: 'POST',
-      headers: jsonHeaders({ authorization: `Bearer ${identityToken}` }),
-      body: '{}',
+      headers: jsonHeaders({
+        authorization: `Bearer ${identityToken}`,
+        ...(deviceId ? { 'x-kito-device-id': deviceId } : {}),
+      }),
+      body: deviceId ? JSON.stringify({ device_id: deviceId }) : '{}',
       signal: withTimeout(undefined),
     })
   } catch (error) {
-    throw new Error(`KTAPI console login failed (${failureDetail(error)})`)
+    throw new ConsoleLoginError(`KTAPI console login failed (${failureDetail(error)})`, 60_000, 0, '')
   }
   const payload = await readJson(response)
   if (!response.ok) {
@@ -99,11 +134,16 @@ export async function establishKitoConsoleSession(
     const waitMs = response.status === 429
       ? (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 10 * 60 * 1000)
       : response.status === 409 ? 15 * 60 * 1000 : 60 * 1000
-    throw new ConsoleLoginError(`KTAPI console login failed (${response.status}${code === '' ? '' : ` ${code}`})`, waitMs)
+    throw new ConsoleLoginError(
+      `KTAPI console login failed (${response.status}${code === '' ? '' : ` ${code}`})`,
+      waitMs,
+      response.status,
+      code,
+    )
   }
   const cookies = consoleCookiesFrom(response)
   if (!cookies.some(cookie => cookie.name === KITO_CONSOLE_REFRESH_COOKIE)) {
-    throw new Error('KTAPI console login did not return a session')
+    throw new ConsoleLoginError('KTAPI console login did not return a session', 60_000, response.status, '')
   }
   return { pageUrl, cookies, payload }
 }
@@ -157,9 +197,19 @@ export function consoleLogoutRequest(pageUrl: string, refreshValue: string): { r
 const CONSOLE_SESSION_TTL_MS = 15 * 60 * 1000
 
 /** A console login the server asked us not to repeat immediately. */
-class ConsoleLoginError extends Error {
-  /** @param message - status only, never the token or cookie. @param retryMs - how long to wait before another attempt. */
-  constructor(message: string, readonly retryMs: number) {
+export class ConsoleLoginError extends Error {
+  /**
+   * @param message - status only, never the token or cookie.
+   * @param retryMs - how long to wait before another attempt.
+   * @param status - HTTP status code (0 for transport errors).
+   * @param code - gateway error code such as `AUTH_SESSION_LIMIT`.
+   */
+  constructor(
+    message: string,
+    readonly retryMs: number,
+    readonly status = 0,
+    readonly code = '',
+  ) {
     super(message)
     this.name = 'ConsoleLoginError'
   }

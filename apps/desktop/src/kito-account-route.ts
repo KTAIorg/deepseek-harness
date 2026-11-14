@@ -16,6 +16,8 @@ export interface KitoRouteOptions {
   readonly openWallet: (identityToken: string) => Promise<void>
   /** Open a ktapi.cc console page with the same login. Falls back to {@link openWallet}. */
   readonly openConsole?: (identityToken: string, page: KitoConsolePage) => Promise<void>
+  /** Optional surface notified when opening the console fails instead of showing an unauthenticated form. */
+  readonly onConsoleError?: (error: unknown) => void
   /** Revoke the ktapi.cc console session kept for the recharge window. */
   readonly signOutConsole?: () => Promise<void>
   /** Read the spendable USD balance through the Identity login. */
@@ -73,10 +75,19 @@ async function openConsolePage(options: KitoRouteOptions, page: KitoConsolePage)
     options.showWelcome()
     return Response.json({ ok: false }, { status: 401 })
   }
-  if (options.openConsole !== undefined) await options.openConsole(token, page)
-  else if (page === 'wallet') await options.openWallet(token)
-  else return Response.json({ ok: false }, { status: 501 })
-  return Response.json({ ok: true })
+  try {
+    if (options.openConsole !== undefined) await options.openConsole(token, page)
+    else if (page === 'wallet') await options.openWallet(token)
+    else return Response.json({ ok: false }, { status: 501 })
+    return Response.json({ ok: true })
+  } catch (error) {
+    options.onConsoleError?.(error)
+    const status = error !== null && typeof error === 'object' && 'status' in error
+      && typeof error.status === 'number' && error.status >= 400 && error.status <= 599
+      ? error.status
+      : 503
+    return Response.json({ ok: false }, { status })
+  }
 }
 
 /**

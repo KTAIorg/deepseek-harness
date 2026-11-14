@@ -76,14 +76,13 @@ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 import { handleKitoAppRoute } from './kito-account-route.ts'
-import { openKitoConsole, readKitoAccountBalance, signOutKitoConsole } from './kito-wallet-window.ts'
+import { KitoConsoleSessionError, openKitoConsole, readKitoAccountBalance, signOutKitoConsole } from './kito-wallet-window.ts'
 import { shouldDismissNewWelcome } from './kito-welcome-policy.ts'
-import { identityBaseUrl, KITO_CLAUDE_KEY_REF, KITO_IDENTITY_REFRESH_TOKEN_REF, KITO_IDENTITY_TOKEN_REF, KITO_NEWAPI_KEY_REF, refreshKitoIdentity } from './kito-identity.ts'
+import { fetchKitoProfile, identityBaseUrl, KITO_CLAUDE_KEY_REF, KITO_IDENTITY_REFRESH_TOKEN_REF, KITO_IDENTITY_TOKEN_REF, KITO_NEWAPI_KEY_REF, refreshKitoIdentity } from './kito-identity.ts'
 import { createKitoIdentityRefresher } from './kito-identity-refresh.ts'
 import { createKitoIdentityKeepalive } from './kito-identity-keepalive.ts'
 import { ensureKitoModelKeyWithRefresh } from './kito-model-credential.ts'
 import { createKitoSignIn, type KitoSignIn } from './kito-sign-in.ts'
-import { fetchKitoAccount } from './kito-identity.ts'
 import { resolveKitoHarnessHome } from './kito-home.ts'
 import { dropRecentAccount, readRecentAccounts, storeRecentAccount } from './kito-recent-accounts.ts'
 import { readStoredCredential } from './kito-credentials.ts'
@@ -858,10 +857,29 @@ async function main(): Promise<void> {
     if (url.hostname === 'shell') return serveWebDocument(request, join(app.getAppPath(),
       url.pathname === '/design-platform.css' ? 'lib/welcome' : 'renderer'))
     if (url.hostname === 'app') {
+      const showConsoleError = (error: unknown): void => {
+        const messages = currentDesktopLocale().messages
+        const detail = error instanceof KitoConsoleSessionError
+          ? (error.kind === 'session-limit' ? messages.consoleSessionLimit
+            : error.kind === 'rate-limited' ? messages.consoleRateLimited
+              : error.kind === 'identity-rejected' ? messages.consoleIdentityRejected
+                : messages.consoleNetworkError)
+          : messages.consoleNetworkError
+        const options = {
+          type: 'warning' as const,
+          title: messages.consoleOpenFailedTitle,
+          message: messages.consoleOpenFailedTitle,
+          detail,
+          buttons: [messages.updateAcknowledge],
+        }
+        const parent = mainWindow !== undefined && !mainWindow.isDestroyed() ? mainWindow : undefined
+        void (parent === undefined ? dialog.showMessageBox(options) : dialog.showMessageBox(parent, options)).catch(() => undefined)
+      }
       const kito = await handleKitoAppRoute(request, {
         showWelcome: () => { void showWelcome(true) },
-        openWallet: token => openKitoConsole(token, 'wallet'),
-        openConsole: (token, page) => openKitoConsole(token, page),
+        openWallet: token => openKitoConsole(token, 'wallet', { onSessionError: showConsoleError }),
+        openConsole: (token, page) => openKitoConsole(token, page, { onSessionError: showConsoleError }),
+        onConsoleError: showConsoleError,
         signOutConsole: () => signOutKitoConsole(),
         readBalance: token => readKitoAccountBalance(token, {
           readApiKey: () => readStoredCredential(KITO_NEWAPI_KEY_REF),
@@ -1549,7 +1567,7 @@ async function main(): Promise<void> {
             void enterWorkspace({ activate: false }).then(() => { publishKitoAccount() }).catch(() => undefined)
           },
           remember: async (token) => {
-            const account = await fetchKitoAccount(token)
+            const account = await fetchKitoProfile(token)
             if (!account.signedIn || account.accountNo === undefined) return
             await storeRecentAccount(resolveKitoHarnessHome(), {
               accountNo: account.accountNo,

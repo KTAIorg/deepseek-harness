@@ -151,12 +151,16 @@ function headerRecord(headers: HeadersInit | undefined): Record<string, string> 
   return { ...headers }
 }
 
-/** @param headers - response headers. @returns a header record for the synthetic response. */
-function responseHeaders(headers: IncomingHttpHeaders): Record<string, string> {
-  const record: Record<string, string> = {}
+/** @param headers - response headers. @returns a Headers object preserving repeated Set-Cookie lines. */
+function responseHeaders(headers: IncomingHttpHeaders): Headers {
+  const result = new Headers()
   for (const [name, value] of Object.entries(headers)) {
     if (value === undefined) continue
-    record[name] = Array.isArray(value) ? value.join(', ') : value
+    if (Array.isArray(value)) {
+      for (const entry of value) result.append(name, entry)
+    } else {
+      result.append(name, value)
+    }
   }
-  return record
+  return result
 }

@@ -212,6 +212,11 @@ export const en = {
   mandatoryCopyFailed: 'Could not copy the link. Select and copy it below.',
   mandatoryAddress: 'Download link',
   mandatoryNotification: 'Return to the application to confirm installation and restart.',
+  consoleOpenFailedTitle: 'Could not open account console',
+  consoleSessionLimit: 'Too many active web console sessions on this account (409). Close old sessions or contact support to clear stale logins, then try again.',
+  consoleRateLimited: 'Too many console login attempts right now (429). Wait a moment and try again.',
+  consoleIdentityRejected: 'Your sign-in session expired. Sign in again to open the account console.',
+  consoleNetworkError: 'Could not establish a signed-in console session. Check your connection and try again.',
 } as const
 
 /** Every Desktop locale supplies the complete English key set. */
@@ -429,6 +434,11 @@ export const zh = {
   mandatoryCopyFailed: '复制失败，请手动选择并复制下方链接。',
   mandatoryAddress: '下载链接',
   mandatoryNotification: '返回应用确认安装并重启。',
+  consoleOpenFailedTitle: '无法自动登录控制台',
+  consoleSessionLimit: '当前账号在控制台的活跃网页会话已达到上限（409）。清理旧会话后即可免登进入，请稍后重试或联系支持处理。',
+  consoleRateLimited: '控制台登录请求过于频繁（429），请稍候再试。',
+  consoleIdentityRejected: '当前登录凭证已失效，请重新登录账号后再试。',
+  consoleNetworkError: '暂时无法建立控制台登录会话，请检查网络或代理后重试。',
 } as const satisfies DesktopMessages
 
 /** Japanese copy, checked against the English keys. */
@@ -644,6 +654,11 @@ export const ja = {
   mandatoryCopyFailed: 'リンクをコピーできませんでした。以下から選択してコピーしてください。',
   mandatoryAddress: 'ダウンロードリンク',
   mandatoryNotification: 'アプリに戻り、インストールと再起動を確認してください。',
+  consoleOpenFailedTitle: 'アカウントコンソールを開けません',
+  consoleSessionLimit: 'このアカウントのアクティブなWebセッションが上限に達しています（409）。古いセッションを整理してから再試行してください。',
+  consoleRateLimited: 'ログイン試行が集中しています（429）。しばらく待ってから再試行してください。',
+  consoleIdentityRejected: 'サインインセッションの有効期限が切れました。再度サインインしてください。',
+  consoleNetworkError: 'コンソールセッションを確立できませんでした。接続を確認して再試行してください。',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish dictionary, checked against the English keys. */
@@ -859,6 +874,11 @@ export const es = {
   mandatoryCopyFailed: 'No se pudo copiar el enlace. Selecciónelo y cópielo a continuación.',
   mandatoryAddress: 'Enlace de descarga',
   mandatoryNotification: 'Regrese a la aplicación para confirmar la instalación y reiniciar.',
+  consoleOpenFailedTitle: 'No se pudo abrir la consola de cuenta',
+  consoleSessionLimit: 'Esta cuenta alcanzó el límite de sesiones web activas (409). Cierre sesiones antiguas y vuelva a intentarlo.',
+  consoleRateLimited: 'Demasiados intentos de inicio de sesión en la consola (429). Espere un momento y reintente.',
+  consoleIdentityRejected: 'Su sesión de inicio expiró. Inicie sesión nuevamente para abrir la consola.',
+  consoleNetworkError: 'No se pudo iniciar sesión en la consola. Compruebe su conexión e inténtelo de nuevo.',
 } satisfies DesktopMessages
 
 /** French dictionary, checked against the English keys. */
@@ -1074,6 +1094,11 @@ export const fr = {
   mandatoryCopyFailed: 'Impossible de copier le lien. Sélectionnez-le et copiez-le ci-dessous.',
   mandatoryAddress: 'Lien de téléchargement',
   mandatoryNotification: "Revenez à l'application pour confirmer l'installation et redémarrer.",
+  consoleOpenFailedTitle: "Impossible d'ouvrir la console du compte",
+  consoleSessionLimit: 'Ce compte a atteint la limite de sessions web actives (409). Fermez les anciennes sessions puis réessayez.',
+  consoleRateLimited: 'Trop de tentatives de connexion à la console (429). Patientez un instant avant de réessayer.',
+  consoleIdentityRejected: 'Votre session a expiré. Reconnectez-vous pour ouvrir la console.',
+  consoleNetworkError: "Impossible d'établir une session console. Vérifiez votre connexion et réessayez.",
 } satisfies DesktopMessages
 
 /** German dictionary, checked against the English keys. */
@@ -1289,6 +1314,11 @@ export const de = {
   mandatoryCopyFailed: 'Der Link konnte nicht kopiert werden. Wählen Sie es aus und kopieren Sie es unten.',
   mandatoryAddress: 'Download-Link',
   mandatoryNotification: 'Kehren Sie zur Anwendung zurück, um die Installation zu bestätigen und neu zu starten.',
+  consoleOpenFailedTitle: 'Kontokonsole konnte nicht geöffnet werden',
+  consoleSessionLimit: 'Dieses Konto hat das Limit aktiver Websitzungen erreicht (409). Beenden Sie alte Sitzungen und versuchen Sie es erneut.',
+  consoleRateLimited: 'Zu viele Anmeldeversuche für die Konsole (429). Bitte warten Sie kurz und versuchen Sie es erneut.',
+  consoleIdentityRejected: 'Ihre Anmeldesitzung ist abgelaufen. Melden Sie sich erneut an, um die Konsole zu öffnen.',
+  consoleNetworkError: 'Es konnte keine Konsolensitzung hergestellt werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.',
 } satisfies DesktopMessages
 
 /** Russian dictionary, checked against the English keys. */
@@ -1504,6 +1534,11 @@ export const ru = {
   mandatoryCopyFailed: 'Не удалось скопировать ссылку. Выделите и скопируйте его ниже.',
   mandatoryAddress: 'Ссылка для скачивания',
   mandatoryNotification: 'Вернитесь в приложение, чтобы подтвердить установку и перезапустить.',
+  consoleOpenFailedTitle: 'Не удалось открыть консоль аккаунта',
+  consoleSessionLimit: 'Достигнут лимит активных веб-сессий для этого аккаунта (409). Завершите старые сессии и попробуйте снова.',
+  consoleRateLimited: 'Слишком много попыток входа в консоль (429). Подождите немного и повторите попытку.',
+  consoleIdentityRejected: 'Сеанс входа истёк. Войдите снова, чтобы открыть консоль.',
+  consoleNetworkError: 'Не удалось установить сеанс консоли. Проверьте подключение и повторите попытку.',
 } satisfies DesktopMessages
 
 /** Portuguese dictionary, checked against the English keys. */
@@ -1719,6 +1754,11 @@ export const pt = {
   mandatoryCopyFailed: 'Não foi possível copiar o link. Selecione e copie abaixo.',
   mandatoryAddress: 'Link de download',
   mandatoryNotification: 'Retorne ao aplicativo para confirmar a instalação e reinicie.',
+  consoleOpenFailedTitle: 'Não foi possível abrir o console da conta',
+  consoleSessionLimit: 'Esta conta atingiu o limite de sessões web ativas (409). Encerre sessões antigas e tente novamente.',
+  consoleRateLimited: 'Muitas tentativas de login no console (429). Aguarde um momento e tente novamente.',
+  consoleIdentityRejected: 'Sua sessão expirou. Faça login novamente para abrir o console.',
+  consoleNetworkError: 'Não foi possível estabelecer uma sessão no console. Verifique sua conexão e tente novamente.',
 } satisfies DesktopMessages
 
 const dictionaries = { en, zh, ja, es, fr, de, ru, pt }

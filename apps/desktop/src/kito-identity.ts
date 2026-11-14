@@ -273,13 +273,12 @@ export async function refreshKitoIdentity(refreshToken: string, input: FetchInit
 }
 
 /**
- * Read the Telegram display name and the shared NewAPI balance.
- * A missing balance stays absent so the UI does not show a fake zero.
+ * Read only the signed-in KT Identity profile without touching NewAPI or creating a console session.
  * @param identityToken - KT Identity access token.
- * @param input - optional origins and cancellation.
- * @returns the signed-in summary, or signed out when the token is rejected.
+ * @param input - optional signal and fetch implementation.
+ * @returns profile summary, or signed out when Identity rejects the token.
  */
-export async function fetchKitoAccount(identityToken: string, input: FetchInit = {}): Promise<KitoAccountView> {
+export async function fetchKitoProfile(identityToken: string, input: FetchInit = {}): Promise<KitoAccountView> {
   const fetchImpl = input.fetchImpl ?? kitoFetch
   const profile = await fetchImpl(`${identityBaseUrl()}/identity/v1/account/me`, {
     method: 'GET',
@@ -289,7 +288,41 @@ export async function fetchKitoAccount(identityToken: string, input: FetchInit =
   const profilePayload = await readJson(profile)
   if (profile.status === 401) return { signedIn: false }
   if (!profile.ok) throw new Error(errorMessage(profilePayload, `KT Identity account failed (${profile.status})`))
-  const balance = await fetchSpendable(identityToken, fetchImpl, input.signal).catch(() => undefined)
+  return kitoAccountView(profilePayload, undefined)
+}
+
+/**
+ * Read the Telegram display name and the shared NewAPI balance.
+ * Prefers the key-authenticated read-only usage endpoint when `apiKey` is supplied
+ * so no NewAPI browser session is consumed; falls back to `/api/iam/ensure` only when omitted.
+ * A missing balance stays absent so the UI does not show a fake zero.
+ * @param identityToken - KT Identity access token.
+ * @param input - optional origins, cancellation, and NewAPI relay key.
+ * @returns the signed-in summary, or signed out when the token is rejected.
+ */
+export async function fetchKitoAccount(
+  identityToken: string,
+  input: FetchInit & { readonly apiKey?: string } = {},
+): Promise<KitoAccountView> {
+  const fetchImpl = input.fetchImpl ?? kitoFetch
+  const profile = await fetchImpl(`${identityBaseUrl()}/identity/v1/account/me`, {
+    method: 'GET',
+    headers: jsonHeaders({ authorization: `Bearer ${identityToken}` }),
+    signal: withTimeout(input.signal),
+  })
+  const profilePayload = await readJson(profile)
+  if (profile.status === 401) return { signedIn: false }
+  if (!profile.ok) throw new Error(errorMessage(profilePayload, `KT Identity account failed (${profile.status})`))
+  let balance: number | undefined
+  if (input.apiKey !== undefined && input.apiKey.trim() !== '') {
+    const usage = await fetchKitoAccountBalanceByKey(input.apiKey, {
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+      fetchImpl,
+    })
+    balance = usage.status === 'ok' ? usage.balance : undefined
+  } else {
+    balance = await fetchSpendable(identityToken, fetchImpl, input.signal).catch(() => undefined)
+  }
   return kitoAccountView(profilePayload, balance)
 }
 

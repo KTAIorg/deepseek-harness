@@ -10,7 +10,16 @@ import {
   spendableFromEnsure,
   type KitoConsolePage,
 } from './kito-identity.ts'
-import { consoleCookiesFrom, consoleLogoutRequest, consoleRefreshRequest, establishKitoConsoleSession, KITO_CONSOLE_REFRESH_COOKIE, type ConsoleCookie } from './kito-wallet.ts'
+import {
+  consoleCookiesFrom,
+  consoleLogoutRequest,
+  ConsoleLoginError,
+  consoleRefreshRequest,
+  establishKitoConsoleSession,
+  KITO_CONSOLE_REFRESH_COOKIE,
+  resolveKitoConsoleDeviceId,
+  type ConsoleCookie,
+} from './kito-wallet.ts'
 
 const CONSOLE_TITLES: Record<KitoConsolePage, string> = {
   wallet: '充值',
@@ -21,29 +30,96 @@ const CONSOLE_TITLES: Record<KitoConsolePage, string> = {
 
 const WALLET_PARTITION = 'persist:kito-wallet'
 
+/** Reason the console window could not establish an authenticated session. */
+export type KitoConsoleErrorKind = 'session-limit' | 'rate-limited' | 'identity-rejected' | 'unavailable'
+
+/** Structured failure raised when opening the console cannot proceed without a session. */
+export class KitoConsoleSessionError extends Error {
+  /**
+   * @param kind - classified reason for localized messaging.
+   * @param status - HTTP status code surfaced to the app route (`409` / `429` / `401` / `503`).
+   * @param message - non-secret diagnostic summary.
+   */
+  constructor(
+    readonly kind: KitoConsoleErrorKind,
+    readonly status: number,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'KitoConsoleSessionError'
+  }
+}
+
+/** Optional seams for {@link openKitoConsole}. */
+export interface OpenKitoConsoleOptions {
+  /** Stable installation device identifier sent on `/api/iam/ensure`. */
+  readonly deviceId?: string
+  /** Optional device identifier resolver; defaults to {@link resolveKitoConsoleDeviceId}. */
+  readonly resolveDeviceId?: () => Promise<string>
+  /** Optional fetch implementation for tests. */
+  readonly fetchImpl?: typeof fetch
+  /** Optional window factory for tests. */
+  readonly createWindow?: (title: string) => BrowserWindow
+  /** Optional error surface when async SPA redirect fails after the window already opened. */
+  readonly onSessionError?: (error: KitoConsoleSessionError) => void
+}
+
 let current: BrowserWindow | undefined
 let consoleRetryAt = 0
 /** When the stored console session last answered a refresh; a session older than this is revalidated before it is trusted. */
 let consoleVerifiedAt = 0
 /** Last user-initiated attempt, which is allowed to ignore the background cooldown once. */
 let consoleExplicitAt = 0
+let lastEnsureError: KitoConsoleSessionError | undefined
+let openQueue: Promise<void> = Promise.resolve()
+let currentTarget: string = KITO_WALLET_URL
+let currentIdentityToken = ''
+let currentOptions: OpenKitoConsoleOptions = {}
+let recoveringLanding = false
+let lastRecoveryAt = 0
 /** A session that is merely stale is refreshed instead of being trusted until the page fails. */
 const CONSOLE_SESSION_FRESH_MS = 10 * 60 * 1000
 /** An explicit open may retry this often even while background reads are cooling down. */
 const CONSOLE_EXPLICIT_RETRY_MS = 60 * 1000
 /** Routes a console build serves when it wants a fresh login. */
 const LOGIN_PATH = /\/(?:login|signin|sign-in|auth\/login)(?:[/?#]|$)/iu
+const REJECTED_REFRESH_CODES = new Set(['AUTH_SESSION_REVOKED', 'AUTH_TOKEN_EXPIRED', 'AUTH_UNAUTHORIZED'])
 let cachedBalance: { readonly at: number; readonly balance: number } | undefined
 let balanceBlockedUntil = 0
 const BALANCE_TTL_MS = 3 * 60 * 1000
 
 /**
- * Show one ktapi.cc console page. A stored console cookie is reused; a new login is created only when that cookie is absent.
+ * Show one ktapi.cc console page. Serializes concurrent requests, reuses a stored
+ * refresh cookie without wiping it on transient errors, and refuses to drop onto an
+ * unauthenticated login screen when `/api/iam/ensure` rejects the session.
  * @param identityToken - KT Identity access token. It is exchanged for a console cookie and not put in the URL.
  * @param page - wallet, recharge history, usage logs, or API keys.
+ * @param options - optional device identifier and test seams.
  */
-export async function openKitoConsole(identityToken: string, page: KitoConsolePage = 'wallet'): Promise<void> {
+export function openKitoConsole(
+  identityToken: string,
+  page: KitoConsolePage = 'wallet',
+  options: OpenKitoConsoleOptions = {},
+): Promise<void> {
+  const run = openQueue.then(() => openKitoConsoleSerialized(identityToken, page, options))
+  openQueue = run.catch(() => undefined)
+  return run
+}
+
+async function openKitoConsoleSerialized(
+  identityToken: string,
+  page: KitoConsolePage,
+  options: OpenKitoConsoleOptions,
+): Promise<void> {
   const target = KITO_CONSOLE_PAGES[page]
+  const browser = session.fromPartition(WALLET_PARTITION)
+  const origin = new URL(target).origin
+  currentTarget = target
+  currentIdentityToken = identityToken
+  currentOptions = options
+
+  await ensureConsoleSession(browser, origin, identityToken, {}, options)
+
   if (current !== undefined && !current.isDestroyed()) {
     current.setTitle(CONSOLE_TITLES[page])
     if (current.isMinimized()) current.restore()
@@ -51,16 +127,11 @@ export async function openKitoConsole(identityToken: string, page: KitoConsolePa
     current.focus()
     // A reused window carries whatever session state the last page left, so it
     // gets the same login-landing recovery as a fresh one.
-    const browser = session.fromPartition(WALLET_PARTITION)
-    await loadConsolePage(current, target, browser, new URL(target).origin, identityToken)
+    await loadConsolePage(current, target, browser, origin, identityToken, options)
     return
   }
-  const browser = session.fromPartition(WALLET_PARTITION)
-  const origin = new URL(target).origin
-  if (!await ensureConsoleSession(browser, origin, identityToken)) {
-    console.error('kito wallet login failed', 'opening the console page without a console session')
-  }
-  const window = new BrowserWindow({
+
+  const window = options.createWindow?.(CONSOLE_TITLES[page]) ?? new BrowserWindow({
     width: 1100,
     height: 780,
     title: CONSOLE_TITLES[page],
@@ -83,8 +154,42 @@ export async function openKitoConsole(identityToken: string, page: KitoConsolePa
   window.webContents.on('will-navigate', (event, url) => {
     if (!isWebUrl(url)) event.preventDefault()
   })
+  const handleSpaLanding = (url: string): void => {
+    if (!isRedirectedLoginUrl(url) || recoveringLanding) return
+    if (Date.now() - lastRecoveryAt < 10_000) return
+    void recoverFromLoginLanding(window, url, browser, origin)
+  }
+  window.webContents.on('did-navigate', (_event, url) => { handleSpaLanding(url) })
+  window.webContents.on('did-navigate-in-page', (_event, url) => { handleSpaLanding(url) })
   window.show()
-  await loadConsolePage(window, target, browser, origin, identityToken)
+  await loadConsolePage(window, target, browser, origin, identityToken, options)
+}
+
+async function recoverFromLoginLanding(
+  window: BrowserWindow,
+  landingUrl: string,
+  browser: Session,
+  origin: string,
+): Promise<void> {
+  if (recoveringLanding || window.isDestroyed()) return
+  recoveringLanding = true
+  lastRecoveryAt = Date.now()
+  try {
+    console.warn('kito wallet session was rejected by the console; re-establishing it')
+    await clearConsoleCookies(browser, origin)
+    consoleVerifiedAt = 0
+    await ensureConsoleSession(browser, origin, currentIdentityToken, { force: true }, currentOptions)
+    if (window.isDestroyed()) return
+    const resumeTarget = resumeTargetFromLanding(landingUrl, origin) ?? currentTarget
+    await safeLoadUrl(window, resumeTarget)
+  } catch (error) {
+    const classified = toConsoleSessionError(error)
+    console.error('kito wallet login failed', classified.message)
+    if (!window.isDestroyed()) window.close()
+    currentOptions.onSessionError?.(classified)
+  } finally {
+    recoveringLanding = false
+  }
 }
 
 /**
@@ -100,18 +205,35 @@ export async function openKitoConsole(identityToken: string, page: KitoConsolePa
  * @param browser - partition session holding the console cookies.
  * @param origin - console origin.
  * @param identityToken - KT Identity access token used for the re-login.
+ * @param options - device identifier and fetch seams.
  */
 async function loadConsolePage(
-  window: BrowserWindow, target: string, browser: Session, origin: string, identityToken: string,
+  window: BrowserWindow,
+  target: string,
+  browser: Session,
+  origin: string,
+  identityToken: string,
+  options: OpenKitoConsoleOptions,
 ): Promise<void> {
-  await window.loadURL(target)
+  await safeLoadUrl(window, target)
   if (!isLoginLanding(window)) return
   console.warn('kito wallet session was rejected by the console; re-establishing it')
   await clearConsoleCookies(browser, origin)
   consoleVerifiedAt = 0
-  if (!await ensureConsoleSession(browser, origin, identityToken, { force: true })) return
-  await window.loadURL(target)
+  await ensureConsoleSession(browser, origin, identityToken, { force: true }, options)
+  await safeLoadUrl(window, target)
   if (isLoginLanding(window)) console.error('kito wallet login failed', 'console still requires a login after re-establishing the session')
+}
+
+async function safeLoadUrl(window: BrowserWindow, target: string): Promise<void> {
+  try {
+    await window.loadURL(target)
+  } catch (error) {
+    // Aborted navigation (-3) happens when the SPA redirects mid-load or a newer target supersedes it.
+    if (error !== null && typeof error === 'object' && 'errno' in error && error.errno === -3) return
+    if (error instanceof Error && error.message.includes('ERR_ABORTED')) return
+    throw error
+  }
 }
 
 /**
@@ -125,75 +247,148 @@ function isLoginLanding(window: BrowserWindow): boolean {
   }
 }
 
+function isRedirectedLoginUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl)
+    return LOGIN_PATH.test(parsed.pathname) && parsed.searchParams.has('redirect')
+  } catch (_error) {
+    return false
+  }
+}
+
+function resumeTargetFromLanding(landingUrl: string, origin: string): string | undefined {
+  try {
+    const redirect = new URL(landingUrl).searchParams.get('redirect')
+    if (redirect === null || !redirect.startsWith('/')) return undefined
+    return new URL(redirect, origin).href
+  } catch (_error) {
+    return undefined
+  }
+}
+
+type RefreshOutcome = 'valid' | 'rejected' | 'transient'
+
+function toConsoleSessionError(error: unknown): KitoConsoleSessionError {
+  if (error instanceof KitoConsoleSessionError) return error
+  if (error instanceof ConsoleLoginError) {
+    if (error.status === 409 || error.code === 'AUTH_SESSION_LIMIT') {
+      return new KitoConsoleSessionError('session-limit', 409, error.message)
+    }
+    if (error.status === 429 || error.code === 'AUTH_SESSION_ISSUANCE_LIMIT') {
+      return new KitoConsoleSessionError('rate-limited', 429, error.message)
+    }
+    if (error.status === 401 || error.status === 403) {
+      return new KitoConsoleSessionError('identity-rejected', error.status, error.message)
+    }
+    return new KitoConsoleSessionError('unavailable', 503, error.message)
+  }
+  const message = error instanceof Error ? error.message : String(error)
+  return new KitoConsoleSessionError('unavailable', 503, message)
+}
+
 /**
  * Make sure the partition holds a console session the site will accept.
  *
  * A stored cookie is not proof: it may have been rotated elsewhere or evicted
  * by the account's session cap. A session therefore has to be revalidated by
- * its own refresh endpoint before it is trusted past {@link CONSOLE_SESSION_FRESH_MS},
- * and a refused refresh clears it instead of letting every later page fall
- * back to the login screen.
+ * its own refresh endpoint before it is trusted past {@link CONSOLE_SESSION_FRESH_MS}.
+ * Transient network/rate-limit errors preserve the stored cookie so valid sessions are
+ * never discarded and duplicated; only confirmed rejection clears cookies and re-establishes.
  * @param browser - partition session holding the console cookies.
  * @param origin - console origin.
  * @param identityToken - KT Identity access token.
- * @param options - `force` revalidates a session that is still considered fresh.
- * @returns whether a usable session is stored afterwards.
+ * @param flags - `force` revalidates a session that is still considered fresh.
+ * @param options - device identifier and fetch seams.
  */
 async function ensureConsoleSession(
-  browser: Session, origin: string, identityToken: string, options: { force?: boolean } = {},
-): Promise<boolean> {
+  browser: Session,
+  origin: string,
+  identityToken: string,
+  flags: { force?: boolean } = {},
+  options: OpenKitoConsoleOptions = {},
+): Promise<void> {
   const stored = await hasRefreshCookie(browser, origin)
-  if (stored && options.force !== true && Date.now() - consoleVerifiedAt < CONSOLE_SESSION_FRESH_MS) return true
+  if (stored && flags.force !== true && Date.now() - consoleVerifiedAt < CONSOLE_SESSION_FRESH_MS) return
   if (stored) {
-    if (await refreshConsoleSession(browser, origin)) {
+    const refreshResult = await refreshConsoleSession(browser, origin, options.fetchImpl)
+    if (refreshResult === 'valid') {
       consoleVerifiedAt = Date.now()
-      return true
+      return
+    }
+    if (refreshResult === 'transient') {
+      // Keep the existing cookie intact so the browser window can retry or use it directly.
+      return
     }
     await clearConsoleCookies(browser, origin)
     consoleVerifiedAt = 0
   }
   const cooling = Date.now() < consoleRetryAt
-  if (cooling && Date.now() - consoleExplicitAt < CONSOLE_EXPLICIT_RETRY_MS) return false
+  if (cooling && Date.now() - consoleExplicitAt < CONSOLE_EXPLICIT_RETRY_MS) {
+    throw lastEnsureError ?? new KitoConsoleSessionError('unavailable', 503, 'KTAPI console login is cooling down')
+  }
   consoleExplicitAt = Date.now()
   try {
-    const established = await establishKitoConsoleSession(identityToken)
+    const deviceId = options.deviceId ?? await (options.resolveDeviceId ?? resolveKitoConsoleDeviceId)()
+    const established = await establishKitoConsoleSession(identityToken, {
+      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+      deviceId,
+    })
     await storeConsoleCookies(browser, origin, established.cookies)
     const balance = spendableFromEnsure(established.payload)
     if (balance !== undefined) cachedBalance = { at: Date.now(), balance }
     consoleVerifiedAt = Date.now()
     consoleRetryAt = 0
-    return true
+    lastEnsureError = undefined
   } catch (error) {
-    consoleRetryAt = Date.now() + 15 * 60 * 1000
+    const retryMs = error instanceof ConsoleLoginError ? error.retryMs : 15 * 60 * 1000
+    consoleRetryAt = Date.now() + retryMs
+    const classified = toConsoleSessionError(error)
+    lastEnsureError = classified
     console.error('kito wallet login failed', failureDetail(error))
-    return false
+    throw classified
   }
 }
 
 /**
  * Revalidate the stored console session through its own refresh endpoint.
+ * Distinguishes confirmed session rejection (`401`/`403`/`AUTH_SESSION_REVOKED`)
+ * from transient failures (`429`/`5xx`/network timeouts) so valid cookies are preserved.
  * @param browser - partition session holding the console cookies.
  * @param origin - console origin.
- * @returns whether the session answered; rotated cookies are stored either way.
+ * @param fetchImpl - optional fetch implementation for tests.
+ * @returns `'valid'`, `'rejected'`, or `'transient'`.
  */
-async function refreshConsoleSession(browser: Session, origin: string): Promise<boolean> {
+async function refreshConsoleSession(
+  browser: Session,
+  origin: string,
+  fetchImpl: typeof fetch = kitoFetch,
+): Promise<RefreshOutcome> {
   const stored = await browser.cookies.get({ url: `${origin}/api/user/auth`, name: KITO_CONSOLE_REFRESH_COOKIE })
   const refreshValue = stored.find(cookie => cookie.value.length > 0)?.value
-  if (refreshValue === undefined) return false
+  if (refreshValue === undefined) return 'rejected'
   const request = consoleRefreshRequest(KITO_WALLET_URL, refreshValue)
   try {
-    const response = await kitoFetch(request.url, request.init)
-    if (!response.ok) {
-      await response.body?.cancel()
-      return false
+    const response = await fetchImpl(request.url, request.init)
+    if (response.ok) {
+      await storeConsoleCookies(browser, origin, consoleCookiesFrom(response))
+      const balance = spendableFromEnsure(await readJson(response))
+      if (balance !== undefined) cachedBalance = { at: Date.now(), balance }
+      return 'valid'
     }
-    await storeConsoleCookies(browser, origin, consoleCookiesFrom(response))
-    const balance = spendableFromEnsure(await readJson(response))
-    if (balance !== undefined) cachedBalance = { at: Date.now(), balance }
-    return true
+    const payload = await readJson(response)
+    const code = payload !== null && typeof payload === 'object' && 'code' in payload && typeof payload.code === 'string'
+      ? payload.code
+      : ''
+    if (response.status === 401 || response.status === 403 || REJECTED_REFRESH_CODES.has(code)) {
+      return 'rejected'
+    }
+    if (response.status === 429) {
+      consoleRetryAt = Date.now() + criticalRetryDelayMs(response.headers.get('retry-after'))
+    }
+    return 'transient'
   } catch (error) {
     console.error('kito wallet session refresh failed', failureDetail(error))
-    return false
+    return 'transient'
   }
 }
 
@@ -308,8 +503,9 @@ export async function readKitoConsoleBalance(): Promise<number | undefined> {
 
 /**
  * Revoke the website login kept for the recharge window, using ktapi.cc's existing logout.
+ * @param options - optional fetch seam for tests.
  */
-export async function signOutKitoConsole(): Promise<void> {
+export async function signOutKitoConsole(options: { readonly fetchImpl?: typeof fetch } = {}): Promise<void> {
   const browser = session.fromPartition(WALLET_PARTITION)
   const origin = new URL(KITO_WALLET_URL).origin
   const stored = await browser.cookies.get({ url: `${origin}/api/user/auth`, name: KITO_CONSOLE_REFRESH_COOKIE })
@@ -317,7 +513,7 @@ export async function signOutKitoConsole(): Promise<void> {
   if (refreshValue !== undefined) {
     const request = consoleLogoutRequest(KITO_WALLET_URL, refreshValue)
     try {
-      const response = await kitoFetch(request.url, request.init)
+      const response = await (options.fetchImpl ?? kitoFetch)(request.url, request.init)
       await readJson(response)
       if (!response.ok) console.error('kito wallet logout failed', response.status)
     } catch (error) {
@@ -328,6 +524,9 @@ export async function signOutKitoConsole(): Promise<void> {
   consoleRetryAt = 0
   consoleVerifiedAt = 0
   consoleExplicitAt = 0
+  lastEnsureError = undefined
+  lastRecoveryAt = 0
+  recoveringLanding = false
   balanceBlockedUntil = 0
   cachedBalance = undefined
   if (current !== undefined && !current.isDestroyed()) current.close()
